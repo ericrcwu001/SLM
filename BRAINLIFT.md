@@ -5,7 +5,7 @@ The bet is modest: kids can get better at noticing global color changes when the
 - Image-conditioned, instruction-guided global color grading.
 - One decoded 17x17x17 residual global LUT added to identity and exported as a normal LUT.
 - Prompt attributes: warmth/coolness, tint, exposure, contrast, black point, highlights, shadows, saturation, and a small number of style bundles with measurable color behavior.
-- Evaluation of token validity, decoded LUT validity, direction of color change, clipping, smoothness, foldover, neutral drift, skin/neutral preservation, and unsupported-refusal accuracy.
+- Evaluation of token validity, decoded LUT validity, direction of color change, target fidelity, clipping, smoothness, foldover, neutral drift, skin-locus/neutral preservation, unsupported recall/precision, over-refusal, and boundary F1.
 - A child-facing workflow built around preview, compare, undo, revise, and name the look.
 
 ### Out of scope
@@ -366,10 +366,10 @@ Source: Nielsen Norman Group, visibility of system status heuristic.
 - AceTone: Bridging Words and Colors for Conditional Image Grading was posted to arXiv on April 1, 2026 by Tianren Ma, Mingxiang Liao, Xijin Zhang, and Qixiang Ye.
 - AceTone is the original direct paper to track for this project because it connects natural-language/image-conditioned grading to discrete 3D-LUT generation.
 - AceTone reports a VQ-VAE LUT tokenizer that maps a 3x32^3 LUT vector into 64 discrete tokens with DeltaE < 2 fidelity.
-- The SFT checkpoint target is at least 85% valid-token output rate.
-- The SFT checkpoint target is at least 80% unsupported-refusal accuracy.
-- The SFT checkpoint target is at least a 30 percentage-point prompt-to-LUT pass-rate improvement over prompted Qwen baseline.
-- GRPO should improve prompt-to-LUT pass rate or safety failure rate by at least 5 percentage points over SFT.
+- The SFT checkpoint target includes at least 85% free-generation valid-token output rate, measured with confidence intervals.
+- The SFT checkpoint target includes unsupported recall, unsupported precision, boundary F1, mixed-prompt recall, and an over-refusal ceiling.
+- The SFT checkpoint must beat null/constant baselines and the deterministic renderer by predeclared paired-CI gates, not only a prompted-Qwen baseline.
+- RS/DPO should be tried before GRPO; GRPO should improve prompt-to-LUT pass rate or safety failure rate over the best prior tuned stage outside paired confidence intervals.
 - Aesthetic reward is last-priority and gets no credit when tokens are invalid, prompt direction is wrong, LUTs are unsafe, or refusals fail.
 - PPR10K contains 11,161 RAW portrait photos and three expert target sets, producing 33,483 candidate expert targets.
 - PPR10K includes 1,681 photo groups and full-resolution human-region masks.

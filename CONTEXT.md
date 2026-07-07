@@ -48,6 +48,18 @@ _Avoid_: Absolute LUT
 A full global LUT that directly stores final output RGB values at each grid point.
 _Avoid_: Residual LUT
 
+**Canonical LUT Domain**:
+The v1 artifact contract for all accepted LUT tensors: display-referred IEC 61966-2-1 sRGB, encoded RGB values in [0,1], D65, 17x17x17 grid, and trilinear interpolation.
+_Avoid_: Raw source LUT domain
+
+**Canonical Absolute LUT**:
+An absolute global LUT after conversion into the canonical LUT domain.
+_Avoid_: RAW/ProPhoto/Display P3 source LUT
+
+**Canonical Residual LUT**:
+The canonical absolute LUT minus the encoded-sRGB identity grid at the same 17x17x17 nodes.
+_Avoid_: Linear RGB residual
+
 **Expert LUT**:
 A global LUT derived from a professional retouching adjustment, such as applying an expert preset to an identity color grid.
 _Avoid_: Synthetic LUT
@@ -57,7 +69,7 @@ An expert LUT produced from PPR10K portrait retouching targets by converting exp
 _Avoid_: Generic LUT pack
 
 **Derived LUT**:
-A global LUT extracted from an edit preset or before/after expert edit, including cases where the LUT is the best global approximation of a richer retouching operation.
+A global LUT extracted from an edit preset or before/after expert edit. For headline training or eval, a derived LUT must pass representability gates, spatial residual checks, and support-map checks; a best-fit approximation alone is not enough.
 _Avoid_: Source LUT, hand-authored LUT
 
 **FiveK-Derived Expert LUT**:
@@ -65,7 +77,7 @@ A derived LUT fitted from a MIT-Adobe FiveK source image and one expert-retouche
 _Avoid_: ISP transform, camera-pipeline transform
 
 **Derived LUT Quality Score**:
-A set of measurements describing how well a derived LUT behaves as a global color transform, including fit error, smoothness, clipping, foldover, neutral drift, and residual magnitude.
+A set of measurements describing how well a derived LUT behaves as a global color transform, including fit error, held-out fit error, spatial residual structure, support-map coverage, smoothness, clipping, foldover, neutral drift, skin-locus shift, and residual magnitude.
 _Avoid_: Aesthetic score
 
 **Supported Prompt Attribute**:
@@ -81,7 +93,7 @@ A supervised training example whose model input is a source image and natural-la
 _Avoid_: Before/after pair as model input
 
 **Prompt-to-LUT Pass Rate**:
-The primary evaluation metric: the fraction of image-and-instruction cases where the model outputs valid LUT tokens that decode to a safe global LUT matching all explicit prompt attributes.
+The primary evaluation metric: the fraction of headline-eligible image-and-instruction cases where the model outputs valid LUT tokens that decode to a safe canonical global LUT matching all explicit prompt attributes and the target-fidelity gate, or correctly refuses unsupported prompts.
 _Avoid_: Aesthetic score as primary metric
 
 **Unsupported Output**:
