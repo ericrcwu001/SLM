@@ -1,0 +1,81 @@
+# configs/leakage_thresholds.yaml
+#
+# TEMPLATE - pinned defaults for near-neighbor + exact-match leakage controls
+# (see docs/data_collection_plan.md "Near-Neighbor Leakage Thresholds").
+#
+# These are leakage_policy_version v0 DEFAULTS. Every embedding model id is a
+# default that may be re-pinned; every cutoff is a starting default to be
+# re-pinned after a labeled near-duplicate calibration set exists. Any change to
+# a model id, a cutoff, or the PCA basis MUST bump leakage_policy_version and
+# force a fresh leakage_report.json. Do NOT treat the numbers below as
+# frozen/calibrated. Fields marked TODO only exist after the train pool freeze.
+
+leakage_policy_version: v0
+
+image_semantics:
+  # default, re-pinnable (chosen from the CLIP/SigLIP/DINOv2 menu in the plan)
+  embedding_model: open_clip:ViT-L-14/laion2b_s32b_b82k
+  dim: 768
+  normalize: l2
+  metric: cosine_distance
+  near_neighbor_cutoff: 0.05        # leak if cosine distance <= 0.05 (cos sim >= 0.95)
+  exact_match_field: canonical_input_image_hash
+
+image_perceptual:
+  method: dct_phash
+  hash_size: 8                      # 64-bit hash
+  metric: hamming_bits
+  near_neighbor_cutoff: 6           # leak if Hamming distance <= 6 of 64 bits
+  exact_match_field: perceptual_hash
+
+lut_behavior:
+  # canonical residual tensor on the 17x17x17 grid, flattened in
+  # token_flatten_order, mean-centered, projected onto a PCA basis fit on the
+  # FROZEN train pool.
+  source: canonical_residual_lut
+  grid: 17x17x17
+  pca_dim: 64
+  pca_basis_sha256: TODO_fit_and_pin_after_train_pool_freeze
+  pca_fit_set_version: TODO_train_pool_version
+  metric: cosine_distance
+  near_neighbor_cutoff: 0.02        # leak if cosine distance <= 0.02 (cos sim >= 0.98)
+  exact_match_field: normalized_lut_hash
+
+prompt_semantics:
+  # default, re-pinnable
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  dim: 384
+  normalize: l2
+  metric: cosine_similarity
+  near_neighbor_cutoff: 0.92        # leak if cosine similarity >= 0.92
+  exact_match_field: prompt_template_hash
+
+prompt_lexical:
+  method: word_3gram_minhash
+  num_perm: 128
+  metric: jaccard
+  near_neighbor_cutoff: 0.80        # leak if Jaccard estimate >= 0.80
+  exact_match_field: prompt_template_hash
+
+report:
+  # leakage_report.json pass/fail contract
+  cross_split_scopes:
+    - train_vs_eval
+    - train_vs_diagnostic
+    - train_vs_qualitative
+    - tokenizer_vs_eval
+    - warmup_vs_eval
+  fail_if_any_axis_violation: true  # status=fail if any axis has >0 exact or near-neighbor cross-split pairs
+  record:
+    - leakage_policy_version
+    - image_semantics.embedding_model
+    - prompt_semantics.embedding_model
+    - lut_behavior.pca_basis_sha256
+    - all_cutoffs_actually_used
+    - per_axis_violation_counts_and_example_pair_ids
+
+audit:
+  near_miss_band_pairs_per_axis: 50 # closest cross-split pairs just outside the cutoff to inspect
+  near_miss_band_multiplier: 1.5    # inspect pairs within 1.5x cutoff distance (pHash: cutoff + 3 bits)
+  random_eval_rows_reviewed: 50
+  require_human_signoff: true       # recorded via leakage_report_hash

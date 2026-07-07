@@ -1,0 +1,157 @@
+# configs/source_inventory.yaml
+#
+# Authoritative, machine-readable source acquisition manifest for Stage 2
+# ("collect/scrape sources") of the SLM data pipeline. This file is the single
+# source of truth for WHAT to acquire and HOW.
+#
+# Referenced by:
+#   - docs/master_plan.md            Stage 2 input (Stage Artifact Contracts)
+#   - docs/data_collection_plan.md   "Source Inventory" priority list
+#
+# Contract:
+#   - `source_pack_id` is stable and is written to the provenance registry
+#     `source_pack_id` field for every candidate derived from a source; each
+#     candidate's registry `source_pack_id` MUST match an entry here.
+#   - `priority` mirrors the Source Inventory priority order (1 = collect first).
+#   - `access_method` is one of:
+#       direct_download | hf_dataset | scrape | manual | generated
+#   - `url_status: todo_verify` means the URL / dataset id and/or license are NOT
+#     confirmed. Verify the live location and terms before download; do not treat
+#     a todo_verify URL as canonical. The full per-file terms snapshot is still
+#     captured in the provenance registry `license_or_terms_snapshot` field.
+#   - `expected_layout` is the on-disk shape under the raw acquisition root (see
+#     training_plan_colab.md "Artifact Storage"): raw files under `luts/raw/`,
+#     metadata under `data/raw_registry/`.
+#   - `approx_item_count` is a planning estimate of RAW candidates, not accepted
+#     rows. Acceptance/attrition is governed by the representability and quality
+#     gates in data_collection_plan.md; null = unknown until scrape/enumeration.
+#   - Excluded families are listed at the bottom and MUST be rejected at Stage 2.
+
+version: source_inventory_v1
+
+sources:
+  - source_pack_id: ppr10k_expert_abc
+    priority: 1
+    family: ppr10k_derived
+    dataset_name: PPR10K
+    url_or_dataset_id: https://github.com/csjliang/PPR10K
+    url_status: verified   # repo/dataset id confirmed; exact asset links TODO(verify)
+    access_method: direct_download
+    license: PPR10K research license (academic/research use); snapshot per file in registry
+    expected_layout: |
+      luts/raw/ppr10k/
+        source/<source_photo_id>.tif
+        target_a/<source_photo_id>.tif
+        target_b/<source_photo_id>.tif
+        target_c/<source_photo_id>.tif
+        xmp/<expert>/<source_photo_id>.xmp
+    approx_item_count: 33483   # 11,161 source images x 3 experts (a/b/c)
+    notes: >-
+      Source images plus 3 expert (a/b/c) XMP/retouched targets are distributed
+      via links in the repo README (Google Drive / Baidu). TODO(verify) exact
+      download URLs and license terms snapshot at collection time.
+    handling_ref: data_collection_plan.md "PPR10K Plan"
+
+  - source_pack_id: fivek_expert_abcde
+    priority: 2
+    family: fivek_derived
+    dataset_name: MIT-Adobe FiveK
+    url_or_dataset_id: https://data.csail.mit.edu/graphics/fivek/
+    url_status: verified   # official CSAIL distribution page confirmed
+    access_method: direct_download
+    license: MIT-Adobe FiveK license (research use; per-photo Adobe Stock terms); snapshot per file
+    expected_layout: |
+      luts/raw/fivek/
+        raw/<source_photo_id>.dng
+        expertA/<source_photo_id>.tif
+        expertB/<source_photo_id>.tif
+        expertC/<source_photo_id>.tif
+        expertD/<source_photo_id>.tif
+        expertE/<source_photo_id>.tif
+    approx_item_count: 25000   # 5,000 source photos x 5 experts (A-E)
+    notes: >-
+      5,000 raw DNGs plus 5 expert (A-E) renditions from the official MIT/CSAIL
+      distribution. TODO(verify) confirm license terms snapshot at collection.
+    handling_ref: data_collection_plan.md "FiveK Plan"
+
+  - source_pack_id: freshluts_public
+    priority: 3
+    family: fresh_luts
+    dataset_name: FreshLUTs community LUTs
+    url_or_dataset_id: https://freshluts.com/
+    url_status: todo_verify   # confirm site + per-LUT source and scrape method
+    access_method: scrape
+    license: per-LUT, varies by upload; record license_or_terms_snapshot per file
+    expected_layout: |
+      luts/raw/fresh_luts/<pack_or_author>/<lut_id>.cube
+    approx_item_count: null   # TODO(verify) depends on scrape scope
+    notes: >-
+      Community-uploaded .cube LUTs; license and declared color space vary per
+      upload and MUST be recorded per file. Reject unknown-domain/camera-log
+      LUTs unless a canonical conversion is defined. TODO(verify) scrape method.
+    handling_ref: data_collection_plan.md "Public LUT Sources"
+
+  - source_pack_id: gmic_rawtherapee_haldclut
+    priority: 4
+    family: gmic_rawtherapee
+    dataset_name: G'MIC + RawTherapee HaldCLUT film-simulation collection
+    url_or_dataset_id: https://rawpedia.rawtherapee.com/Film_Simulation
+    url_status: todo_verify   # landing page known; exact archive URLs TODO(verify)
+    access_method: direct_download
+    license: RawTherapee film-simulation pack (free redistribution per RawPedia); G'MIC CLUTs under G'MIC/CeCILL terms
+    expected_layout: |
+      luts/raw/haldclut/rawtherapee/<clut_name>.png
+      luts/raw/haldclut/gmic/<clut_name>.png
+    approx_item_count: null   # TODO(verify) ~hundreds of HaldCLUTs; confirm on download
+    notes: >-
+      RawTherapee film-simulation HaldCLUT archive (linked from RawPedia) and
+      the G'MIC CLUT collection (https://gmic.eu/). TODO(verify) exact archive
+      URLs and per-pack license terms before download.
+    handling_ref: data_collection_plan.md "Public LUT Sources"
+
+  - source_pack_id: public_lut_packs_misc
+    priority: 5
+    family: smaller_public_packs
+    dataset_name: Smaller public LUT / .cube packs
+    url_or_dataset_id: null
+    url_status: todo_verify   # enumerate one concrete pack per entry before download
+    access_method: manual
+    license: per-pack, varies; record license_or_terms_snapshot per pack
+    expected_layout: |
+      luts/raw/public_packs/<pack_id>/<lut_id>.cube
+    approx_item_count: null   # TODO(verify)
+    notes: >-
+      Placeholder family. Add one entry per concrete pack with its real URL and
+      license before collection; do not scrape blind. TODO(verify) enumerate.
+    handling_ref: data_collection_plan.md "Public LUT Sources"
+
+  - source_pack_id: procedural_fillers_v1
+    priority: 6
+    family: controlled_procedural
+    dataset_name: Controlled / procedural filler LUTs
+    url_or_dataset_id: null   # generated locally, no external source
+    url_status: verified
+    access_method: generated
+    license: self-generated (project-owned)
+    expected_layout: |
+      luts/raw/procedural/<generator_version>/<lut_id>.cube
+    approx_item_count: null   # generated on demand for coverage gaps
+    notes: >-
+      Parametric/procedural LUTs generated only to fill missing attribute
+      coverage, diagnostics, or warmup support. Train-only by default; never a
+      headline eval row.
+    handling_ref: data_collection_plan.md "Public LUT Sources"
+
+# Excluded from v1 active/headline training. Stage 2 must reject these.
+# Mirrors data_collection_plan.md "Source Inventory" exclusions.
+excluded_sources:
+  - family: dped
+    reason: camera-pipeline reconstruction; not global-LUT representable
+  - family: hdr_plus_isp
+    reason: HDR+ / ISP pipeline transforms outside the canonical LUT domain
+  - family: camera_pipeline_reconstruction
+    reason: general camera-pipeline reconstruction datasets out of scope for v1
+  - family: local_edit_mask_heavy
+    reason: local-edit or mask-heavy targets fail global-LUT representability gates
+  - family: camera_log_unknown_domain
+    reason: camera-log / unknown-domain LUTs without a defined canonical conversion

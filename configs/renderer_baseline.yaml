@@ -1,0 +1,67 @@
+# configs/renderer_baseline.yaml
+#
+# TEMPLATE - DO NOT TREAT VALUES AS FROZEN.
+#
+# Pins the deterministic slider/recipe renderer used by the eval baselines
+# (Baselines #9 prompted recipe mode and #10 deterministic slider/recipe
+# baseline) in docs/eval_harness_implementation.md. The +5pp headline gate on
+# eval_usage_weighted_headline is measured against this baseline, so it must be
+# version-pinned and its parser scope must not silently expand. Placeholder
+# values marked TODO are set only after the renderer is built and the
+# dev_calibration freeze step has run. `baseline_adapters.py`
+# deterministic-renderer mode must refuse to run while any required field is a
+# TODO placeholder or while `dev_calibration.frozen` is false at final eval.
+
+renderer:
+  # Frozen renderer + parser build identity. Aliases such as `latest` are not allowed.
+  version: "TODO-renderer-vX.Y.Z"                 # e.g. renderer-v1.0.0, set at freeze
+  code_sha256: "TODO-sha256-of-frozen-renderer-and-parser-source"
+  # Must equal the eval canonical LUT domain; a mismatch fails like an L2 domain error.
+  canonical_domain_id: "slm_lut_v1_srgb_display_encoded_17_trilinear"
+
+parser:
+  # Allowed input-attribute list. MUST equal the behavior-spec supported-attribute
+  # taxonomy in docs/detailed_behavior_spec.md "Supported Prompt Space". Any prompt
+  # attribute outside this list must resolve to <unsupported>.
+  supported_attributes:
+    - temperature
+    - tint
+    - exposure
+    - contrast
+    - black_point
+    - highlights
+    - shadows
+    - saturation
+    - neutral_safety
+    - global_skin_safety
+  # Supported style words. MUST equal the behavior-spec "Supported Style Bundles".
+  style_bundles:
+    - matte
+    - faded
+    - filmic
+    - cinematic
+    - teal-orange
+    - sepia
+    - bleach bypass
+    - natural
+  # Attributes/styles not listed above must resolve to this refusal token.
+  unsupported_fallback: "<unsupported>"
+
+dev_calibration:
+  # Bounded tuning budget for baseline thresholds and slider magnitudes,
+  # analogous to the dev-optimized constant baselines. Tuning is allowed ONLY on
+  # the dev_calibration split and is frozen before final eval. No tuning on any
+  # eval_* split.
+  split: "dev_calibration"
+  max_tuning_trials: 50                            # TODO: confirm budget at freeze
+  tunable_parameters:
+    - slider_magnitude_per_attribute
+    - direction_thresholds
+    - style_window_centers
+  frozen: false                                    # set true after freeze
+  trial_log: []                                    # record every calibration trial here
+
+freeze:
+  frozen_at: "TODO-ISO-8601-timestamp"
+  frozen_by: "TODO-owner"
+  # Recorded into each eval_runs/{run_id}/config.yaml alongside model_clients.yaml.

@@ -446,6 +446,8 @@ prompt_to_lut --image input.jpg --prompt "make it warmer and softer" --out outpu
 
 Runtime steps:
 
+Before step 1, process startup runs the manifest self-check described in "Version Manifest And Startup Assertions"; inference does not begin unless those startup assertions pass.
+
 1. Load image and instruction.
 2. Read embedded ICC profile; convert image to canonical sRGB for LUT
    application and metrics using the pinned CMM, rendering intent,

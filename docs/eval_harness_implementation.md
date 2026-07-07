@@ -115,6 +115,8 @@ eval/
   report.py
   configs/
     eval_default.yaml
+    calibration_manifest.json
+    gating_slice_registry.yaml
 ```
 
 Responsibilities:
@@ -479,12 +481,39 @@ Track B target:
 The minimum is a reporting floor, not automatic evidence that every fine-grained
 gate is statistically powered.
 
+Composition of the frozen eval budget:
+
+The `800 / 200 / 100` Track B counts are the usage-weighted **headline** slice
+(`eval_usage_weighted_headline` supported and unsupported, plus
+`qualitative_demo`), not the whole frozen budget. The binding registry slices
+below relate to the headline pool as follows.
+
+- **Within** the headline pool (subsets, no extra rows; a headline row may carry
+  more than one slice tag): `eval_subtle_control` (>= 150) and
+  `eval_style_discriminability` (>= 150) are drawn inside the 800 supported
+  headline rows; `eval_unsupported_mixed` (>= 100) is drawn inside the 200
+  unsupported headline rows; `eval_coverage_macro` is a reporting view over the
+  existing headline rows (macro coverage across source/style/attribute buckets)
+  and carries no extra rows.
+- **Additive** (contrastive, grouped, or robustness rows that are not
+  usage-weighted and would over-subscribe the headline pool if drawn within):
+  `eval_boundary_pairs` (>= 100 complete pairs = 100 supported + 100 unsupported
+  additive rows), `eval_image_sensitivity` (>= 300 supported additive rows,
+  grouped), and `eval_real_world_cli_inputs` (>= 100 supported additive rows,
+  already reported separately from curated headline rows).
+
+Reconciled frozen Track B total = **1300 supported** (800 headline + 100
+boundary + 300 image-sensitivity + 100 real-world) + **300 unsupported** (200
+headline + 100 boundary) + **100 qualitative** = **1700 rows**. Within-pool draws
+must never exceed the 800/200 headline counts, and any gated slice added later
+must declare its within/additive status here at eval freeze.
+
 Splits:
 
 | Split | Purpose |
 | --- | --- |
 | `dev_calibration` | tune thresholds and catch harness bugs; never final |
-| `dev_human_calibration` | calibrate style windows and skin acceptability once, then freeze |
+| `dev_human_calibration` | calibrate style windows and skin acceptability once, then freeze into `eval/configs/calibration_manifest.json` (`style_window_version`, `skin_locus_threshold_version`); produced as a Stage 10 artifact under `data/eval/dev_human_calibration/` |
 | `eval_usage_weighted_headline` | headline supported eval weighted by rough expected usage |
 | `eval_coverage_macro` | macro coverage across source/style/attribute buckets |
 | `eval_image_sensitivity` | same-prompt/different-image rows where the correct safe LUT must differ across source images; drives the image-conditioning gate |
@@ -557,6 +586,39 @@ baseline question is whether fine-tuning is necessary for reliable behavior.
 If SFT does not beat the best prompted frontier recipe/raw baseline by the
 predeclared gate, the project must not claim that fine-tuning is required. It may
 still claim local/offline/cost/artifact advantages if those are true.
+
+### Deterministic Renderer Baseline Pinning
+
+The deterministic renderer used by baselines 9 and 10 is a ship-gate reference,
+so it is pinned with the same rigor as the model and the judge. Because the +5pp
+headline gate (see Pass Criteria) is measured against it, an under-specified or
+tunable renderer would make that gate gameable.
+
+`baseline_adapters.py` deterministic-renderer mode is blocked until
+`configs/renderer_baseline.yaml` pins:
+
+- `renderer.version` and `renderer.code_sha256`: the frozen renderer + parser
+  build. Aliases such as `latest` are not allowed.
+- `renderer.canonical_domain_id` equal to the eval canonical LUT domain
+  (`slm_lut_v1_srgb_display_encoded_17_trilinear`); a mismatch fails like any L2
+  domain mismatch.
+- `parser.supported_attributes`: the exact allowed input-attribute list, which
+  must equal the behavior-spec supported-attribute taxonomy (Temperature, Tint,
+  Exposure, Contrast, Black point, Highlights, Shadows, Saturation, Neutral
+  safety, Global skin safety; see detailed_behavior_spec.md "Supported Prompt
+  Space"). Any attribute outside this list must map to `<unsupported>`; the
+  parser may not silently extend its scope to win rows.
+- `parser.style_bundles`: the supported style words, equal to the behavior-spec
+  "Supported Style Bundles" taxonomy.
+- `dev_calibration_budget`: a bounded tuning budget for the baseline's
+  thresholds and slider magnitudes, analogous to the dev-optimized constant
+  baselines. Tuning is allowed only on `dev_calibration`, logs every trial in the
+  config, and is frozen before final eval; no tuning on any `eval_*` split.
+
+Once frozen, the renderer version, parser scope, style scope, and calibrated
+thresholds are recorded in each `eval_runs/{run_id}/config.yaml` alongside
+`configs/model_clients.yaml`, so every deterministic-renderer comparison is
+reproducible.
 
 ## Statistics
 
@@ -634,6 +696,19 @@ eval_subtle_control: N >= 150
 eval_style_discriminability: N >= 150 single-style rows, >= 30/style for per-style gates
 eval_real_world_cli_inputs: N >= 100, product/robustness report slice, diagnostic unless a target-quality gate is predeclared
 ```
+
+The registry above is materialized as `eval/configs/gating_slice_registry.yaml`
+with version key `gating_slice_registry_version` and is a Stage 10 output (see
+master_plan.md). The `min_N`/`min_paired_N` values are the provisional bindings;
+`strata`, `MDE_pp`, CI method, and underpowered behavior are declared per entry
+and frozen with the eval sets before final eval.
+
+These N's are minimum evaluable sizes, not a partition of the headline budget.
+`eval_subtle_control`, `eval_style_discriminability`, and `eval_unsupported_mixed`
+are counted **within** the 800/200 headline pools; `eval_boundary_pairs`,
+`eval_image_sensitivity`, and `eval_real_world_cli_inputs` are **additive**. See
+"Eval Splits" for the reconciled frozen Track B total (1300 supported / 300
+unsupported / 100 qualitative).
 
 ## LLM/VLM Judge
 
@@ -725,6 +800,15 @@ paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs shuffl
 over_refusal_rate <= deterministic_renderer_over_refusal + 2pp
 safety_failure_rate <= deterministic_renderer_safety_failure + 2pp
 ```
+
+These SFT criteria are self-contained: the prompt-only/image-blind SFT baseline and the blank-image and shuffled-image ablation runs on `eval_image_sensitivity` are trained and scored as part of the SFT evaluation gate, so the gate is computed before it is evaluated and does not depend on any later baselines/reporting stage.
+
+In every gate above, `deterministic renderer` and the `deterministic_renderer_*`
+quantities refer to the single frozen, config-pinned baseline defined under
+"Deterministic Renderer Baseline Pinning" (`configs/renderer_baseline.yaml`). The
++5pp headline gate on `eval_usage_weighted_headline` is measured only against that
+reproducible baseline; a re-tuned or re-scoped renderer invalidates the
+comparison.
 
 If a prompted frontier baseline is run:
 
