@@ -148,6 +148,29 @@ identity grid at the same nodes.
 Raw/source LUTs must be color-managed into this domain before hashing, residual
 conversion, tokenizer encoding, prompt tagging, export, or evaluation.
 
+ICC conversion is part of the canonical domain contract. Embedded Display P3,
+AdobeRGB, ProPhoto, RAW-derived, or other tagged sources are converted to
+canonical sRGB with the pinned color-management module, relative-colorimetric
+intent, black-point compensation enabled, deterministic gamut clipping to
+`[0,1]`, and float32 working precision unless a later manifest explicitly
+changes those settings. Unknown profiles are recorded as assumed sRGB.
+
+Canonical `.cube` export is Adobe/Resolve-compatible and deterministic:
+
+```text
+LUT_3D_SIZE 17
+DOMAIN_MIN 0 0 0
+DOMAIN_MAX 1 1 1
+table values are full canonical absolute RGB, not residuals
+axis convention is RGB with R changing fastest, then G, then B
+float format is fixed decimal with 10 digits after the decimal point
+line endings are LF, encoding is UTF-8, and no timestamps or comments vary
+cube_serialization_version = cube_v1_size17_domain01_rgb_rfast_f10_lf
+```
+
+The `.cube` hash is over those canonical bytes. The runtime must not use a
+different table order or formatting and then call the artifact equivalent.
+
 ## LUT Tokenizer
 
 The VQ tokenizer is trained before VLM SFT.
@@ -207,10 +230,13 @@ cube_table_order
 latent_flatten_order
 token_suffix_to_codebook_index mapping
 code_id_to_codebook_row
+vq_codebook_sha256
+vq_decoder_sha256
 encoder/decoder layer table
 lut_corpus_hash
 tokenizer_weights_hash
 color_pipeline_version
+cube_serialization_version
 ```
 
 Recommended exact 17 -> 4 geometry:
@@ -345,7 +371,7 @@ Supported row:
   "image_sha256": "...",
   "instruction": "Give it a warm matte look with muted colors.",
   "assistant_target": "<lut_bos> <lut_042> ... <lut_eos>",
-  "target_tokens": [42],
+  "target_tokens": [42, 17, 200, 5, "... 64 code ids total ...", 128],
   "is_supported": true,
   "source_lut_id": "freshluts_123",
   "source_family": "freshluts",
@@ -366,8 +392,8 @@ Supported row:
   "canonical_absolute_lut_hash": "...",
   "canonical_residual_lut_hash": "...",
   "tokenizer_version": "...",
-  "codebook_hash": "...",
-  "decoder_hash": "...",
+  "vq_codebook_sha256": "...",
+  "vq_decoder_sha256": "...",
   "prompt_template_family": "style_bundle_v1",
   "prompt_generation_batch_id": "teacher_batch_2026_07_01",
   "split_unit_id": "...",
@@ -422,7 +448,9 @@ Runtime steps:
 
 1. Load image and instruction.
 2. Read embedded ICC profile; convert image to canonical sRGB for LUT
-   application and metrics. Unknown profile is recorded as assumed sRGB.
+   application and metrics using the pinned CMM, rendering intent,
+   black-point-compensation, gamut-mapping, and float-precision settings.
+   Unknown profile is recorded as assumed sRGB.
 3. Format Qwen2.5-VL chat input.
 4. Generate through grammar-constrained token-id decoding.
 5. Parse output strictly.
@@ -452,7 +480,16 @@ quantization config recorded
 image preprocessing recorded
 interpolation method recorded
 color pipeline recorded
+ICC conversion config recorded
+cube serialization version recorded
+hardware/CUDA/cuDNN/kernel determinism scope recorded
 ```
+
+Bit-identical `output_tokens.txt` and `.cube` hashes are required only under the
+same manifest, hardware class, CUDA/cuDNN/kernel determinism flags, library
+versions, quantization/dtype settings, ICC conversion config, and `.cube`
+serialization version. Across materially different environments, compare LUTs
+with tolerance-based metrics rather than byte hashes.
 
 ## Version Manifest And Startup Assertions
 
@@ -467,6 +504,7 @@ vocab_size_after_resize
 embedding_rows
 lm_head_rows
 tied_embedding_status
+vq_codebook_sha256
 vq_decoder_sha256
 codebook_size = 256
 token_count = 64
@@ -476,6 +514,8 @@ flatten_order
 lut_grid = 17x17x17
 canonical_domain_id
 color_pipeline_version
+icc_conversion_config
+cube_serialization_version
 interpolation
 parser_version
 fsm_version
@@ -483,11 +523,14 @@ safety_threshold_version
 eval_config_version
 active_set_version
 eval_set_version
+determinism_scope
 library versions
 ```
 
-Startup fails if vocab size, special-token ids, codebook size, decoder hash,
-flatten order, canonical domain, or color pipeline differ from the manifest.
+Startup fails if vocab size, special-token ids, codebook size,
+`vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, canonical domain,
+color pipeline, ICC conversion config, or `.cube` serialization version differ
+from the manifest.
 Retraining the VQ tokenizer changes decoded token meaning and therefore requires
 a new manifest, regenerated targets, and re-evaluation.
 
@@ -529,8 +572,8 @@ Reward priority for RS/DPO/GRPO:
 1. valid 64-token sequence or valid `<unsupported>`;
 2. correct support/refusal boundary;
 3. correct prompt direction;
-4. target fidelity;
-5. LUT safety;
+4. LUT safety;
+5. target fidelity;
 6. style discriminability;
 7. small style/aesthetic score.
 

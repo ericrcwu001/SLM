@@ -110,9 +110,12 @@ Required folders:
 ```text
 data/
   raw_registry/
+  splits/
   active_sft/
   warmup/
   eval/
+configs/
+  model_clients.yaml
 luts/
   raw/
   canonical_absolute/
@@ -144,8 +147,9 @@ Before SFT:
    safety checks.
 7. Implement Wilson CI, paired bootstrap, and seed-summary reporting.
 8. Build non-gating smoke eval rows now; construct and freeze the final
-   headline eval rows only after canonicalization, tokenizer freeze (Stage 1),
-   split units, and usage-aware culling (Stage 2), matching Schedule Phase 4.
+   headline, diagnostic, and qualitative eval rows only after canonicalization,
+   tokenizer freeze (Stage 1), split units, and usage-aware culling (Stage 2).
+   Final eval rows must be frozen before warmup data materialization.
 9. Run baselines on at least a smoke subset.
 
 Minimum pre-training check:
@@ -172,8 +176,9 @@ Inputs:
 
 ```text
 canonical 17x17x17x3 residual LUT tensors
-quality-filtered and representability-gated candidate LUT pool
-held-out LUT split
+train-split quality-filtered and representability-gated candidate LUT pool
+tokenizer-dev held-out LUT split
+eval-reserved identities excluded
 ```
 
 Configuration:
@@ -222,6 +227,12 @@ active code use alert if <70% or perplexity <64
 identity/ramp/flatten/.cube roundtrip tests pass
 qualitative reconstructions nearly identical
 ```
+
+Active code use <70% or perplexity <64 is a tokenizer-health alert, not a
+standalone blocker, when reconstruction, tail, per-family, per-target, and
+roundtrip gates pass. It blocks freeze only if paired with reconstruction
+failure, dead-code collapse that changes token semantics, or an explicit
+tokenizer-freeze exception.
 
 Diagnostics before freeze:
 
@@ -281,6 +292,8 @@ Dataset row contract includes:
   "canonical_domain_id": "slm_lut_v1_srgb_display_encoded_17_trilinear",
   "representability_tier": "gold",
   "tokenizer_version": "...",
+  "vq_codebook_sha256": "...",
+  "vq_decoder_sha256": "...",
   "split_unit_id": "...",
   "split": "train"
 }
@@ -310,6 +323,8 @@ Validation before training:
 - every explicit tag is backed by measured behavior;
 - every image path resolves;
 - no train/eval leakage;
+- `active_set_version`, `eval_set_version`, split manifest,
+  `configs/model_clients.yaml`, and leakage report exist before warmup;
 - source quotas, usage buckets, and diversity-culling report generated;
 - unsupported categories are balanced;
 - mixed/boundary examples are present;
@@ -349,7 +364,41 @@ Preflight assertions:
 Prefer a row-selective embedding/head adapter or gradient mask so only the 259
 new rows train.
 
-## Stage 4: Generative LUT-Token Warmup
+## Stage 4A: Materialize Warmup Dataset
+
+Create `data/warmup/{warmup_set_version}/` only after `active_set_version`,
+`eval_set_version`, and split/leakage manifests are frozen.
+
+Inputs:
+
+```text
+frozen tokenizer manifest
+active/eval manifests
+train-only accepted LUTs and paired input images
+split/leakage manifest
+```
+
+Outputs:
+
+```text
+manifest.json
+pairs.parquet
+leakage_report.json
+diversity_report.json
+```
+
+Materialization gate:
+
+```text
+30k-100k image x LUT pairs
+every supported target has exactly 64 valid tokenizer ids
+deterministic materialization seed recorded
+no eval/diagnostic/qualitative image, LUT, source_pair, support_map,
+  prompt-template, split-unit, or near-neighbor identity appears
+source-family, behavior-vector, and token-distribution reports pass
+```
+
+## Stage 4B: Generative LUT-Token Warmup
 
 AceTone requires a generative pretraining phase for novel LUT-token outputs. In
 this project, use a cheap warmup rather than pretraining from scratch.
@@ -358,9 +407,27 @@ Warmup data:
 
 ```text
 30k-100k synthetic image x LUT pairs
-accepted canonical LUTs applied to corpus images
+train-only accepted canonical LUTs applied to train-only corpus images
 target = tokenizer ids for that LUT
 prompt = simple global instruction or LUT-family/style phrase
+```
+
+Warmup config must pin:
+
+```text
+trainable modules
+epochs or max_steps
+effective batch size
+per-device batch size
+gradient accumulation
+learning rate per trainable module
+scheduler
+warmup ratio
+max grad norm
+max image pixels
+seeds
+tokenizer_version
+warmup_set_version
 ```
 
 Goals:
@@ -424,6 +491,13 @@ gradient_checkpointing: true
 loss_masking: assistant target only
 ```
 
+Freezing the multimodal projector is a capability downgrade because the vision
+encoder is already frozen. A run with frozen vision encoder plus frozen
+projector cannot make an image-conditioning claim unless it independently
+clears `eval_image_sensitivity`. Record vision encoder dtype/quantization and
+projector policy in run config; if the vision path is quantized or frozen beyond
+the default, run image-feature parity diagnostics before final SFT claims.
+
 Checkpoint cadence:
 
 ```text
@@ -457,8 +531,13 @@ near_boundary_pair_accuracy lower CI >= 85%
 over_refusal_rate upper CI <= 10%
 supported_prompt_to_lut_pass_rate lower CI >= 60%
 beats best null, best constant, and deterministic renderer gates
+beats deterministic renderer on renderer-hard slices as required by eval harness
 beats prompt-only/image-blind, blank-image, and shuffled-image baselines on eval_image_sensitivity
 ```
+
+Every gated metric must have a gating-slice registry entry from
+`docs/eval_harness_implementation.md` declaring min_N/min_paired_N, MDE, CI
+method, and underpowered behavior before final eval freeze.
 
 Also report:
 
@@ -501,6 +580,10 @@ Run:
 
 Score against the named eval slice `eval_image_sensitivity`, where the same
 instruction must produce different safe LUTs across different source images. The
+targets must be image-adaptive by construction; simply applying the same global
+prompt to arbitrary different images is not enough. Each group stores evidence
+that the correct decoded safe LUT differs by image and that a prompt-only/common
+LUT cannot pass the group on dev calibration. The
 multimodal claim is gated on the hard, CI-gated image-conditioning criterion in
 the eval harness: paired-bootstrap 95% lower bound for
 `supported_prompt_to_lut_pass_rate` on `eval_image_sensitivity` must beat the
@@ -518,6 +601,22 @@ Run before GRPO:
 3. Fine-tune on winners by rejection-sampling SFT.
 4. If useful but insufficient, build winner/loser pairs and run DPO.
 
+RS-SFT and DPO config must pin:
+
+```text
+completions_per_prompt
+sampling temperature/top_p/max_new_tokens
+winner selection rule
+DPO beta
+reference policy
+loss type
+learning rate
+batch size and gradient accumulation
+epochs or max_steps
+seeds
+reward_config_version
+```
+
 RS/DPO ships only if it beats SFT outside paired confidence intervals without
 increasing over-refusal, mixed-boundary failure, or safety failures beyond
 allowed gates.
@@ -528,8 +627,8 @@ still clears its ship margin has not plateaued; keep tuning that stage instead.
 
 ## Stage 9: Optional GRPO
 
-GRPO starts only after SFT and RS/DPO pass syntax, direction, boundary, target,
-safety, and baseline gates and then plateau.
+GRPO starts only after SFT and RS/DPO pass syntax, direction, boundary, safety,
+target, and baseline gates and then plateau.
 
 Plateau is a paired-CI no-improvement rule, distinct from the ship gate (which
 requires improvement):
@@ -561,8 +660,8 @@ Reward order:
 1. valid syntax or exact refusal;
 2. correct support boundary;
 3. correct direction;
-4. target fidelity;
-5. LUT safety;
+4. LUT safety;
+5. target fidelity;
 6. style discriminability;
 7. small style/aesthetic score.
 
@@ -572,8 +671,8 @@ Hard-failure policy:
 - False support on unsupported prompts gets hard penalty.
 - Mixed-prompt partial support gets hard penalty.
 - Wrong direction gets hard penalty.
-- Target mismatch gets hard penalty.
 - Safety failure gets hard penalty.
+- Target mismatch gets hard penalty.
 - Aesthetic score cannot compensate for any hard failure.
 
 Reward correctness is proven only if the reward passes an adversarial /
@@ -605,11 +704,18 @@ GRPO config must pin:
 ```text
 reference policy
 KL coefficient/schedule
+learning rate
+optimizer
+batch size and gradient accumulation
+max steps
 rollout budget
+group size
 generation backend
 decoding mode
+sampling temperature/top_p/max_new_tokens
+reward normalization/clipping
 seeds
-reward version
+reward_config_version
 eval config version
 ```
 
@@ -675,12 +781,17 @@ version manifest hash
 CLI export acceptance:
 
 - `prompt_to_lut --self-check` fails if vocab size, special-token ids, codebook
-  size, decoder hash, flatten order, or color pipeline differ from the manifest.
+  size, `vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, color
+  pipeline, ICC config, `.cube` serialization, or deterministic-environment
+  scope differ from the manifest.
 - Same image/prompt/model/profile run twice produces identical `output_tokens.txt`
-  and `.cube` hash, excluding timestamps.
+  and `.cube` hash, excluding timestamps, only under the same locked
+  deterministic environment.
 - Constrained runtime syntax-valid rate is 100%.
 - Unsupported output writes `<unsupported>` and metrics, with no silent identity
   LUT.
+- `eval_real_world_cli_inputs` runs before CLI acceptance and is reported as a
+  product robustness slice.
 
 ## Final Deliverables
 
@@ -702,9 +813,10 @@ Track B deliverables:
 - model card or project report;
 - 3-5 minute demo video if needed.
 
-## Schedule
+## Schedule Crosswalk
 
-Practical sequence:
+This table is a coarse implementation phase view, not the authoritative
+`Stage 0..10` numbering above.
 
 | Phase | Work |
 | --- | --- |
@@ -713,7 +825,7 @@ Practical sequence:
 | 3 | tokenizer training and gate |
 | 4 | eval harness and frozen eval sets |
 | 5 | vocab resize and embedding/head preflight |
-| 6 | generative LUT-token warmup |
+| 6 | warmup dataset materialization and generative LUT-token warmup |
 | 7 | 50/200-example SFT smoke tests |
 | 8 | full 10k-15k SFT |
 | 9 | base-vs-SFT eval, ablations, error analysis |

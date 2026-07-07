@@ -42,8 +42,8 @@ One supported eval row is:
   "canonical_absolute_lut_hash": "...",
   "canonical_residual_lut_hash": "...",
   "tokenizer_version": "...",
-  "codebook_hash": "...",
-  "decoder_hash": "...",
+  "vq_codebook_sha256": "...",
+  "vq_decoder_sha256": "...",
   "representability_tier": "gold",
   "headline_eligible": true,
   "procedural_filler": false,
@@ -51,7 +51,7 @@ One supported eval row is:
   "split": "eval_usage_weighted_headline",
   "measured_behavior": {
     "temperature_delta_b": 2.3,
-    "contrast_delta_l_spread": -3.1
+    "contrast_l_spread_delta": -3.1
   },
   "derived_lut_quality": {
     "representability_status": "accepted",
@@ -123,7 +123,8 @@ Responsibilities:
 - `output_parsers.py`: strict token/refusal parser.
 - `constrained_decoding.py`: token-id grammar mask/FSM for runtime mode.
 - `lut_decoder.py`: maps 64 token ids to residual LUT through frozen VQ decoder.
-- `cube_io.py`: validates and writes `.cube` files.
+- `cube_io.py`: validates and writes canonical `.cube` files with pinned
+  serialization.
 - `color_pipeline.py`: ICC-aware sRGB/Lab/CIEDE2000 conversions.
 - `deterministic_checks.py`: direction, style, skin-locus, and safety checks.
 - `target_fidelity.py`: target image/chart DeltaE checks.
@@ -253,7 +254,8 @@ metric pipeline:
 ```
 
 L2 fails on mismatched canonical domain, interpolation, grid size, axis order,
-token flatten order, tokenizer version, codebook hash, or decoder hash.
+token flatten order, tokenizer version, `vq_codebook_sha256`,
+`vq_decoder_sha256`, ICC conversion config, or `.cube` serialization version.
 
 Direction and safety checks are run on:
 
@@ -362,7 +364,7 @@ frozen once on `dev_human_calibration`:
 ```text
 behavior_window = {
   "temperature_delta_b":     {"min": 1.5, "max": 6.0},
-  "contrast_delta_l_spread": {"min": -8.0, "max": -2.5}
+  "contrast_l_spread_delta": {"min": -8.0, "max": -2.5}
 }
 ```
 
@@ -486,6 +488,7 @@ Splits:
 | `eval_usage_weighted_headline` | headline supported eval weighted by rough expected usage |
 | `eval_coverage_macro` | macro coverage across source/style/attribute buckets |
 | `eval_image_sensitivity` | same-prompt/different-image rows where the correct safe LUT must differ across source images; drives the image-conditioning gate |
+| `eval_real_world_cli_inputs` | real CLI-style inputs: phone JPEG/HEIC exports, screenshots, heavy JPEG compression, odd white balance, embedded/wide-gamut ICC, small/large images; reported separately from curated headline rows |
 | `eval_subtle_control` | common low-magnitude but visible adjustments |
 | `eval_style_discriminability` | single-style rows with neighbor-exclusion checks |
 | `eval_expert_holdout` | held-out PPR10K/FiveK expert ids absent from SFT |
@@ -498,6 +501,13 @@ Splits:
 | `qualitative_demo` | hand-reviewed demos with before/after artifacts |
 
 Only headline-eligible rows can drive headline pass claims and ship gates.
+
+`eval_image_sensitivity` is accepted only as grouped evidence. Each group has an
+`image_conditioning_group_id`, uses identical instruction text across at least
+two source images, stores target-difference evidence showing that the correct
+decoded safe LUTs differ by a predeclared behavior-vector or chart DeltaE
+threshold, and fails construction if a single prompt-only/common LUT can pass
+every row in the group on `dev_calibration`.
 
 Leakage prevention:
 
@@ -596,6 +606,35 @@ unsupported categories:
   aggregate for the main refusal gate; category rows are diagnostic unless each category is sufficiently powered
 ```
 
+Every ship-gated metric must declare a gating-slice registry entry before final
+eval freeze:
+
+```text
+split
+metric
+min_N or min_paired_N
+strata
+MDE_pp
+CI method
+underpowered behavior
+```
+
+A gate with N below its declared minimum is not evaluable and cannot silently
+pass or fail. `N < 100` never gates unless the metric is aggregated into a
+predeclared sufficiently powered slice.
+
+Initial binding registry:
+
+```text
+eval_usage_weighted_headline: supported N >= 800; unsupported N >= 200
+eval_unsupported_mixed: N >= 100
+eval_boundary_pairs: >= 100 complete pairs
+eval_image_sensitivity: N >= 300 rows, >= 100 same-prompt image groups, MDE +10pp vs prompt-only/image-blind
+eval_subtle_control: N >= 150
+eval_style_discriminability: N >= 150 single-style rows, >= 30/style for per-style gates
+eval_real_world_cli_inputs: N >= 100, product/robustness report slice, diagnostic unless a target-quality gate is predeclared
+```
+
 ## LLM/VLM Judge
 
 The judge is required by the project spec but is not the primary authority for
@@ -614,6 +653,12 @@ Judge prompt must include the compact behavior spec, the source instruction, the
 model output, deterministic metrics, and before/after thumbnails when available.
 The judge may explain likely causes of failures, but cannot convert a
 deterministic fail into a pass.
+
+`judge_client.py` is blocked until `configs/model_clients.yaml` pins
+`judge_primary.provider`, `judge_primary.model_id`, endpoint/base-url env var,
+API-key env var, `judge_primary.prompt_version`, and `judge_primary.batch_id`.
+Model aliases such as `latest` are not allowed, and secrets are referenced only
+by env var name.
 
 ## Reports
 
@@ -670,7 +715,10 @@ over_refusal_rate Wilson 95% upper bound <= 10%
 supported_prompt_to_lut_pass_rate Wilson 95% lower bound >= 60%
 paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs best null >= +30pp
 paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs best constant >= +20pp
-paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs deterministic renderer >= +5pp
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs deterministic renderer on eval_usage_weighted_headline >= +5pp
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs deterministic renderer on eval_subtle_control >= 0pp
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs deterministic renderer on eval_style_discriminability >= 0pp
+paired-bootstrap 95% lower bound vs deterministic renderer on at least one of eval_subtle_control or eval_style_discriminability >= +5pp
 paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs prompt-only/image-blind SFT baseline on eval_image_sensitivity >= +10pp (provisional; calibratable)
 paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs blank-image ablation on eval_image_sensitivity > 0
 paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs shuffled-image ablation on eval_image_sensitivity > 0

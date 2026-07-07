@@ -18,8 +18,8 @@ split/eval rule can be audited.
 | Dataset Layer | Target |
 | --- | --- |
 | Candidate registry | all scraped/derived images, LUTs, prompts, targets, metadata |
-| Tokenizer LUT pool | all accepted canonical LUTs after quality and representability filters |
-| Generative LUT-token warmup | 30k-100k image x LUT pairs derived from accepted LUTs |
+| Tokenizer LUT pool | train-split accepted canonical LUTs after quality and representability filters; eval-reserved identities excluded |
+| Generative LUT-token warmup | 30k-100k train-only image x LUT pairs materialized after active/eval freeze |
 | Active SFT set | 10k-15k instruction examples, default 12k |
 | Unique image-LUT pairs | about 5k-7.5k if using two prompts per pair |
 | Unsupported examples | 5%-10% of active SFT rows, plus boundary/mixed oversampling if needed |
@@ -118,8 +118,8 @@ black_point_compensation
 canonical_absolute_lut_hash
 canonical_residual_lut_hash
 tokenizer_version
-codebook_hash
-decoder_hash
+vq_codebook_sha256
+vq_decoder_sha256
 normalization_warnings
 out_of_gamut_rate_before_canonical_clip
 canonical_clip_rate_from_conversion
@@ -168,10 +168,21 @@ mixed_boundary_case
 prompt_id
 prompt_template_family
 prompt_template_hash
+teacher_provider
+teacher_model_id
+teacher_endpoint_env
+teacher_api_key_env
 teacher_model_version
 teacher_prompt_version
 prompt_generation_batch_id
 prompt_seed
+judge_provider
+judge_model_id
+judge_endpoint_env
+judge_api_key_env
+judge_prompt_version
+judge_batch_id
+credential_profile
 selection_bucket
 usage_prior_bucket
 usage_weight
@@ -182,17 +193,35 @@ used_for_tokenizer
 used_for_warmup
 used_for_sft
 used_for_eval
+eval_reserved
 diagnostic_only
 source_pair_id
 paired_input_image_hash
 split_unit_id
 split_id
 active_set_version
+eval_set_version
+warmup_set_version
+leakage_report_hash
 rights_notes
 ```
 
 Rights are not a blocker, but source metadata still matters for debugging,
 future publication decisions, source-family ablations, and leakage prevention.
+
+Source-family removal must record `removal_manifest.json` and invalidate the
+right downstream artifacts:
+
+- if any removed row has `used_for_tokenizer = true`, retrain the tokenizer,
+  regenerate `vq_codebook_sha256` / `vq_decoder_sha256`, retokenize targets,
+  rebuild warmup, active, and eval manifests, and invalidate downstream model
+  and eval artifacts;
+- if any removed row has `used_for_warmup = true`, rebuild `warmup_set_version`
+  and every adapter initialized from that warmup;
+- if any removed row has `used_for_sft = true`, rebuild the active SFT set and
+  every downstream tuned adapter;
+- if any removed row has `used_for_eval = true`, freeze a new `eval_set_version`
+  and invalidate prior metrics rather than comparing across eval versions.
 
 ## Derived LUT Representability Gate
 
@@ -627,6 +656,46 @@ Teacher output must not mention:
 - aesthetic rankings such as "best" or "beautiful" unless mapped to a style
   recipe and approved.
 
+Prompt generation and L8 judging are blocked until `configs/model_clients.yaml`
+pins provider, `model_id`, endpoint/base-url env var, API-key env var, prompt
+version, and batch id for both `teacher` and `judge`. The required profile names
+are `teacher_primary` and `judge_primary`; their `model_id` values must be
+concrete model IDs or deployment IDs, not aliases such as `latest`. Secret
+values are never stored in rows or manifests; only env var names and
+`credential_profile` are recorded.
+
+Required config shape:
+
+```yaml
+teacher_primary:
+  provider: required
+  model_id: required_concrete_model_or_deployment_id
+  endpoint_env: SLM_TEACHER_BASE_URL
+  api_key_env: SLM_TEACHER_API_KEY
+  prompt_version: teacher_prompt_v1
+  batch_id: required
+  credential_profile: default
+judge_primary:
+  provider: required
+  model_id: required_concrete_model_or_deployment_id
+  endpoint_env: SLM_JUDGE_BASE_URL
+  api_key_env: SLM_JUDGE_API_KEY
+  prompt_version: judge_prompt_v1
+  batch_id: required
+  credential_profile: default
+```
+
+Prompt/tag validation is bidirectional. Every explicit prompt tag must be backed
+by deterministic measured behavior, and every major measured behavior above the
+predeclared coverage threshold must either appear in `gold_tags` / prompt text,
+be marked as allowed unmentioned behavior, or cause the row to be rejected or
+recast as composite/style.
+
+Unsupported and mixed labels require deterministic category assignment from the
+behavior spec plus teacher labeling. Near-boundary rows require independent
+adjudication before final eval; disagreement rows are excluded from ship-gated
+boundary slices unless resolved with recorded rationale.
+
 ## Prompt Difficulty Mix
 
 For the active SFT set:
@@ -655,7 +724,7 @@ increasing their permanent dataset share blindly.
 
 ## Splits And Leakage Rules
 
-Create deterministic split units before active culling.
+Create deterministic split units before tokenizer training and active culling.
 
 Rules:
 
@@ -669,6 +738,9 @@ Rules:
 - Same generic paired input image cannot cross train/eval.
 - Same `derived_lut_id`, `source_pair_id`, `support_map_hash`, or
   `paired_input_image_hash` cannot cross train/eval.
+- No `used_for_tokenizer` or `used_for_warmup` row may share exact or
+  near-neighbor LUT, image, source-pair, support-map, prompt-template, or split
+  identity with any final eval, diagnostic, or qualitative row.
 - Eval prompts are generated in separate batches and template families.
 - Reject near-identical train/eval prompts by text similarity and template hash.
 - Before finalizing eval, remove any train row too close to eval on image
@@ -678,6 +750,8 @@ Required eval sets:
 
 - usage-weighted headline;
 - coverage macro;
+- image-sensitivity holdout;
+- real-world CLI input holdout;
 - subtle-control holdout;
 - style-discriminability holdout;
 - expert-id holdout;
@@ -704,6 +778,45 @@ Expert holdout policy:
 - Add a cross-distribution slice that trains mostly on filter/public/HaldCLUT
   families and evaluates on expert-derived PPR10K/FiveK LUTs.
 
+Image-sensitivity rows are grouped by `image_conditioning_group_id`; each group
+uses identical instruction text across different images and stores
+target-difference evidence showing why the correct safe LUT differs by image.
+
+## Warmup Data Materialization
+
+`data/warmup/{warmup_set_version}/` is produced only after `active_set_version`,
+`eval_set_version`, and the split/leakage manifest are frozen.
+
+Inputs:
+
+```text
+frozen tokenizer manifest
+split manifest
+active/eval manifests
+train-only accepted canonical LUTs
+train-only paired input images
+```
+
+Outputs:
+
+```text
+data/warmup/{warmup_set_version}/manifest.json
+data/warmup/{warmup_set_version}/pairs.parquet
+data/warmup/{warmup_set_version}/leakage_report.json
+data/warmup/{warmup_set_version}/diversity_report.json
+```
+
+Acceptance gate:
+
+- 30k-100k image x LUT pairs;
+- every supported target has exactly 64 valid tokenizer ids;
+- deterministic materialization seed and source quotas are recorded;
+- source-family, style, behavior-vector, and token-distribution reports are
+  generated;
+- no eval, diagnostic, or qualitative image, LUT, source pair, support map,
+  prompt template, split unit, or near-neighbor identity appears in warmup;
+- any leakage report failure blocks warmup training.
+
 ## Active Dataset Acceptance Criteria
 
 The active dataset is accepted only if:
@@ -719,8 +832,12 @@ The active dataset is accepted only if:
 6. Every supported active row has representability and tokenizer reconstruction
    status.
 7. Every explicit prompt tag is backed by deterministic color checks.
-8. Unsupported prompts cover all unsupported and mixed categories.
-9. PPR10K/FiveK do not overwhelm the active set even though they dominate raw
+8. Major unmentioned measured behaviors are approved as allowed unmentioned
+   behavior or the row is recast/rejected.
+9. Unsupported prompts cover all unsupported and mixed categories.
+10. `configs/model_clients.yaml`, `active_set_version`, `eval_set_version`,
+   split manifest, and leakage report are present.
+11. PPR10K/FiveK do not overwhelm the active set even though they dominate raw
    candidate counts.
 
 ## Candidate To Active Pipeline
@@ -740,13 +857,13 @@ compute quality, representability, support maps, and behavior vectors
         ->
 reject bad global-LUT approximations
         ->
+create leakage-safe split units
+        ->
 train/freeze tokenizer
         ->
 compute per-target tokenizer reconstruction quality
         ->
-embed image/LUT/prompt axes
-        ->
-create leakage-safe split units
+embed image/LUT/provisional-tag axes
         ->
 usage-aware quota-constrained diversity culling
         ->
@@ -757,4 +874,6 @@ deterministic tag validation
 judge language quality gate
         ->
 active SFT dataset + frozen eval sets
+        ->
+materialize train-only warmup pairs
 ```

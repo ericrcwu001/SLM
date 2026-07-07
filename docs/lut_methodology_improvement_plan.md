@@ -168,7 +168,9 @@ add LUT vocabulary tokens
 train output behavior for LUT token generation
 ```
 
-Full language-model fine-tuning or full-model fine-tuning is reserved for later scale-up after the tokenizer, SFT, evaluation, and small GRPO loop show proof of concept.
+Full language-model fine-tuning or full-model fine-tuning is reserved for later
+scale-up after the tokenizer, SFT, evaluation, RS/DPO, and optional GRPO show
+proof of concept.
 
 ### 3.4 LUT Vocabulary
 
@@ -569,8 +571,9 @@ GRPO should optimize:
 2. correct unsupported refusal
 3. correct direction for explicit prompt attributes
 4. LUT safety: clipping, smoothness, foldover, neutral drift
-5. similarity to target graded image
-6. small aesthetic/style reward
+5. target fidelity
+6. style discriminability
+7. small aesthetic/style reward
 ```
 
 Aesthetics must not compensate for wrong direction, invalid tokens, unsafe LUTs, or failure to refuse unsupported prompts.

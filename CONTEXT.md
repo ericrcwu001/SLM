@@ -36,6 +36,14 @@ _Avoid_: JSON recipe, raw LUT floats
 The finite set of discrete visual-color codes used by the LUT tokenizer to represent parts of a global LUT.
 _Avoid_: Prompt vocabulary, text tokens
 
+**VQ Codebook Value Hash**:
+The `vq_codebook_sha256` value that binds LUT token ids to the frozen codebook vectors.
+_Avoid_: Codebook size
+
+**VQ Decoder Hash**:
+The `vq_decoder_sha256` value that binds LUT token ids to the frozen decoder artifact.
+_Avoid_: Decoder name
+
 **Identity LUT**:
 A global LUT that leaves every input RGB color unchanged.
 _Avoid_: Neutral preset
@@ -49,8 +57,12 @@ A full global LUT that directly stores final output RGB values at each grid poin
 _Avoid_: Residual LUT
 
 **Canonical LUT Domain**:
-The v1 artifact contract for all accepted LUT tensors: display-referred IEC 61966-2-1 sRGB, encoded RGB values in [0,1], D65, 17x17x17 grid, and trilinear interpolation.
+The v1 artifact contract for all accepted LUT tensors: display-referred IEC 61966-2-1 sRGB, encoded RGB values in [0,1], D65, 17x17x17 grid, trilinear interpolation, and ICC-converted source material with pinned wide-gamut conversion behavior.
 _Avoid_: Raw source LUT domain
+
+**Canonical Cube Serialization**:
+The deterministic `.cube` byte format for exported LUTs: `LUT_3D_SIZE 17`, `DOMAIN_MIN/MAX` of 0/1, RGB axis order with R fastest, fixed float formatting, LF line endings, UTF-8, and no timestamps.
+_Avoid_: Tool-default LUT export
 
 **Canonical Absolute LUT**:
 An absolute global LUT after conversion into the canonical LUT domain.
@@ -112,12 +124,20 @@ _Avoid_: Natural-language vocabulary
 The quality threshold a LUT tokenizer must pass before its tokens are used as supervised targets for VLM training.
 _Avoid_: Final model evaluation
 
+**Reward Config Version**:
+The versioned reward specification for RS/DPO/GRPO, including lexicographic priority, hard penalties, margins, and adversarial reward-hacking test set.
+_Avoid_: Reward version prose
+
+**Determinism Scope**:
+The manifest-bound environment in which identical prompts, images, model artifacts, ICC config, and `.cube` serialization must produce byte-identical tokens and LUT files.
+_Avoid_: Cross-hardware reproducibility guarantee
+
 **CLI Demo Artifact**:
 The set of files produced by one CLI run, including the decoded `.cube` LUT, graded image, side-by-side preview, output token sequence, and evaluation metrics.
 _Avoid_: Application UI
 
 **Held-Out Eval Set**:
-A reserved evaluation set split into seen-family supported prompts, unseen-family supported prompts, and unsupported prompts.
+A reserved multi-slice evaluation set including usage-weighted headline, coverage macro, image sensitivity, subtle control, style discriminability, expert holdout, cross-source expert, unseen-family, unsupported, mixed unsupported, boundary pairs, procedural diagnostic, real-world CLI inputs, and qualitative demo slices.
 _Avoid_: Training split
 
 **Gold Prompt Tags**:

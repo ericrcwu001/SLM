@@ -6,10 +6,10 @@ V1 uses an active instruction SFT set of 10k-15k examples, with 12k as the
 default planning target. The older 50k/100k instruction corpus sizes are
 scale-up milestones, not v1 requirements.
 
-The project also adds a 30k-100k generative LUT-token warmup stage using accepted
-canonical LUTs applied to corpus images. This warmup adapts the model to the new
-LUT-token distribution before instruction SFT and is not pretraining from
-scratch.
+The project also adds a 30k-100k generative LUT-token warmup stage produced
+after active/eval freeze from train-only accepted canonical LUT and image
+identities. This warmup adapts the model to the new LUT-token distribution
+before instruction SFT and is not pretraining from scratch.
 
 Source mix targets for the active supported set:
 

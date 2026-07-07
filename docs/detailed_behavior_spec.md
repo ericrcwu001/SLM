@@ -78,6 +78,9 @@ Rules:
 
 - The 64 code tokens exclude `<lut_bos>` and `<lut_eos>`.
 - LUT code tokens must be in the closed range `<lut_000>` through `<lut_255>`.
+- Dataset `target_tokens` for supported rows contain exactly 64 integer code
+  ids in `0..255` and exclude `<lut_bos>` / `<lut_eos>`. Unsupported rows use an
+  empty `target_tokens` list and `assistant_target = "<unsupported>"`.
 - No prose, JSON, markdown, raw `.cube` values, XML, recipe text, apology, or
   explanation is allowed in the model output.
 - Identity LUT is not a refusal. It is valid only when the instruction is a
@@ -242,6 +245,9 @@ Requirements:
 - Grid size: 17x17x17.
 - Representation during tokenizer training: canonical residual LUT.
 - Runtime export: full canonical absolute LUT after identity addition.
+- `.cube` export uses `LUT_3D_SIZE 17`, `DOMAIN_MIN 0 0 0`,
+  `DOMAIN_MAX 1 1 1`, RGB table order with R changing fastest, fixed
+  10-decimal float formatting, LF line endings, UTF-8, and no timestamps.
 - Interpolation: trilinear only for v1; changing interpolation requires a new
   canonical domain/tokenizer version.
 - Axis order, `.cube` table order, latent flatten order, and token suffix to
@@ -259,7 +265,19 @@ input image -> ICC-aware conversion to sRGB [0,1] -> linear RGB where needed -> 
 ```
 
 Metrics use sampled image pixels plus fixed color charts sampled through the
-LUT. CIEDE2000 is used for reconstruction, target similarity, and reporting.
+LUT. CIEDE2000 is used for reconstruction, target fidelity, and reporting.
+Wide-gamut inputs such as Display P3, AdobeRGB, and ProPhoto are converted with
+the pinned color-management module, relative-colorimetric intent, black-point
+compensation enabled, deterministic gamut clipping to `[0,1]`, and float32
+working precision. Preview artifacts are written as canonical sRGB PNG unless a
+manifested export profile is explicitly requested.
+
+Contrast spread uses one canonical key and formula:
+
+```text
+contrast_l_spread_delta =
+  (p95(L*_out) - p5(L*_out)) - (p95(L*_in) - p5(L*_in))
+```
 
 The RAW and ProPhoto details of PPR10K/FiveK derivation must be recorded in the
 data pipeline, but active instruction and eval artifacts are canonical sRGB LUTs.
@@ -407,7 +425,10 @@ Minimum `metrics.json` schema:
     "codebook_size": 256,
     "flatten_order": "pinned_in_manifest",
     "interpolation": "trilinear",
-    "decoder_sha256": "..."
+    "vq_codebook_sha256": "...",
+    "vq_decoder_sha256": "...",
+    "cube_serialization_version": "cube_v1_size17_domain01_rgb_rfast_f10_lf",
+    "icc_conversion_config": "srgb_relcol_bpc_float32_v1"
   },
   "measured_behavior": {
     "temperature_delta_b": null,
