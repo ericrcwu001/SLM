@@ -589,7 +589,7 @@ just SFT, under the eval harness gates.
 
 ## Colab Constraints
 
-Colab is the expected environment, but not a guarantee of full Track B
+Colab is the expected environment, but not a guarantee of full prompt-to-LUT
 throughput.
 
 Assumptions:

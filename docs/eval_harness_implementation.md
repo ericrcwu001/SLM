@@ -470,7 +470,7 @@ Minimum final reporting:
 50-100 qualitative demo cases
 ```
 
-Track B target:
+Target:
 
 ```text
 800 supported eval cases
@@ -483,7 +483,7 @@ gate is statistically powered.
 
 Composition of the frozen eval budget:
 
-The `800 / 200 / 100` Track B counts are the usage-weighted **headline** slice
+The `800 / 200 / 100` target counts are the usage-weighted **headline** slice
 (`eval_usage_weighted_headline` supported and unsupported, plus
 `qualitative_demo`), not the whole frozen budget. The binding registry slices
 below relate to the headline pool as follows.
@@ -502,7 +502,7 @@ below relate to the headline pool as follows.
   grouped), and `eval_real_world_cli_inputs` (>= 100 supported additive rows,
   already reported separately from curated headline rows).
 
-Reconciled frozen Track B total = **1300 supported** (800 headline + 100
+Reconciled frozen total = **1300 supported** (800 headline + 100
 boundary + 300 image-sensitivity + 100 real-world) + **300 unsupported** (200
 headline + 100 boundary) + **100 qualitative** = **1700 rows**. Within-pool draws
 must never exceed the 800/200 headline counts, and any gated slice added later
@@ -707,8 +707,8 @@ These N's are minimum evaluable sizes, not a partition of the headline budget.
 `eval_subtle_control`, `eval_style_discriminability`, and `eval_unsupported_mixed`
 are counted **within** the 800/200 headline pools; `eval_boundary_pairs`,
 `eval_image_sensitivity`, and `eval_real_world_cli_inputs` are **additive**. See
-"Eval Splits" for the reconciled frozen Track B total (1300 supported / 300
-unsupported / 100 qualitative).
+"Eval Splits" for the reconciled frozen total (1300 supported / 300 unsupported /
+100 qualitative).
 
 ## LLM/VLM Judge
 

@@ -3,7 +3,7 @@
 ## Objective
 
 Train a small image-conditioned prompt-to-LUT model in Google Colab using the
-Track B architecture with caveats:
+full prompt-to-LUT architecture with caveats:
 
 - full prompt-to-LUT architecture;
 - active instruction SFT set around 10k-15k examples, not 50k for v1;
@@ -814,7 +814,7 @@ CLI export acceptance:
 
 ## Final Deliverables
 
-Track B deliverables:
+Project deliverables:
 
 - active dataset manifest;
 - provenance registry;

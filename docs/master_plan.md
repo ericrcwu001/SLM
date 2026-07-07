@@ -11,9 +11,7 @@ image-editing ability or aesthetic preference.
 
 ## Selected Direction
 
-Use Track B with caveats. In this doc set, Track B means the real
-image-conditioned prompt-to-LUT model path; the unselected Track A was the
-smaller renderer/slider prototype path.
+Build the real image-conditioned prompt-to-LUT model with caveats.
 
 - Build the real prompt-to-LUT architecture.
 - Keep the first delivery CLI-first.
@@ -346,7 +344,7 @@ general creativity improvement without a separate study.
 
 ## Open Caveats
 
-- Colab GPU availability can limit full Track B training speed.
+- Colab GPU availability can limit full prompt-to-LUT training speed.
 - VQ tokenizer quality is a hard dependency.
 - PPR10K/FiveK derived LUT yield may be lower than raw target counts because
   some edits are not global-LUT representable.

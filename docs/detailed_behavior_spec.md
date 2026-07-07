@@ -7,7 +7,7 @@ The compact spec remains the shortest pass/fail definition. This document adds
 the operational rules needed to build data, training, evaluation, and the first
 CLI demo.
 
-The selected direction is Track B with caveats:
+The selected direction has these caveats:
 
 - Build the real prompt-to-LUT architecture, not only a toy course slice.
 - Keep the first product surface CLI-first; the child-facing workbench comes
