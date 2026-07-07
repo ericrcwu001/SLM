@@ -209,6 +209,33 @@ Pipeline:
 6. Build per-cell support maps for pair-fitted LUTs.
 7. Assign `representability_tier`: `gold`, `diagnostic_only`, or `rejected`.
 
+Fit objective (all pair-fit and grid-render-validated LUTs):
+
+```text
+loss = mean pixel-wise CIEDE2000(LUT(source_pixel), target_pixel) over stratified training pixels
+weighted Lab L2 (L:a:b = 1:1:1, clipped/out-of-gamut pixels downweighted) is the fallback loss if CIEDE2000 is numerically unstable
+fit and evaluate in canonical sRGB (display-referred, encoded [0,1], D65)
+convert source/target ICC to canonical before fitting
+report train and held-out DeltaE00 separately (fit_train_deltaE00_*, fit_validation_deltaE00_*)
+```
+
+Fit-time lattice prior (shapes the solve; distinct from post-fit acceptance filters):
+
+```text
+smoothness prior: penalize large second differences across the 17x17x17 lattice so sparse cells do not overfit
+monotonicity prior: keep the luma response monotonic during the fit
+the post-fit smoothness and foldover_or_monotonicity_violations checks (Quality Filters) are unchanged and still applied after fitting
+```
+
+Low-support color-cell policy (per lattice cell):
+
+```text
+a cell is supported if >= 32 stratified source pixels map into it (provisional); fewer is low-support
+low-support cells are filled by regularized extrapolation from supported neighbors, pulled toward the identity residual (zero residual)
+filled cells are flagged low_support in the support map and do not count toward supported_cell_rate
+a low-support/filled cell cannot by itself satisfy acceptance; supported_cell_rate and input_pixel_supported_rate must be met on genuinely supported cells
+```
+
 PPR10K XMP hard-reject fields include brush/paint masks, linear/radial
 gradients, AI/object masks, retouch/heal/clone, red-eye, crop/geometry/
 perspective, lens corrections, vignette, sharpen/denoise/texture/clarity/dehaze,
@@ -236,6 +263,17 @@ generic_input_supported_rate >= 98% for re-paired generic images
 For a 12k active set, each PPR10K/FiveK family should have at least 3x its target
 unique accepted pairs plus eval holdout capacity. If not, reduce that source
 share instead of relaxing gates.
+
+Per-source-family derivation attrition report:
+
+```text
+funnel per source family: candidates -> XMP-parsed -> allowlist-passed -> fit-accepted -> representability=gold
+store counts and rates under the registry: data/raw_registry/derivation_attrition.{csv,json}
+```
+
+The 3x-yield rule above reads from this artifact: if a family's gold yield falls
+below 3x its target plus eval holdout, reduce that source's share instead of
+relaxing gates.
 
 ## PPR10K Plan
 
@@ -266,6 +304,8 @@ read transformed grid as canonical LUT
 resample to 17x17x17 if needed
         ->
 convert to canonical residual LUT
+        ->
+apply derived LUT to PPR source image and validate DeltaE to expert-target image within pair-fit thresholds (mandatory)
 ```
 
 Fallback/validation:
@@ -283,6 +323,12 @@ accept only if representability gates pass
 ```
 
 Pair-fit fallback must not override an XMP local-tool rejection.
+
+Grid-render source->target validation is mandatory, not fallback-only: after
+reading the XMP-derived grid as a LUT, apply it to the PPR source image and
+require DeltaE to the expert-target image within the same pair-fit thresholds.
+XMP allowlisting alone does not accept a grid-rendered LUT; both the allowlist
+and this render check must pass.
 
 Active-set rules:
 
@@ -323,6 +369,11 @@ run spatial residual and support-map checks
         ->
 accept only if representability gates pass
 ```
+
+Fitting uses the shared fit objective, fit-time lattice prior, and low-support
+color-cell policy defined in the Derived LUT Representability Gate. FiveK is
+pair-fit only (no XMP grid path); the apply-to-source render check above is its
+mandatory source->target validation.
 
 Active-set rules:
 
@@ -437,6 +488,13 @@ Reject or downweight:
 - duplicates or near-duplicates;
 - transformations dominated by local edits, masks, healing, sharpening,
   denoising, relighting, geometry, or content changes.
+
+`smoothness` and `foldover_or_monotonicity_violations` above are post-fit
+acceptance checks on the solved LUT, distinct from the fit-time smoothness +
+monotonicity prior in the Derived LUT Representability Gate: the prior shapes the
+solve, these filters accept or reject the result. Cells filled by low-support
+extrapolation are flagged in the support map, downweighted, and not counted as
+genuine support.
 
 Final headline eval rows require `representability_tier = gold`.
 

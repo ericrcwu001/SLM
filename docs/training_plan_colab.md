@@ -143,7 +143,9 @@ Before SFT:
 6. Implement deterministic direction, target-fidelity, style, skin-locus, and
    safety checks.
 7. Implement Wilson CI, paired bootstrap, and seed-summary reporting.
-8. Build frozen eval sets.
+8. Build non-gating smoke eval rows now; construct and freeze the final
+   headline eval rows only after canonicalization, tokenizer freeze (Stage 1),
+   split units, and usage-aware culling (Stage 2), matching Schedule Phase 4.
 9. Run baselines on at least a smoke subset.
 
 Minimum pre-training check:
@@ -260,7 +262,7 @@ Dataset row contract includes:
   "image_path": "images/train/000001.jpg",
   "instruction": "Give it a warm matte look with muted colors.",
   "assistant_target": "<lut_bos> <lut_042> ... <lut_eos>",
-  "target_tokens": [42],
+  "target_tokens": [42, 17, 200, 5, "... 64 code ids total ...", 128],
   "is_supported": true,
   "source_lut_id": "freshluts_123",
   "source_family": "freshluts",
@@ -453,8 +455,9 @@ boundary_f1 lower CI >= 80%
 mixed_unsupported_recall lower CI >= 80%
 near_boundary_pair_accuracy lower CI >= 85%
 over_refusal_rate upper CI <= 10%
-supported_target_pass_rate lower CI >= 60%
+supported_prompt_to_lut_pass_rate lower CI >= 60%
 beats best null, best constant, and deterministic renderer gates
+beats prompt-only/image-blind, blank-image, and shuffled-image baselines on eval_image_sensitivity
 ```
 
 Also report:
@@ -496,11 +499,15 @@ Run:
 - blank-image eval: run trained VLM with a constant image;
 - shuffled-image eval: pair prompts with wrong images.
 
-Add an image-sensitive eval slice where the same instruction should produce
-different safe LUTs across different source images. Gate the multimodal claim on
-beating image-blind by a meaningful paired-CI margin. If image-blind matches,
-report that the VL premise is not justified and either simplify the model or
-redesign data.
+Score against the named eval slice `eval_image_sensitivity`, where the same
+instruction must produce different safe LUTs across different source images. The
+multimodal claim is gated on the hard, CI-gated image-conditioning criterion in
+the eval harness: paired-bootstrap 95% lower bound for
+`supported_prompt_to_lut_pass_rate` on `eval_image_sensitivity` must beat the
+prompt-only/image-blind SFT baseline by >= +10pp (provisional; calibratable),
+and beat the blank-image and shuffled-image ablations by a positive lower bound.
+If image-blind falls within that margin, report that the VL premise is not
+justified and either simplify the model or redesign data.
 
 ## Stage 8: Rejection Sampling / DPO
 
@@ -515,10 +522,32 @@ RS/DPO ships only if it beats SFT outside paired confidence intervals without
 increasing over-refusal, mixed-boundary failure, or safety failures beyond
 allowed gates.
 
+Escalate to GRPO (Stage 9) only after the best tuned stage so far (SFT, then
+RS/DPO) has plateaued under the plateau rule defined in Stage 9. A stage that
+still clears its ship margin has not plateaued; keep tuning that stage instead.
+
 ## Stage 9: Optional GRPO
 
 GRPO starts only after SFT and RS/DPO pass syntax, direction, boundary, target,
 safety, and baseline gates and then plateau.
+
+Plateau is a paired-CI no-improvement rule, distinct from the ship gate (which
+requires improvement):
+
+```text
+plateau(current best tuned stage) is true when a further tuning attempt cannot
+clear the next stage's ship margin M on the same frozen headline rows:
+  paired-bootstrap 95% CI for pass_rate(new attempt - current best tuned stage)
+    upper bound < M     # cannot reach M even optimistically; includes CI containing 0
+  holds across >= 2 seeds
+M:
+  RS/DPO after SFT   -> delta CI strictly above 0 (SFT-beating margin)
+  GRPO after RS/DPO  -> +5pp vs best prior tuned stage
+```
+
+Plateau only authorizes starting the next tuned stage; it never authorizes
+shipping. Shipping still requires that stage's ship gate in
+`docs/eval_harness_implementation.md`.
 
 Prompt set:
 
@@ -546,6 +575,30 @@ Hard-failure policy:
 - Target mismatch gets hard penalty.
 - Safety failure gets hard penalty.
 - Aesthetic score cannot compensate for any hard failure.
+
+Reward correctness is proven only if the reward passes an adversarial /
+reward-hacking test set before any GRPO run:
+
+```text
+ranking test (reward must rank genuine gold ABOVE each adversarial negative by
+margin > reward_margin_min, calibrated on dev_calibration, on held-out rows):
+  held-out gold output  >  constant / train-mean LUT
+  held-out gold output  >  direction-only LUT (correct sign, ignores magnitude)
+  held-out gold output  >  over-saturated but target-matching LUT
+  held-out gold output  >  prompt-ignoring boundary-gaming output
+  held-out gold output  >  degenerate repeated-token output
+
+hard-penalty test (each hard failure must out-rank NO valid output and cannot be
+recovered by the aesthetic term):
+  invalid syntax                <  any valid supported output
+  false support on unsupported  <  correct <unsupported>
+  wrong direction               <  correct-direction output
+  safety failure                <  safety-passing output
+```
+
+Record the reward-correctness report (pass/fail per row class, margins, and any
+inversions) as a GRPO precondition artifact. If any class inverts, fix the
+reward before running GRPO.
 
 GRPO config must pin:
 

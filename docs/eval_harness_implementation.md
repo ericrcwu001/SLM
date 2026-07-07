@@ -7,10 +7,12 @@ the fine-tuned model actually learned the target behavior. It evaluates the same
 frozen rows across baselines, warmup checkpoints, SFT checkpoints, RS/DPO
 checkpoints, and GRPO checkpoints.
 
-The primary metric is prompt-to-LUT pass rate on headline-eligible rows. A
-supported case passes only when grammar, decoder, color-direction,
-target-fidelity, LUT safety, skin-locus, and style checks all pass. An
-unsupported case passes only when the output is exactly `<unsupported>`.
+The primary metric is `supported_prompt_to_lut_pass_rate` on headline-eligible
+rows. A supported case passes only when the boundary (non-refusal), grammar,
+decoder, color-direction, target-fidelity, LUT safety, skin-locus, and style
+checks all pass — i.e. the full L0-L7 deterministic stack. The L8 judge score is
+recorded but cannot override an L0-L7 result. An unsupported case passes only
+when the output is exactly `<unsupported>`.
 
 ## Eval Unit
 
@@ -29,7 +31,11 @@ One supported eval row is:
   "style_primary": null,
   "target_lut_path": "luts/eval/000001.npy",
   "target_image_path": "targets/eval/000001.png",
-  "target_tokens": [42],
+  "target_tokens": [42, 17, 200, 5, "... 64 code ids total ...", 128],
+  "acceptance_mode": "exact_target",
+  "reference_lut_paths": [],
+  "reference_tokens": [],
+  "behavior_window": null,
   "source_lut_id": "ppr10k_group_001_expert_a_lut_002",
   "source_family": "ppr10k",
   "canonical_domain_id": "slm_lut_v1_srgb_display_encoded_17_trilinear",
@@ -136,22 +142,37 @@ Responsibilities:
 | L2 | Decode/export | Tokens decode to finite canonical 17x17x17 residual LUT and export valid `.cube` |
 | L3 | Tokenizer gate | Frozen tokenizer passes mean, tail, per-family, and per-target reconstruction gates |
 | L4 | Direction | Every gold tag moves in the correct measured direction and minimum magnitude window |
-| L5 | Target fidelity | Output matches target LUT/rendered target within image/chart DeltaE gates |
+| L5 | Target fidelity | Acceptance_mode selects the fidelity gate: exact single decoded-target DeltaE, any of K decoded reference LUTs, or a predeclared behavior window |
 | L6 | LUT safety | Clip, out-of-range, smoothness, foldover, neutral drift, and skin-locus gates pass |
-| L7 | Style recipe | Style rows pass recipe windows and discriminability checks |
+| L7 | Style recipe | Style rows pass recipe windows and discriminability checks; underspecified style rows may accept fidelity via multi-reference or behavior-window instead of exact target |
 | L8 | Judge | LLM/VLM judge score recorded; cannot override deterministic failure |
 
 The final pass/fail for supported rows is:
 
 ```text
 supported_pass =
-  syntax_pass
+  boundary_pass
+  and syntax_pass
   and decode_pass
   and direction_pass
-  and target_fidelity_pass
+  and fidelity_pass
   and safety_pass
   and style_recipe_pass
+
+fidelity_pass is selected by acceptance_mode:
+  exact_target                       -> target_fidelity_pass
+  multi_reference                    -> multi_reference_pass
+  behavior_window                    -> behavior_window_pass
+  multi_reference | behavior_window  -> multi_reference_pass or behavior_window_pass
+
+safety_pass, direction_pass, and style_recipe_pass are required in every acceptance_mode.
+Rows that omit acceptance_mode default to exact_target.
 ```
+
+where `boundary_pass` for a supported row is the L0 boundary check: the output
+is not a refusal (not `<unsupported>`). A refused supported row also fails
+`syntax_pass`, so this term makes the L0 non-refusal requirement explicit and
+adds no new machinery.
 
 The final pass/fail for unsupported rows is:
 
@@ -309,6 +330,48 @@ representability_tier == "gold"
 headline_eligible == true
 ```
 
+### Acceptance Modes for Underspecified Rows
+
+Exact-target scoring assumes one correct LUT. Underspecified style prompts
+("warm matte", "cinematic") admit many valid LUTs, so ANDing single decoded-target
+`target_fidelity_pass` into `supported_pass` would fail correct outputs. Such rows
+set `acceptance_mode` to `multi_reference`, `behavior_window`, or both; direction
+(L4) and style-recipe/discriminability (L7) windows still apply on top.
+
+```text
+multi_reference_pass =
+  exists r in reference set:
+    image_mean_deltaE00_to_r <= 3.0
+    and image_p95_deltaE00_to_r <= 8.0
+    and chart_mean_deltaE00_to_r <= 3.0
+    and chart_p95_deltaE00_to_r <= 8.0
+
+behavior_window_pass =
+  for every dimension d in behavior_window:
+    behavior_window[d].min <= measured_behavior[d] <= behavior_window[d].max
+```
+
+The reference set is `reference_tokens` (K per row, a list of 64-token lists)
+decoded through the frozen VQ decoder; `reference_lut_paths` holds the canonical
+reference LUTs for provenance. References use the same DeltaE gate as exact_target,
+and each must individually satisfy the tokenization-acceptability gate above to keep
+the row headline-eligible. `behavior_window` keys are a subset of the measured
+behavior vector, bounds are in LUT-domain measured-behavior units, and windows are
+frozen once on `dev_human_calibration`:
+
+```text
+behavior_window = {
+  "temperature_delta_b":     {"min": 1.5, "max": 6.0},
+  "contrast_delta_l_spread": {"min": -8.0, "max": -2.5}
+}
+```
+
+Reference tokens and behavior windows are frozen at construction time and never
+inferred from model output during scoring. Report `supported_prompt_to_lut_pass_rate`
+separately for exact_target rows (e.g. `eval_expert_holdout`,
+`eval_cross_source_expert`) and for multi-reference/behavior-window rows, so
+expert-mimicry fidelity stays measurable and is not diluted by the looser windows.
+
 ## Safety Checks
 
 Provisional gates:
@@ -422,6 +485,7 @@ Splits:
 | `dev_human_calibration` | calibrate style windows and skin acceptability once, then freeze |
 | `eval_usage_weighted_headline` | headline supported eval weighted by rough expected usage |
 | `eval_coverage_macro` | macro coverage across source/style/attribute buckets |
+| `eval_image_sensitivity` | same-prompt/different-image rows where the correct safe LUT must differ across source images; drives the image-conditioning gate |
 | `eval_subtle_control` | common low-magnitude but visible adjustments |
 | `eval_style_discriminability` | single-style rows with neighbor-exclusion checks |
 | `eval_expert_holdout` | held-out PPR10K/FiveK expert ids absent from SFT |
@@ -585,7 +649,7 @@ Required tables:
 | Baseline delta | model pair, seed policy, metric, N_paired, delta_pp, paired_boot_ci_low_pp, paired_boot_ci_high_pp, paired_test_p, gate threshold, gate result |
 | Seed summary | model_stage, seed_count, metric, mean, std, min, median, max, seed_mean_ci_low, seed_mean_ci_high |
 | Attribute | model, attribute, N, direction pass, mean measured delta |
-| Target fidelity | model, split, image mean/p95 DeltaE00, chart mean/p95 DeltaE00, pass |
+| Target fidelity | model, split, acceptance_mode, image mean/p95 DeltaE00, chart mean/p95 DeltaE00, reference match count, behavior-window pass, pass |
 | Style | model, style, style pass, multi-match count, margin, confusion |
 | Safety | model, clip fail, smoothness fail, foldover fail, neutral drift fail, skin-locus fail |
 | Unsupported | model, category, recall, precision, false-support, over-refusal, coverage, boundary F1, mixed recall |
@@ -603,10 +667,13 @@ boundary_f1 Wilson 95% lower bound >= 80%
 mixed_unsupported_recall Wilson 95% lower bound >= 80%
 near_boundary_pair_accuracy Wilson 95% lower bound >= 85%
 over_refusal_rate Wilson 95% upper bound <= 10%
-supported_target_pass_rate Wilson 95% lower bound >= 60%
-paired-bootstrap 95% lower bound for supported_target_pass_rate vs best null >= +30pp
-paired-bootstrap 95% lower bound for supported_target_pass_rate vs best constant >= +20pp
-paired-bootstrap 95% lower bound for supported_target_pass_rate vs deterministic renderer >= +5pp
+supported_prompt_to_lut_pass_rate Wilson 95% lower bound >= 60%
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs best null >= +30pp
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs best constant >= +20pp
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs deterministic renderer >= +5pp
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs prompt-only/image-blind SFT baseline on eval_image_sensitivity >= +10pp (provisional; calibratable)
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs blank-image ablation on eval_image_sensitivity > 0
+paired-bootstrap 95% lower bound for supported_prompt_to_lut_pass_rate vs shuffled-image ablation on eval_image_sensitivity > 0
 over_refusal_rate <= deterministic_renderer_over_refusal + 2pp
 safety_failure_rate <= deterministic_renderer_safety_failure + 2pp
 ```
@@ -624,13 +691,18 @@ failure in constrained mode is an implementation bug and blocks release.
 GRPO ships only if:
 
 ```text
-paired-bootstrap 95% lower bound for pass_rate(GRPO - best prior tuned stage) >= +5pp
-or paired-bootstrap 95% upper bound for safety_failure_rate(GRPO - best prior tuned stage) <= -5pp
-and paired-bootstrap 95% upper bound for over_refusal_rate(GRPO - best prior tuned stage) <= +2pp
-and over_refusal_rate still satisfies the absolute SFT ceiling
-and mixed_unsupported_recall does not drop by more than 2pp
-and near_boundary_pair_accuracy does not drop by more than 2pp
-and the multi-seed summary shows the effect is not from one lucky seed
+ships = (A) AND (B)
+
+(A) improvement group — at least one holds:
+      paired-bootstrap 95% lower bound for pass_rate(GRPO - best prior tuned stage) >= +5pp
+      OR paired-bootstrap 95% upper bound for safety_failure_rate(GRPO - best prior tuned stage) <= -5pp
+
+(B) guardrail group — all hold:
+      paired-bootstrap 95% upper bound for over_refusal_rate(GRPO - best prior tuned stage) <= +2pp
+      AND over_refusal_rate still satisfies the absolute SFT ceiling
+      AND mixed_unsupported_recall does not drop by more than 2pp
+      AND near_boundary_pair_accuracy does not drop by more than 2pp
+      AND the multi-seed summary shows the effect is not from one lucky seed
 ```
 
 If the point estimate clears a threshold but the CI does not, label it:
@@ -638,3 +710,7 @@ If the point estimate clears a threshold but the CI does not, label it:
 ```text
 directional improvement; statistically inconclusive; do not ship over the prior stage on this evidence
 ```
+
+The GRPO ship gate above presumes GRPO was run at all. GRPO is run only when the
+best prior tuned stage has plateaued and reward correctness is proven; both
+preconditions are defined operationally in `docs/training_plan_colab.md` Stage 9.
