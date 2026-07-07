@@ -1,3 +1,10 @@
 # Source-Balanced Instruction Sampling
 
-The 50,000-example instruction corpus will sample LUT sources by target proportion rather than raw source count: 30% PPR10K-derived expert LUTs, 25% FiveK-derived expert LUTs, 20% Fresh LUTs, 15% G'MIC/RawTherapee HaldCLUTs, and 10% smaller public LUT packs. This prevents expert-derived portrait and retouching LUTs from overwhelming more creative style diversity.
+Status: Superseded by ADR 0015.
+
+The older decision used a 50,000-example corpus with 30% PPR10K-derived LUTs and
+25% FiveK-derived LUTs. That source mix has been superseded.
+
+Current v1 caps PPR10K-derived and FiveK-derived examples at 15%-20% targets with
+25% hard caps, and uses usage-prior buckets plus coverage-aware selection rather
+than source balance alone.

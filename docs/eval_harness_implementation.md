@@ -1,0 +1,640 @@
+# Eval Harness Implementation Document
+
+## Purpose
+
+The eval harness is built before training and is the source of truth for whether
+the fine-tuned model actually learned the target behavior. It evaluates the same
+frozen rows across baselines, warmup checkpoints, SFT checkpoints, RS/DPO
+checkpoints, and GRPO checkpoints.
+
+The primary metric is prompt-to-LUT pass rate on headline-eligible rows. A
+supported case passes only when grammar, decoder, color-direction,
+target-fidelity, LUT safety, skin-locus, and style checks all pass. An
+unsupported case passes only when the output is exactly `<unsupported>`.
+
+## Eval Unit
+
+One supported eval row is:
+
+```json
+{
+  "id": "eval_seen_000001",
+  "image_path": "images/eval_seen/000001.jpg",
+  "image_sha256": "...",
+  "instruction": "Make the image warmer with softer contrast.",
+  "is_supported": true,
+  "support_label": "supported",
+  "gold_tags": ["warmer", "softer_contrast"],
+  "style_bundle": null,
+  "style_primary": null,
+  "target_lut_path": "luts/eval/000001.npy",
+  "target_image_path": "targets/eval/000001.png",
+  "target_tokens": [42],
+  "source_lut_id": "ppr10k_group_001_expert_a_lut_002",
+  "source_family": "ppr10k",
+  "canonical_domain_id": "slm_lut_v1_srgb_display_encoded_17_trilinear",
+  "canonical_absolute_lut_hash": "...",
+  "canonical_residual_lut_hash": "...",
+  "tokenizer_version": "...",
+  "codebook_hash": "...",
+  "decoder_hash": "...",
+  "representability_tier": "gold",
+  "headline_eligible": true,
+  "procedural_filler": false,
+  "usage_weight": 1.0,
+  "split": "eval_usage_weighted_headline",
+  "measured_behavior": {
+    "temperature_delta_b": 2.3,
+    "contrast_delta_l_spread": -3.1
+  },
+  "derived_lut_quality": {
+    "representability_status": "accepted",
+    "fit_deltaE00_mean": 1.4,
+    "fit_deltaE00_p95": 4.8,
+    "supported_cell_rate": 0.99
+  },
+  "metadata": {
+    "has_people": true,
+    "scene_cluster": 42,
+    "license": "recorded-for-provenance",
+    "source_hash": "...",
+    "prompt_template_family": "explicit_compound",
+    "prompt_generation_batch_id": "...",
+    "teacher_model_version": "...",
+    "split_unit_id": "..."
+  }
+}
+```
+
+Unsupported and mixed rows use:
+
+```json
+{
+  "is_supported": false,
+  "support_label": "unsupported",
+  "unsupported_category": "mixed_partial_supported_plus_content_generation",
+  "unsupported_components": ["content_removal"],
+  "supported_components": ["warmer", "softer_contrast"],
+  "mixed_prompt": true,
+  "boundary_pair_id": "mixed_boundary_001",
+  "boundary_pair_role": "unsupported_mixed",
+  "target_lut_path": null,
+  "target_tokens": [],
+  "gold_tags": []
+}
+```
+
+Gold tags are frozen at eval construction time. They are never inferred from the
+model output during scoring.
+
+## Harness Modules
+
+Recommended file/module layout:
+
+```text
+eval/
+  run_eval.py
+  schemas.py
+  output_parsers.py
+  constrained_decoding.py
+  lut_decoder.py
+  cube_io.py
+  color_pipeline.py
+  deterministic_checks.py
+  target_fidelity.py
+  unsupported_metrics.py
+  judge_client.py
+  baseline_adapters.py
+  stats.py
+  report.py
+  configs/
+    eval_default.yaml
+```
+
+Responsibilities:
+
+- `schemas.py`: row schema, model-output schema, metric schema, manifest schema.
+- `output_parsers.py`: strict token/refusal parser.
+- `constrained_decoding.py`: token-id grammar mask/FSM for runtime mode.
+- `lut_decoder.py`: maps 64 token ids to residual LUT through frozen VQ decoder.
+- `cube_io.py`: validates and writes `.cube` files.
+- `color_pipeline.py`: ICC-aware sRGB/Lab/CIEDE2000 conversions.
+- `deterministic_checks.py`: direction, style, skin-locus, and safety checks.
+- `target_fidelity.py`: target image/chart DeltaE checks.
+- `unsupported_metrics.py`: refusal, over-refusal, coverage, boundary F1.
+- `judge_client.py`: LLM/VLM-as-judge scoring.
+- `baseline_adapters.py`: model invocation wrappers for baselines and tuned modes.
+- `stats.py`: Wilson intervals, paired bootstrap, paired tests, seed summaries.
+- `report.py`: CSV/JSON/Markdown result tables.
+
+## Evaluation Layers
+
+| Layer | Name | Pass Rule |
+| --- | --- | --- |
+| L0 | Boundary | Gold unsupported passes only with exact `<unsupported>`; gold supported fails if refused |
+| L1 | Syntax | Supported output has only BOS, 64 valid LUT tokens, EOS |
+| L2 | Decode/export | Tokens decode to finite canonical 17x17x17 residual LUT and export valid `.cube` |
+| L3 | Tokenizer gate | Frozen tokenizer passes mean, tail, per-family, and per-target reconstruction gates |
+| L4 | Direction | Every gold tag moves in the correct measured direction and minimum magnitude window |
+| L5 | Target fidelity | Output matches target LUT/rendered target within image/chart DeltaE gates |
+| L6 | LUT safety | Clip, out-of-range, smoothness, foldover, neutral drift, and skin-locus gates pass |
+| L7 | Style recipe | Style rows pass recipe windows and discriminability checks |
+| L8 | Judge | LLM/VLM judge score recorded; cannot override deterministic failure |
+
+The final pass/fail for supported rows is:
+
+```text
+supported_pass =
+  syntax_pass
+  and decode_pass
+  and direction_pass
+  and target_fidelity_pass
+  and safety_pass
+  and style_recipe_pass
+```
+
+The final pass/fail for unsupported rows is:
+
+```text
+unsupported_pass = exact_output == "<unsupported>"
+```
+
+## Constrained Decoding
+
+CLI/product decoding must use grammar-constrained token-id decoding.
+
+```text
+valid first token set:
+  <unsupported> or <lut_bos>
+
+if <unsupported> is emitted:
+  only EOS may follow
+
+if <lut_bos> is emitted:
+  positions 1-64 allow only <lut_000> through <lut_255>
+  position 65 allows only <lut_eos>
+  only EOS may follow <lut_eos>
+```
+
+The grammar mask must not use gold support labels, inferred prompt attributes, or
+eval metadata. It only enforces output syntax, so false support and over-refusal
+remain measurable.
+
+Two eval modes are required:
+
+```text
+free_generation_eval:
+  do_sample=false
+  num_beams=1
+  no grammar mask
+  strict parser scores learned syntax validity
+
+runtime_constrained_eval:
+  do_sample=false
+  num_beams=1
+  grammar mask enabled
+  syntax validity should be 100%; failures are implementation bugs
+```
+
+The SFT `valid_token_rate` gate is measured in free-generation eval only.
+Runtime constrained eval is the product path.
+
+## Output Parser
+
+Strict parser rules:
+
+- Strip leading/trailing whitespace only.
+- If the string is exactly `<unsupported>`, classify as refusal.
+- Otherwise require tokenized output to begin with `<lut_bos>` and end with
+  `<lut_eos>`.
+- Count only tokens matching `^<lut_[0-9]{3}>$`.
+- Require exactly 64 LUT code tokens.
+- Require every code token integer to be between 0 and 255.
+- Reject any unknown token, prose, JSON, or extra content.
+
+## Color Pipeline
+
+The deterministic evaluator uses:
+
+```text
+canonical LUT domain:
+  display-referred IEC 61966-2-1 sRGB
+  encoded RGB [0,1]
+  D65
+  17x17x17
+  trilinear interpolation
+
+metric pipeline:
+  ICC-aware image conversion to canonical sRGB
+  linearization where needed
+  CIE Lab D65
+  CIEDE2000 for DeltaE reporting
+```
+
+L2 fails on mismatched canonical domain, interpolation, grid size, axis order,
+token flatten order, tokenizer version, codebook hash, or decoder hash.
+
+Direction and safety checks are run on:
+
+- sampled image pixels;
+- a fixed synthetic RGB chart;
+- neutral-axis samples;
+- fixed skin-locus samples;
+- optional face/skin masks as qualitative diagnostics only.
+
+The same interpolation method must be used in target generation, scoring,
+`graded.png`, and `.cube` roundtrip tests. Use trilinear interpolation for v1.
+
+## Direction Checks
+
+| Tag | Metric | Expected Direction |
+| --- | --- | --- |
+| `warmer` | mean Lab b* | increase |
+| `cooler` | mean Lab b* | decrease |
+| `more_magenta` | mean Lab a* | increase |
+| `more_green` | mean Lab a* | decrease |
+| `brighter` | mean L* | increase |
+| `darker` | mean L* | decrease |
+| `higher_contrast` | p95(L*) - p5(L*) | increase |
+| `softer_contrast` | p95(L*) - p5(L*) | decrease |
+| `lifted_blacks` | p5(L*) | increase |
+| `crushed_blacks` | p5(L*) | decrease |
+| `softer_highlights` | high-mask L* compression and clip gate | decrease or roll off |
+| `brighter_highlights` | high-mask L* | increase |
+| `warmer_highlights` | high-mask b*/hue quadrant | orange/yellow shift |
+| `cooler_highlights` | high-mask b*/hue quadrant | blue/cyan shift |
+| `lifted_shadows` | low-mask L* | increase |
+| `darker_shadows` | low-mask L* | decrease |
+| `cooler_shadows` | low-mask b*/hue quadrant | decrease or teal/cyan shift |
+| `warmer_shadows` | low-mask b*/hue quadrant | increase or warm shift |
+| `more_saturated` | chroma | increase |
+| `muted` or `desaturated` | chroma | decrease |
+
+Final eval minimum detectable movement:
+
+- Temperature/tint: at least 1.5 Lab channel units.
+- Exposure/shadows/highlights/black point: at least 2.0 L*.
+- Saturation: at least 2.0 chroma.
+- Contrast: at least 2.5 L* spread.
+
+Rows whose target LUT does not meet the minimum movement for its gold tag should
+not enter the final headline eval set.
+
+## Target Fidelity
+
+Target fidelity prevents a direction-only LUT from passing.
+
+```text
+target_fidelity_pass =
+  image_mean_deltaE00_to_target <= 3.0
+  and image_p95_deltaE00_to_target <= 8.0
+  and chart_mean_deltaE00_to_target <= 3.0
+  and chart_p95_deltaE00_to_target <= 8.0
+```
+
+Use the tokenizer-decoded target LUT as the scoring target for model output, and
+store canonical-target reconstruction separately:
+
+```text
+canonical_to_decoded_mean_deltaE00
+canonical_to_decoded_p95_deltaE00
+```
+
+Eval rows are headline-eligible only if target tokenization is acceptable:
+
+```text
+canonical_to_decoded_mean_deltaE00 <= 2.0
+canonical_to_decoded_p95_deltaE00 <= 6.0
+representability_tier == "gold"
+headline_eligible == true
+```
+
+## Safety Checks
+
+Provisional gates:
+
+| Safety Check | Threshold |
+| --- | --- |
+| Clip rate | <= 0.5% sampled channels clipped |
+| Pre-clamp out-of-range | max violation <= 0.03 |
+| Foldover/grid monotonicity | <= 0.1% severe grid-cell violations |
+| Smoothness | p99 second-difference <= 0.06 |
+| Neutral drift | DeltaE00 <= 3.0 unless prompt explicitly requests tint |
+| Skin locus | fixed LUT-domain `skin_locus_v1` gate passes |
+
+Skin-locus metrics:
+
+```text
+skin_locus_deltaE00_p95
+skin_locus_hue_drift_deg_p95
+skin_locus_luma_drift_abs_p95
+skin_locus_chroma_ratio_min
+skin_locus_chroma_ratio_max
+skin_locus_clip_rate
+skin_locus_lightness_order_violations
+```
+
+Provisional skin-locus gate:
+
+```text
+skin_locus_clip_rate == 0
+skin_locus_hue_drift_deg_p95 <= 8
+skin_locus_deltaE00_p95 <= 12
+skin_locus_chroma_ratio_min >= 0.75
+skin_locus_chroma_ratio_max <= 1.35
+skin_locus_lightness_order_violations == 0
+```
+
+Safety failure rate is:
+
+```text
+safety_failures / supported_non_refusal_outputs
+```
+
+Report safety failures by type, not only as one aggregate number.
+
+## Unsupported Metrics
+
+| Metric | Formula |
+| --- | --- |
+| Unsupported recall | correct refusals on gold unsupported / all gold unsupported |
+| Unsupported precision | correct refusals / all model refusals |
+| False-support rate | LUT output on gold unsupported / all gold unsupported |
+| Over-refusal rate | `<unsupported>` on gold supported / all gold supported |
+| Supported coverage | non-refusal on gold supported / all gold supported |
+| Selective risk | deterministic failures / supported non-refusals |
+| Boundary accuracy | correct refusal plus correct non-refusal / all rows |
+| Boundary F1 | F1 on supported-vs-unsupported decision |
+| Mixed unsupported recall | correct refusals on mixed unsupported rows / all mixed unsupported rows |
+| Near-boundary pair accuracy | correct decision on both rows in a boundary pair |
+
+Unsupported recall alone is not enough. A model that refuses too often can look
+safe but be useless.
+
+## Style Metrics
+
+Add these fields to every measured behavior vector where applicable:
+
+```text
+highlight_delta_a
+highlight_delta_b
+highlight_hue_delta_deg
+highlight_chroma_delta
+shadow_delta_a
+shadow_hue_delta_deg
+shadow_chroma_delta
+split_tone_strength
+split_tone_high_hue_quadrant
+split_tone_shadow_hue_quadrant
+style_multi_match_count
+style_margin_to_nearest_neighbor
+```
+
+Report a style confusion matrix and pairwise overlap rates. Single-style
+headline rows must pass the style recipe and style-discriminability gate.
+
+## Eval Splits
+
+Minimum final reporting:
+
+```text
+500 supported eval cases
+100 unsupported eval cases
+50-100 qualitative demo cases
+```
+
+Track B target:
+
+```text
+800 supported eval cases
+200 unsupported eval cases
+100 qualitative demo cases
+```
+
+The minimum is a reporting floor, not automatic evidence that every fine-grained
+gate is statistically powered.
+
+Splits:
+
+| Split | Purpose |
+| --- | --- |
+| `dev_calibration` | tune thresholds and catch harness bugs; never final |
+| `dev_human_calibration` | calibrate style windows and skin acceptability once, then freeze |
+| `eval_usage_weighted_headline` | headline supported eval weighted by rough expected usage |
+| `eval_coverage_macro` | macro coverage across source/style/attribute buckets |
+| `eval_subtle_control` | common low-magnitude but visible adjustments |
+| `eval_style_discriminability` | single-style rows with neighbor-exclusion checks |
+| `eval_expert_holdout` | held-out PPR10K/FiveK expert ids absent from SFT |
+| `eval_cross_source_expert` | train mostly on filter/public/HaldCLUT, eval on expert-derived LUTs |
+| `eval_unseen_family` | held-out LUT/style/source families absent from training |
+| `eval_unsupported` | local, semantic, generative, geometry/detail, relighting, reference-transfer, selective-preservation prompts |
+| `eval_unsupported_mixed` | supported global request plus unsupported component |
+| `eval_boundary_pairs` | contrastive near-boundary supported/unsupported pairs |
+| `eval_procedural_diagnostic` | procedural filler diagnostics; excluded from headline gates |
+| `qualitative_demo` | hand-reviewed demos with before/after artifacts |
+
+Only headline-eligible rows can drive headline pass claims and ship gates.
+
+Leakage prevention:
+
+- Split PPR10K by group id, not only image id.
+- Split FiveK by source photo id.
+- Split public LUTs by normalized LUT hash and source pack.
+- Split prompts by template family and teacher generation batch.
+- Keep near-duplicate images in the same split using perceptual hash and
+  embedding nearest-neighbor checks.
+- No same `derived_lut_id`, `source_pair_id`, `support_map_hash`, generic paired
+  input image, or split unit id may cross train/eval.
+
+## Baselines
+
+Evaluate the same frozen rows against:
+
+1. Always-unsupported null baseline.
+2. Identity-all-prompts null baseline.
+3. Oracle-boundary identity diagnostic baseline, excluded from fair headline
+   comparisons.
+4. Train-mean constant LUT.
+5. Dev-optimized single constant LUT.
+6. Dev-optimized style-blind constant LUT.
+7. Token baseline: Qwen2.5-VL-3B with LUT vocabulary but no LUT SFT.
+8. Prompted Qwen raw mode: prompted to emit `.cube` or LUT tokens.
+9. Prompted Qwen recipe mode: prompted to emit compact JSON recipe, then
+   deterministic renderer converts recipe to LUT.
+10. Deterministic slider/recipe baseline: hand-written parser and renderer for
+    supported attributes.
+11. Prompt-only/image-blind SFT baseline.
+12. Blank-image and shuffled-image ablations.
+13. Frontier prompted baseline if available.
+14. Generative-warmup checkpoint.
+15. SFT checkpoint.
+16. RS/DPO checkpoint if trained.
+17. GRPO checkpoint if trained.
+
+The project model uses only its native path:
+
+```text
+64 LUT tokens -> tokenizer decoder -> residual LUT -> full LUT
+```
+
+Prompted recipe baselines are allowed to use deterministic rendering because the
+baseline question is whether fine-tuning is necessary for reliable behavior.
+
+If SFT does not beat the best prompted frontier recipe/raw baseline by the
+predeclared gate, the project must not claim that fine-tuning is required. It may
+still claim local/offline/cost/artifact advantages if those are true.
+
+## Statistics
+
+Rate formula:
+
+```text
+rate(model, slice) = sum_i pass_i / N
+single-rate CI = Wilson 95% CI
+```
+
+Paired delta formula:
+
+```text
+paired_delta(A, B, metric, slice) =
+  mean_i(metric_i_A - metric_i_B)
+  over the same frozen row ids
+
+paired_delta_CI =
+  stratified paired bootstrap over row ids, B >= 10,000
+```
+
+Use paired tests because base/SFT/RS/DPO/GRPO run on the same frozen rows. For
+binary pass/fail metrics, report paired bootstrap CI plus McNemar or exact paired
+permutation test. For continuous metrics like DeltaE, use paired bootstrap on
+mean/median delta.
+
+Seed protocol:
+
+```text
+SFT final reporting: run 3 seeds when making final claims.
+RS/DPO/GRPO final reporting: run at least 3 seeds from a predeclared SFT checkpoint.
+Smoke/dev runs may be single-seed but must be labeled exploratory.
+Never choose the final model by final-eval performance; select on dev_calibration only.
+Report every seed plus mean/std/min/median/max across seeds.
+```
+
+Small eval slice handling:
+
+```text
+50 supported / 20 unsupported smoke eval:
+  pipeline sanity only; no pass/fail gate
+
+attribute/category slices with N < 100:
+  report raw count, rate, Wilson CI, and examples; no gate
+
+unsupported categories:
+  aggregate for the main refusal gate; category rows are diagnostic unless each category is sufficiently powered
+```
+
+## LLM/VLM Judge
+
+The judge is required by the project spec but is not the primary authority for
+color behavior.
+
+Judge dimensions:
+
+| Dimension | 0 | 1 | 2 |
+| --- | --- | --- | --- |
+| Spec adherence | violates output/support contract | partial | fully follows contract |
+| Robustness | breaks under messy prompt | wobbles | stable |
+| Task quality | wrong/useless | acceptable | clean controlled grade |
+| Consistency | inconsistent across similar inputs | mostly stable | reliable |
+
+Judge prompt must include the compact behavior spec, the source instruction, the
+model output, deterministic metrics, and before/after thumbnails when available.
+The judge may explain likely causes of failures, but cannot convert a
+deterministic fail into a pass.
+
+## Reports
+
+Required outputs:
+
+```text
+eval_runs/{run_id}/
+  config.yaml
+  rows.jsonl
+  raw_model_outputs.jsonl
+  parsed_outputs.jsonl
+  metrics_by_row.parquet
+  overall_results.csv
+  attribute_results.csv
+  target_fidelity_results.csv
+  style_results.csv
+  safety_results.csv
+  unsupported_results.csv
+  baseline_delta.csv
+  seed_summary.csv
+  failure_manifest.jsonl
+  qualitative/
+    row_id_input.png
+    row_id_graded.png
+    row_id_side_by_side.png
+```
+
+Required tables:
+
+| Table | Required Columns |
+| --- | --- |
+| Overall | model, checkpoint_id, seed, mode, split, N, pass_n, pass_rate, pass_ci_low, pass_ci_high, valid-token rate, decode-valid rate, target-fidelity pass, safety fail, judge means |
+| Baseline delta | model pair, seed policy, metric, N_paired, delta_pp, paired_boot_ci_low_pp, paired_boot_ci_high_pp, paired_test_p, gate threshold, gate result |
+| Seed summary | model_stage, seed_count, metric, mean, std, min, median, max, seed_mean_ci_low, seed_mean_ci_high |
+| Attribute | model, attribute, N, direction pass, mean measured delta |
+| Target fidelity | model, split, image mean/p95 DeltaE00, chart mean/p95 DeltaE00, pass |
+| Style | model, style, style pass, multi-match count, margin, confusion |
+| Safety | model, clip fail, smoothness fail, foldover fail, neutral drift fail, skin-locus fail |
+| Unsupported | model, category, recall, precision, false-support, over-refusal, coverage, boundary F1, mixed recall |
+| Error analysis | failure layer, count, representative row ids, likely data/eval/model cause |
+
+## Pass Criteria
+
+SFT passes only if:
+
+```text
+free_generation_valid_token_rate Wilson 95% lower bound >= 85%
+unsupported_recall Wilson 95% lower bound >= 80%
+unsupported_precision Wilson 95% lower bound >= 80%
+boundary_f1 Wilson 95% lower bound >= 80%
+mixed_unsupported_recall Wilson 95% lower bound >= 80%
+near_boundary_pair_accuracy Wilson 95% lower bound >= 85%
+over_refusal_rate Wilson 95% upper bound <= 10%
+supported_target_pass_rate Wilson 95% lower bound >= 60%
+paired-bootstrap 95% lower bound for supported_target_pass_rate vs best null >= +30pp
+paired-bootstrap 95% lower bound for supported_target_pass_rate vs best constant >= +20pp
+paired-bootstrap 95% lower bound for supported_target_pass_rate vs deterministic renderer >= +5pp
+over_refusal_rate <= deterministic_renderer_over_refusal + 2pp
+safety_failure_rate <= deterministic_renderer_safety_failure + 2pp
+```
+
+If a prompted frontier baseline is run:
+
+```text
+SFT must beat the best prompted frontier recipe/raw baseline by >= 5pp outside paired CI
+to claim fine-tuning is required for behavior reliability.
+```
+
+Runtime constrained eval must report `syntax_valid_rate == 100%`; any syntax
+failure in constrained mode is an implementation bug and blocks release.
+
+GRPO ships only if:
+
+```text
+paired-bootstrap 95% lower bound for pass_rate(GRPO - best prior tuned stage) >= +5pp
+or paired-bootstrap 95% upper bound for safety_failure_rate(GRPO - best prior tuned stage) <= -5pp
+and paired-bootstrap 95% upper bound for over_refusal_rate(GRPO - best prior tuned stage) <= +2pp
+and over_refusal_rate still satisfies the absolute SFT ceiling
+and mixed_unsupported_recall does not drop by more than 2pp
+and near_boundary_pair_accuracy does not drop by more than 2pp
+and the multi-seed summary shows the effect is not from one lucky seed
+```
+
+If the point estimate clears a threshold but the CI does not, label it:
+
+```text
+directional improvement; statistically inconclusive; do not ship over the prior stage on this evidence
+```

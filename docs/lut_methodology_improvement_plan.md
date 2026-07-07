@@ -1,5 +1,17 @@
 # Methodology Plan for V1 Prompt-to-LUT Image Grading
 
+> Status: SUPERSEDED.
+>
+> This document is retained for historical context only. The authoritative v1
+> plan is now split across `docs/master_plan.md`,
+> `docs/detailed_behavior_spec.md`, `docs/eval_harness_implementation.md`,
+> `docs/model_architecture.md`, `docs/data_collection_plan.md`, and
+> `docs/training_plan_colab.md`.
+>
+> Known stale content below includes the 50k/100k corpus scale, 30% PPR10K source
+> mix, reporting-only baseline gates, unsupported-refusal accuracy wording, and
+> older CLI/metrics wording.
+
 ## 1. Executive Summary
 
 This plan defines the v1 methodology for an instruction-guided prompt-to-LUT system. Given a source image and a global color-grading instruction, the model predicts a compact sequence of LUT tokens. A learned tokenizer decoder converts those tokens into a full 17x17x17 global 3D LUT, which is then applied to the image.

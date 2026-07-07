@@ -1,5 +1,11 @@
 # Train Your Own Small Learning Model - Project Spec
 
+> Status: External/course brief.
+>
+> This document states the original assignment constraints. It is not the
+> authoritative prompt-to-LUT methodology. Use `docs/master_plan.md` and the
+> linked implementation docs for current project decisions.
+
 ## Objective
 
 Build a small fine-tuned learning model in one week by researching a target behavior, generating and filtering training data, fine-tuning a small open base model, and proving the fine-tune improves the target behavior.
