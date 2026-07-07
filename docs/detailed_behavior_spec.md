@@ -120,7 +120,9 @@ unsupported.
 
 Style words are supported only when decomposed into measurable color behavior.
 They are not aesthetic catchalls. Provisional windows are calibrated on
-`dev_human_calibration`, then frozen before final eval.
+`dev_human_calibration`, then frozen before final eval into
+`eval/configs/calibration_manifest.json` under version key `style_window_version`
+(a Stage 10 output; see master_plan.md).
 
 | Style | Provisional Recipe Window |
 | --- | --- |
@@ -364,6 +366,14 @@ Metric windows are calibrated against those labels, then frozen. Provisional
 calibration gates are style precision/recall >= 70%, nearest-neighbor style
 confusion <= 20%, attribute-direction agreement >= 80%, and unacceptable skin
 rate <= 5%.
+
+The calibration set and its frozen outputs are explicit Stage 10 artifacts (see
+master_plan.md): the `dev_human_calibration` set under
+`data/eval/dev_human_calibration/`, and the frozen style windows plus skin-locus
+thresholds recorded in `eval/configs/calibration_manifest.json` under version keys
+`style_window_version` and `skin_locus_threshold_version`. A template with
+placeholder values is checked in before calibration; real values are written only
+when the windows and thresholds are frozen.
 
 ## CLI-First Behavior
 

@@ -1,0 +1,73 @@
+# TEMPLATE - values frozen at calibration; placeholders below.
+# Gating-slice registry. This file is a Stage 10 artifact (see docs/master_plan.md)
+# and is FROZEN before final eval under gating_slice_registry_version. It materializes
+# docs/eval_harness_implementation.md "Initial binding registry". The min_N /
+# min_paired_N values below are the PROVISIONAL bindings copied verbatim from that
+# doc; strata, MDE_pp, CI_method, and underpowered_behavior are TODO where the doc
+# does not yet declare them. Every ship-gated metric must have an entry here before
+# final eval freeze. Do NOT treat entries as final until frozen: true.
+#
+# Entry schema (docs/eval_harness_implementation.md):
+#   split, metric, min_N or min_paired_N, strata, MDE_pp, CI_method, underpowered_behavior
+
+gating_slice_registry_version: TODO_set_at_freeze
+frozen: false
+
+entries:
+  - split: eval_usage_weighted_headline
+    metric: supported_prompt_to_lut_pass_rate
+    min_N: { supported: 800, unsupported: 200 }
+    strata: TODO
+    MDE_pp: TODO
+    CI_method: TODO
+    underpowered_behavior: not-evaluable-below-min_N
+
+  - split: eval_unsupported_mixed
+    metric: mixed_unsupported_recall
+    min_N: 100
+    strata: TODO
+    MDE_pp: TODO
+    CI_method: TODO
+    underpowered_behavior: not-evaluable-below-min_N
+
+  - split: eval_boundary_pairs
+    metric: near_boundary_pair_accuracy
+    min_paired_N: 100   # complete pairs
+    strata: TODO
+    MDE_pp: TODO
+    CI_method: TODO
+    underpowered_behavior: not-evaluable-below-min_paired_N
+
+  - split: eval_image_sensitivity
+    metric: image_conditioning_gate
+    min_N: 300          # rows
+    min_paired_N: 100   # same-prompt image groups
+    strata: TODO
+    MDE_pp: 10          # +10pp vs prompt-only/image-blind
+    CI_method: TODO
+    underpowered_behavior: not-evaluable-below-min_N
+
+  - split: eval_subtle_control
+    metric: supported_prompt_to_lut_pass_rate
+    min_N: 150
+    strata: TODO
+    MDE_pp: TODO
+    CI_method: TODO
+    underpowered_behavior: not-evaluable-below-min_N
+
+  - split: eval_style_discriminability
+    metric: style_discriminability_pass
+    min_N: 150          # single-style rows
+    per_style_min_N: 30 # for per-style gates
+    strata: per-style
+    MDE_pp: TODO
+    CI_method: TODO
+    underpowered_behavior: not-evaluable-below-min_N
+
+  - split: eval_real_world_cli_inputs
+    metric: product_robustness_report
+    min_N: 100
+    strata: TODO
+    MDE_pp: TODO
+    CI_method: TODO
+    underpowered_behavior: diagnostic-unless-target-quality-gate-predeclared

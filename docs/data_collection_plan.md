@@ -58,6 +58,14 @@ Collect sources in this priority order:
 6. Controlled/procedural fillers only for missing attribute coverage,
    diagnostics, or warmup support.
 
+The machine-readable acquisition manifest for these families is
+`configs/source_inventory.yaml`. It enumerates, per source, a stable
+`source_pack_id`, dataset URL or id, access method, license, expected on-disk
+layout, and approximate item counts, and records the excluded families below.
+Stage 2 collection reads that file, and every candidate's `source_pack_id` in
+the provenance registry must match an entry there. URLs marked `TODO(verify)`
+in the manifest are unconfirmed and must be verified before download.
+
 Explicitly exclude for v1 active/headline training:
 
 - DPED;
@@ -203,6 +211,7 @@ active_set_version
 eval_set_version
 warmup_set_version
 leakage_report_hash
+leakage_policy_version
 rights_notes
 ```
 
@@ -482,6 +491,31 @@ The goal is not equal representation across every possible scene. The goal is
 that no source family, scene type, camera pipeline, or usage bucket dominates the
 learned behavior.
 
+Generic input support check:
+
+`generic_input_supported_rate` is measured per supported LUT over the generic
+images paired with it under the target mix above (broad photo, COCO/OpenImages-
+style scenes, and the capped source-photo bucket). For each paired generic image,
+map its pixels through that LUT's source support map (the same per-cell support map
+used for `input_pixel_supported_rate`) and compute the image's supported-pixel
+fraction: the fraction of pixels landing in genuinely supported (non-`low_support`)
+lattice cells. A generic image clears the per-image support floor when its
+supported-pixel fraction is `>= 98%` (provisional, mirroring
+`input_pixel_supported_rate` for source images; recalibrated during warmup).
+`generic_input_supported_rate` is the fraction of that LUT's paired generic panel
+clearing the floor and must satisfy `generic_input_supported_rate >= 98%`.
+
+On failure the pairing is repaired, not the gate:
+
+- an individual generic image below the per-image support floor is re-paired with
+  a better-supported generic image for that LUT, or its instruction row is
+  rejected;
+- a LUT whose `generic_input_supported_rate` stays below 98% after re-pairing has
+  its supported instruction rows rejected rather than relaxing the threshold.
+
+This check is enforced by the Warmup Data Materialization and Active Dataset
+Acceptance gates below.
+
 ## Quality Filters
 
 Every candidate LUT stores:
@@ -742,9 +776,62 @@ Rules:
   near-neighbor LUT, image, source-pair, support-map, prompt-template, or split
   identity with any final eval, diagnostic, or qualitative row.
 - Eval prompts are generated in separate batches and template families.
-- Reject near-identical train/eval prompts by text similarity and template hash.
-- Before finalizing eval, remove any train row too close to eval on image
-  embedding, LUT embedding, or prompt embedding.
+- Reject near-identical train/eval prompts by prompt-embedding cosine
+  similarity, word-3gram MinHash (lexical) similarity, and exact
+  `prompt_template_hash` match, at the cutoffs pinned in Near-Neighbor Leakage
+  Thresholds below.
+- Before finalizing eval, remove any train row that falls within the pinned
+  near-neighbor cutoffs (or an exact-match rule) of any eval row on image
+  embedding, pHash, LUT embedding, or prompt embedding; see Near-Neighbor
+  Leakage Thresholds below.
+
+### Near-Neighbor Leakage Thresholds
+
+Near-neighbor and exact-match controls are operational only against pinned
+embedding models and numeric cutoffs. Defaults are frozen under
+`leakage_policy_version` in `configs/leakage_thresholds.yaml`; every model id is a
+default that may be re-pinned, and any change to a model id, cutoff, or PCA basis
+bumps `leakage_policy_version` and forces a fresh `leakage_report.json`. These are
+the concrete pins for the embedding families named in the selection policy above.
+
+Pinned axes (defaults, `leakage_policy_version: v0`):
+
+| Axis | Embedding / definition (default, re-pinnable) | Distance metric | Near-neighbor cutoff (leak if within) | Exact-match rule |
+| --- | --- | --- | --- | --- |
+| Image semantics | OpenCLIP `ViT-L-14`, pretrained `laion2b_s32b_b82k`, 768-d, L2-normalized | cosine distance | `<= 0.05` (cosine sim `>= 0.95`) | `canonical_input_image_hash` |
+| Image perceptual | 64-bit DCT pHash (`hash_size=8`) | Hamming distance (bits) | `<= 6` of 64 bits | `perceptual_hash` / `input_phash` |
+| LUT behavior | canonical residual tensor on the 17x17x17 grid, flattened in `token_flatten_order`, mean-centered, PCA to 64-d (basis fit on the frozen train pool; record `pca_basis_sha256`) | cosine distance | `<= 0.02` (cosine sim `>= 0.98`) | `normalized_lut_hash` |
+| Prompt semantics | `sentence-transformers/all-MiniLM-L6-v2`, 384-d, L2-normalized | cosine similarity | `>= 0.92` | `prompt_template_hash` |
+| Prompt lexical | word-3gram MinHash (128 permutations) | Jaccard estimate | `>= 0.80` | `prompt_template_hash` |
+
+Cutoffs are v0 defaults; re-pin (and bump `leakage_policy_version`) after a
+labeled near-duplicate calibration set exists. See `configs/leakage_thresholds.yaml`.
+
+`leakage_report.json` computes pass/fail as follows:
+
+- Record `leakage_policy_version`, every embedding model id, `pca_basis_sha256`,
+  and every cutoff actually used.
+- For each axis, count cross-split pairs (train vs eval/diagnostic/qualitative,
+  and tokenizer/warmup vs eval) that hit either the exact-match rule or the
+  near-neighbor cutoff, and store example ids per axis.
+- `status = "pass"` requires zero violations on every axis; any violation on any
+  axis sets `status = "fail"`.
+- A `fail` blocks eval freeze and warmup training (see Warmup Data
+  Materialization), consistent with the rule that no `used_for_tokenizer` /
+  `used_for_warmup` row shares near-neighbor identity with any eval row.
+
+Leakage audit (run after an automated `pass`; sign-off recorded via
+`leakage_report_hash`):
+
+- Inspect the near-miss band: the 50 closest cross-split pairs per axis that sit
+  just outside the cutoff (within 1.5x the cutoff distance, or within +3 bits for
+  pHash), to confirm the cutoff is not set too loose.
+- Sample 50 random eval rows and manually review their nearest train neighbor on
+  each axis (image, LUT, prompt).
+- Verify the model ids, `pca_basis_sha256`, and cutoffs recorded in
+  `leakage_report.json` match the pinned `leakage_policy_version`.
+- Any unresolved near-miss finding forces a cutoff re-pin and a
+  `leakage_policy_version` bump before freeze.
 
 Required eval sets:
 
@@ -806,6 +893,10 @@ data/warmup/{warmup_set_version}/leakage_report.json
 data/warmup/{warmup_set_version}/diversity_report.json
 ```
 
+Unsupported/refusal (`<unsupported>`) rows are optional in the warmup set:
+refusal behavior is taught at SFT, not warmup, so warmup may include a small
+exact-`<unsupported>` slice or omit it entirely.
+
 Acceptance gate:
 
 - 30k-100k image x LUT pairs;
@@ -815,6 +906,10 @@ Acceptance gate:
   generated;
 - no eval, diagnostic, or qualitative image, LUT, source pair, support map,
   prompt template, split unit, or near-neighbor identity appears in warmup;
+- every warmup pair on a supported LUT clears the generic input support check
+  (Input Image Mix): the paired generic image meets the per-image support floor
+  and each supported LUT's `generic_input_supported_rate >= 98%` over its warmup
+  generic panel, with failing pairings re-paired or dropped;
 - any leakage report failure blocks warmup training.
 
 ## Active Dataset Acceptance Criteria
@@ -839,6 +934,10 @@ The active dataset is accepted only if:
    split manifest, and leakage report are present.
 11. PPR10K/FiveK do not overwhelm the active set even though they dominate raw
    candidate counts.
+12. Every supported active row clears the generic input support check (Input
+   Image Mix): its paired generic image meets the per-image support floor and its
+   LUT's `generic_input_supported_rate >= 98%` over the paired generic panel, with
+   failing pairings re-paired or the row rejected.
 
 ## Candidate To Active Pipeline
 

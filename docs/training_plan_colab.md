@@ -412,6 +412,11 @@ target = tokenizer ids for that LUT
 prompt = simple global instruction or LUT-family/style phrase
 ```
 
+Unsupported/refusal (`<unsupported>`) rows are optional in the warmup set:
+refusal behavior is taught at SFT, not warmup, so warmup may include a small
+exact-`<unsupported>` slice or omit it entirely. The warmup gate below therefore
+checks exact `<unsupported>` reproduction only where such rows are included.
+
 Warmup config must pin:
 
 ```text
@@ -535,6 +540,8 @@ beats deterministic renderer on renderer-hard slices as required by eval harness
 beats prompt-only/image-blind, blank-image, and shuffled-image baselines on eval_image_sensitivity
 ```
 
+The prompt-only/image-blind SFT baseline and the blank-image and shuffled-image ablation runs that this gate compares against are trained and scored as part of this stage, before the gate is evaluated. Stage 7 provides the deeper per-image breakdown and confirmatory analysis and is not a prerequisite for this gate.
+
 Every gated metric must have a gating-slice registry entry from
 `docs/eval_harness_implementation.md` declaring min_N/min_paired_N, MDE, CI
 method, and underpowered behavior before final eval freeze.
@@ -570,26 +577,31 @@ If SFT fails:
 | weak unseen-family | source overfit | improve usage-aware culling and holdout coverage |
 | image-blind parity | targets not genuinely image-conditioned | simplify model or redesign data |
 
-## Stage 7: Image-Conditioning Ablations
+## Stage 7: Image-Conditioning Ablations (Confirmatory)
 
-Run:
+The prompt-only/image-blind SFT baseline and the blank-image and shuffled-image
+ablations are produced and scored in Stage 6, where they gate the SFT pass
+decision. This stage is confirmatory and deeper analysis only; it is not a
+prerequisite for the Stage 6 gate.
+
+The three ablation runs are:
 
 - prompt-only SFT: same rows and targets, no image input;
 - blank-image eval: run trained VLM with a constant image;
 - shuffled-image eval: pair prompts with wrong images.
 
-Score against the named eval slice `eval_image_sensitivity`, where the same
+They are scored against the named eval slice `eval_image_sensitivity`, where the same
 instruction must produce different safe LUTs across different source images. The
 targets must be image-adaptive by construction; simply applying the same global
 prompt to arbitrary different images is not enough. Each group stores evidence
 that the correct decoded safe LUT differs by image and that a prompt-only/common
 LUT cannot pass the group on dev calibration. The
-multimodal claim is gated on the hard, CI-gated image-conditioning criterion in
+multimodal claim is gated (in Stage 6) on the hard, CI-gated image-conditioning criterion in
 the eval harness: paired-bootstrap 95% lower bound for
 `supported_prompt_to_lut_pass_rate` on `eval_image_sensitivity` must beat the
 prompt-only/image-blind SFT baseline by >= +10pp (provisional; calibratable),
 and beat the blank-image and shuffled-image ablations by a positive lower bound.
-If image-blind falls within that margin, report that the VL premise is not
+This stage re-reports that result with per-image breakdowns; if image-blind falls within that margin the Stage 6 gate fails: the VL premise is not
 justified and either simplify the model or redesign data.
 
 ## Stage 8: Rejection Sampling / DPO
@@ -755,6 +767,13 @@ outputs/run_001/
   metrics.json
   version_manifest.json
 ```
+
+`graded.png`, `preview_side_by_side.png`, and `output.cube` are supported-only
+artifacts, produced only for valid token sequences. An `<unsupported>` run omits
+them and writes the refusal-artifact set only — `input.png`, `output_tokens.txt`
+(containing `<unsupported>`), `metrics.json` (`output.kind = "unsupported"`), and
+`version_manifest.json` — with no LUT applied (see model_architecture.md "Runtime
+Inference" step 6).
 
 `metrics.json` includes:
 
