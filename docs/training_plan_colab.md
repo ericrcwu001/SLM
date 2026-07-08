@@ -136,6 +136,15 @@ All long stages must be resumable.
 
 ## Stage 0: Eval Before Training
 
+External precondition before any teacher or judge call:
+
+```text
+configs/model_clients.yaml exists
+teacher_primary and judge_primary use concrete model/deployment ids
+referenced endpoint/API-key environment variables are available
+no secret values are written into artifacts
+```
+
 Before SFT:
 
 1. Freeze the detailed behavior spec.
@@ -332,6 +341,10 @@ Validation before training:
 
 ## Stage 3: Vocabulary Resize And Preflight
 
+Active dataset and eval construction intentionally happen before this stage. The
+dataset uses frozen VQ tokenizer ids and reconstruction reports; it does not
+require resized Qwen embedding/head rows until warmup and SFT.
+
 Base:
 
 ```text
@@ -497,11 +510,13 @@ loss_masking: assistant target only
 ```
 
 Freezing the multimodal projector is a capability downgrade because the vision
-encoder is already frozen. A run with frozen vision encoder plus frozen
-projector cannot make an image-conditioning claim unless it independently
-clears `eval_image_sensitivity`. Record vision encoder dtype/quantization and
-projector policy in run config; if the vision path is quantized or frozen beyond
-the default, run image-feature parity diagnostics before final SFT claims.
+encoder is already frozen. A claim-bearing image-conditioned run must train the
+projector through LoRA or a small full-trainable module. A frozen-projector run
+is allowed only as an exploratory or non-image-conditioning-claim run, and must
+be labeled that way even if other gates pass. Record vision encoder
+dtype/quantization and projector policy in run config; if the vision path is
+quantized or frozen beyond the default, run image-feature parity diagnostics
+before final SFT claims.
 
 Checkpoint cadence:
 
@@ -544,7 +559,7 @@ The prompt-only/image-blind SFT baseline and the blank-image and shuffled-image 
 
 Every gated metric must have a gating-slice registry entry from
 `docs/eval_harness_implementation.md` declaring min_N/min_paired_N, MDE, CI
-method, and underpowered behavior before final eval freeze.
+method, multiplicity family, and underpowered behavior before final eval freeze.
 
 Also report:
 
@@ -576,6 +591,11 @@ If SFT fails:
 | unsafe LUTs | source LUT filters too loose | tighten LUT quality filters |
 | weak unseen-family | source overfit | improve usage-aware culling and holdout coverage |
 | image-blind parity | targets not genuinely image-conditioned | simplify model or redesign data |
+
+If image-blind parity is the only load-bearing failure, the immediate v1
+resolution is to narrow the claim rather than redesigning data by default: report
+prompt-to-LUT reliability on the supported synthetic prompt distribution, and do
+not claim image-conditioned behavior.
 
 ## Stage 7: Image-Conditioning Ablations (Confirmatory)
 

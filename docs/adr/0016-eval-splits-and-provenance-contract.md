@@ -3,8 +3,8 @@
 Status: Accepted.
 
 The provenance registry must contain the fields needed by its own split,
-selection, and eval rules. In addition to source and license metadata, rows must
-record canonical LUT domain metadata, `vq_codebook_sha256`,
+selection, and eval rules. In addition to source metadata, rows must record
+canonical LUT domain metadata, `vq_codebook_sha256`,
 `vq_decoder_sha256`, tokenizer metadata,
 representability status, support-map identifiers, prompt template family,
 teacher model/version/batch, paired input image identity, behavior-vector

@@ -62,7 +62,6 @@ One supported eval row is:
   "metadata": {
     "has_people": true,
     "scene_cluster": 42,
-    "license": "recorded-for-provenance",
     "source_hash": "...",
     "prompt_template_family": "explicit_compound",
     "prompt_generation_batch_id": "...",
@@ -361,7 +360,7 @@ reference LUTs for provenance. References use the same DeltaE gate as exact_targ
 and each must individually satisfy the tokenization-acceptability gate above to keep
 the row headline-eligible. `behavior_window` keys are a subset of the measured
 behavior vector, bounds are in LUT-domain measured-behavior units, and windows are
-frozen once on `dev_human_calibration`:
+frozen from deterministic spec/config thresholds before final eval:
 
 ```text
 behavior_window = {
@@ -513,7 +512,6 @@ Splits:
 | Split | Purpose |
 | --- | --- |
 | `dev_calibration` | tune thresholds and catch harness bugs; never final |
-| `dev_human_calibration` | calibrate style windows and skin acceptability once, then freeze into `eval/configs/calibration_manifest.json` (`style_window_version`, `skin_locus_threshold_version`); produced as a Stage 10 artifact under `data/eval/dev_human_calibration/` |
 | `eval_usage_weighted_headline` | headline supported eval weighted by rough expected usage |
 | `eval_coverage_macro` | macro coverage across source/style/attribute buckets |
 | `eval_image_sensitivity` | same-prompt/different-image rows where the correct safe LUT must differ across source images; drives the image-conditioning gate |
@@ -685,6 +683,22 @@ A gate with N below its declared minimum is not evaluable and cannot silently
 pass or fail. `N < 100` never gates unless the metric is aggregated into a
 predeclared sufficiently powered slice.
 
+Multiplicity policy:
+
+```text
+ship_gate_family = all ship-gated SFT/RS-DPO/GRPO pass/fail tests evaluated for
+  one ship decision on one frozen eval set
+family_alpha = 0.05
+method = Holm-Bonferroni over p-values for tests inside the family, plus
+  simultaneous paired-bootstrap confidence bounds for reported gate deltas
+OR groups = declared composite families; every member test in the OR group is
+  included in the same multiplicity adjustment before the OR is evaluated
+diagnostic metrics = not part of ship_gate_family and cannot ship a model
+```
+
+The report may include unadjusted exploratory intervals, but pass/fail decisions
+must use the multiplicity-adjusted family.
+
 Initial binding registry:
 
 ```text
@@ -698,10 +712,10 @@ eval_real_world_cli_inputs: N >= 100, product/robustness report slice, diagnosti
 ```
 
 The registry above is materialized as `eval/configs/gating_slice_registry.yaml`
-with version key `gating_slice_registry_version` and is a Stage 10 output (see
+with version key `gating_slice_registry_version` and is a Stage 9 output (see
 master_plan.md). The `min_N`/`min_paired_N` values are the provisional bindings;
-`strata`, `MDE_pp`, CI method, and underpowered behavior are declared per entry
-and frozen with the eval sets before final eval.
+`strata`, `MDE_pp`, CI method, multiplicity family, and underpowered behavior are
+declared per entry and frozen with the eval sets before final eval.
 
 These N's are minimum evaluable sizes, not a partition of the headline budget.
 `eval_subtle_control`, `eval_style_discriminability`, and `eval_unsupported_mixed`
@@ -802,6 +816,11 @@ safety_failure_rate <= deterministic_renderer_safety_failure + 2pp
 ```
 
 These SFT criteria are self-contained: the prompt-only/image-blind SFT baseline and the blank-image and shuffled-image ablation runs on `eval_image_sensitivity` are trained and scored as part of the SFT evaluation gate, so the gate is computed before it is evaluated and does not depend on any later baselines/reporting stage.
+
+If the image-conditioning gate fails while the non-image-dependent gates pass,
+the v1 claim narrows to prompt-to-LUT reliability on the supported synthetic
+prompt distribution. Do not claim that the VLM uses image evidence unless the
+`eval_image_sensitivity` gate passes.
 
 In every gate above, `deterministic renderer` and the `deterministic_renderer_*`
 quantities refer to the single frozen, config-pinned baseline defined under

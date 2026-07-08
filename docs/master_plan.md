@@ -210,7 +210,7 @@ Order:
 1. Build eval harness, schema, parser/decoder interfaces, metrics, and
    non-gating smoke eval rows. Final frozen headline eval rows depend on
    canonicalization, tokenizer freeze, split units, culling, and prompt
-   validation and are constructed and frozen at step 10.
+   validation and are constructed and frozen at step 9.
 2. Collect/scrape sources.
 3. Build provenance registry.
 4. Derive, canonicalize, and normalize LUTs.
@@ -220,9 +220,9 @@ Order:
 7. Train VQ LUT tokenizer on train-split accepted LUTs only.
 8. Freeze tokenizer after mean, tail, per-family, per-target, codebook, and
    roundtrip gates pass.
-9. Resize vocabulary and run embedding/head preflight assertions.
-10. Build active 10k-15k instruction dataset and freeze final headline,
+9. Build active 10k-15k instruction dataset and freeze final headline,
     diagnostic, and qualitative eval sets.
+10. Resize vocabulary and run embedding/head preflight assertions.
 11. Materialize `data/warmup/{warmup_set_version}/` from train-only accepted
     LUT/image identities after `active_set_version` and `eval_set_version` are
     frozen.
@@ -258,23 +258,24 @@ Each stage below is binding. An orchestrator may start a stage only when its
 inputs exist and the prior stage's acceptance gate passed. Gate-required baseline and ablation comparisons are computed within the stage whose gate consumes them (for example, the image-blind, blank-image, and shuffled-image ablations that the SFT gate depends on are trained and scored inside Stage 14 before that gate is evaluated); later eval and reporting stages only archive and extend those comparisons and never feed an upstream gate, so no acceptance gate depends on a later stage. Paths are relative to
 the artifact root in `docs/training_plan_colab.md` "Artifact Storage". Version
 keys are artifact identity fields from the runtime manifest, provenance
-registry, tokenizer manifest, active/eval manifests, calibration manifest, gating-slice
+registry, tokenizer manifest, active/eval manifests, deterministic threshold manifest, gating-slice
 registry, warmup manifest, and reward config. Stage numbers follow the Training Strategy order above. Gates are
 summarized here; the authoritative doc § holds the exact formulas and
 thresholds.
 
 | Stage | Inputs | Output artifact (path + version key) | Acceptance gate | Authoritative doc § |
 | --- | --- | --- | --- | --- |
+| 0 external preconditions | human-provided API/deployment decisions and local secret env vars | `configs/model_clients.yaml` with concrete teacher/judge profiles; referenced env vars available in the execution environment | provider, concrete `model_id`/deployment id, endpoint/base-url env var, API-key env var, prompt version, batch id, and `credential_profile` are present for `teacher_primary` and `judge_primary`; aliases such as `latest` are rejected; no secret values are stored | data_collection_plan.md "Instruction Generation"; ADR 0004 |
 | 1 eval harness + smoke rows | `behavior_spec.md`, `detailed_behavior_spec.md`, Canonical LUT Contract | `eval/` modules + `eval/configs/eval_default.yaml`; smoke rows in `data/eval/` (50 supported/20 unsupported) — `eval_config_version`, `parser_version`, `fsm_version`, `safety_threshold_version` | parser, constrained decoder, and metrics run end to end on the smoke subset; pipeline sanity only, not a pass/fail gate | eval_harness_implementation.md (whole); training_plan_colab.md "Stage 0: Eval Before Training" |
 | 2 collect/scrape sources | `configs/source_inventory.yaml` (source inventory priority list) | `luts/raw/`, `data/raw_registry/` raw files + metadata — `file_hash`, `source_pack_id` | excluded sources (DPED, HDR+/ISP, camera-log) rejected; raw file + metadata stored per candidate | data_collection_plan.md "Source Inventory" |
-| 3 provenance registry | raw files + source metadata | `data/raw_registry/` provenance row per candidate — `canonical_domain_id`, `active_set_version` (placeholder until Stage 10) | every candidate traceable and removable; all required registry fields present | data_collection_plan.md "Provenance Registry" |
+| 3 provenance registry | raw files + source metadata | `data/raw_registry/` provenance row per candidate — `canonical_domain_id`, `active_set_version` (placeholder until Stage 9) | every candidate traceable and removable; all required registry fields present | data_collection_plan.md "Provenance Registry" |
 | 4 derive/canonicalize/normalize LUTs | registry rows + raw LUTs / expert XMP / paired images | `luts/canonical_absolute/`, `luts/canonical_residual/` 17x17x17 tensors — `canonical_domain_id = slm_lut_v1_srgb_display_encoded_17_trilinear`, `canonical_absolute_lut_hash`, `canonical_residual_lut_hash` | all artifacts in the canonical domain; raw color-managed before hashing/residual; `normalization_warnings` recorded | data_collection_plan.md "Canonical LUT Domain", "PPR10K Plan", "FiveK Plan", "Public LUT Sources"; model_architecture.md "Canonical LUT Domain" |
 | 5 representability + quality filter | canonical residual LUTs + edit metadata + paired pixels | `representability_tier` per registry row + `support_map_path` maps + rejected-row manifest — `quality_filter_version`, `representability_tier` | XMP local-tool hard-reject; `fit_deltaE00_mean <= 3.0`, `p95 <= 7.0`, `input_pixel_supported_rate >= 98%`; headline rows require `representability_tier = gold` | data_collection_plan.md "Derived LUT Representability Gate", "Quality Filters" |
 | 6 split manifest + eval reservations | accepted canonical candidates + quality/representability reports + `configs/leakage_thresholds.yaml` | `data/splits/` split manifest — `split_id`, `leakage_report_hash`, `leakage_policy_version` | deterministic split units created; eval/diagnostic/qualitative identities reserved before tokenizer or warmup use; no exact/near-neighbor leakage by image, LUT, source pair, support map, or prompt template, using the pinned thresholds in `configs/leakage_thresholds.yaml` (a `leakage_policy_version` bump forces a fresh `leakage_report.json`) | data_collection_plan.md "Splits And Leakage Rules" |
 | 7 train VQ tokenizer | train-split accepted canonical residual tensors + tokenizer-dev holdout; eval-reserved identities excluded | `tokenizer/checkpoints/` candidate — `tokenizer_weights_hash` | heldout mean DeltaE00 <= 2.0, p95 <= 4.0, p99 <= 6.0; mean PSNR >= 35 dB, p5 >= 30 dB; per-family gates; active-code/perplexity alert reviewed; roundtrip tests pass | training_plan_colab.md "Stage 1: LUT Tokenizer Training"; model_architecture.md "LUT Tokenizer" |
 | 8 freeze tokenizer | passing tokenizer checkpoint + diagnostics | `tokenizer/final/` frozen decoder + manifest — `tokenizer_version`, `vq_codebook_sha256`, `vq_decoder_sha256`, `flatten_order` | mean/tail/per-family/per-target/codebook/roundtrip gates all pass; frozen manifest fields recorded; per-target SFT admission mean <= 3.0, p95 <= 6.0 | model_architecture.md "LUT Tokenizer" (frozen manifest fields); training_plan_colab.md "Stage 1: LUT Tokenizer Training"; data_collection_plan.md "Post-Tokenizer Filtering" |
-| 9 vocab resize + preflight | `Qwen/Qwen2.5-VL-3B-Instruct` base + frozen tokenizer manifest | resized base + preflight report — `vocab_size_after_resize`, `added_special_token_ids`, `tied_embedding_status` | `len(tokenizer) == embed rows == lm_head rows`; token-suffix→codebook index asserted; only the 259 new rows train; old rows unchanged after a smoke step; save/load roundtrip within tolerance | model_architecture.md "Vocabulary Resize And Embedding Preflight"; training_plan_colab.md "Stage 3: Vocabulary Resize And Preflight" |
-| 10 active dataset + calibration + frozen eval sets | accepted gold rows + per-target tokenizer reconstruction + embeddings + split units + `dev_human_calibration` blind-rater labels + `configs/model_clients.yaml` | `data/active_sft/` (10k-15k, default 12k) + `data/eval/` frozen sets (usage-weighted headline 800 supported/200 unsupported/100 qual + additive diagnostic slices -> 1300 supported/300 unsupported total; see eval_harness_implementation.md "Eval Splits") + `data/eval/dev_human_calibration/` set + `eval/configs/calibration_manifest.json` (frozen style windows + skin-locus thresholds) + `eval/configs/gating_slice_registry.yaml` — `active_set_version`, `eval_set_version`, `style_window_version`, `skin_locus_threshold_version`, `gating_slice_registry_version` | Active Dataset Acceptance Criteria (scale, no-dominance, no-leakage, provenance + measured behavior, canonical domain, representability + tokenizer recon, tags backed by checks, unsupported coverage); style windows + skin-locus thresholds calibrated on `dev_human_calibration` then frozen (calibration gates in detailed_behavior_spec.md); every ship-gated metric has a `gating_slice_registry.yaml` entry; headline-eligibility assigned | data_collection_plan.md "Active Dataset Acceptance Criteria", "Splits And Leakage Rules"; detailed_behavior_spec.md "Human Calibration"; training_plan_colab.md "Stage 2: Active Dataset Preparation"; eval_harness_implementation.md "Eval Splits", "Initial binding registry" |
+| 9 active dataset + frozen eval sets | accepted gold rows + per-target tokenizer reconstruction + selection embeddings + split units + `configs/model_clients.yaml` | `data/active_sft/` (10k-15k, default 12k) + `data/eval/` frozen sets (usage-weighted headline 800 supported/200 unsupported/100 qual + additive diagnostic slices -> 1300 supported/300 unsupported total; see eval_harness_implementation.md "Eval Splits") + `eval/configs/calibration_manifest.json` (deterministic style windows + skin-locus thresholds copied from the spec/config) + `eval/configs/gating_slice_registry.yaml` — `active_set_version`, `eval_set_version`, `style_window_version`, `skin_locus_threshold_version`, `gating_slice_registry_version` | Active Dataset Acceptance Criteria (scale, no-dominance, no-leakage, provenance + measured behavior, canonical domain, representability + tokenizer recon, tags backed by checks, unsupported coverage); deterministic style windows + skin-locus thresholds are frozen from the behavior spec/config with no human-rater labels; every ship-gated metric has a `gating_slice_registry.yaml` entry; headline-eligibility assigned | data_collection_plan.md "Active Dataset Acceptance Criteria", "Splits And Leakage Rules"; detailed_behavior_spec.md "Deterministic Threshold Freeze"; training_plan_colab.md "Stage 2: Active Dataset Preparation"; eval_harness_implementation.md "Eval Splits", "Initial binding registry" |
+| 10 vocab resize + preflight | `Qwen/Qwen2.5-VL-3B-Instruct` base + frozen tokenizer manifest | resized base + preflight report — `vocab_size_after_resize`, `added_special_token_ids`, `tied_embedding_status` | `len(tokenizer) == embed rows == lm_head rows`; token-suffix→codebook index asserted; only the 259 new rows train; old rows unchanged after a smoke step; save/load roundtrip within tolerance | model_architecture.md "Vocabulary Resize And Embedding Preflight"; training_plan_colab.md "Stage 3: Vocabulary Resize And Preflight" |
 | 11 warmup dataset materialization | frozen tokenizer + split manifest + active/eval manifests + train-only accepted LUTs/images | `data/warmup/{warmup_set_version}/manifest.json` + `pairs.parquet` — `warmup_set_version`, `leakage_report_hash` | 30k-100k pairs; every supported target has 64 valid tokens; no eval/diagnostic/qualitative image, LUT, source_pair, support_map, prompt-template, split-unit, or near-neighbor identity; diversity/token reports pass | data_collection_plan.md "Warmup Data Materialization"; training_plan_colab.md "Stage 4A: Materialize Warmup Dataset" |
 | 12 generative LUT-token warmup | frozen warmup set + resized base | `models/warmup_adapters/` — `adapter_id`, `adapter_sha256`, `adapter_step`, `warmup_set_version` | 50-example overfit near-perfect free-generation grammar; 200-example reproduces supported sequences + exact `<unsupported>` (where included); `free_generation_valid_token_rate` beats token baseline; no old-vocab drift | training_plan_colab.md "Stage 4B: Generative LUT-Token Warmup" |
 | 13 SFT smoke tests | `data/active_sft/` 50/200 subset + warmup adapter + resized base | `models/sft_adapters/` smoke checkpoints (`smoke_50_examples`, `overfit_200_examples`) — `adapter_step` | 50-example overfit near-perfect free-gen token syntax; 200-example reproduces supported tokens + unsupported; single-seed allowed but labeled exploratory | training_plan_colab.md "Stage 5: SFT With QLoRA" (smoke tests), "Stage 0: Eval Before Training" |
@@ -348,7 +349,8 @@ general creativity improvement without a separate study.
 - VQ tokenizer quality is a hard dependency.
 - PPR10K/FiveK derived LUT yield may be lower than raw target counts because
   some edits are not global-LUT representable.
-- Style recipes need empirical calibration before final eval freeze.
+- Style recipes are deterministic v1 recipe windows; changes before final eval
+  freeze require an explicit spec/config version bump, not human-rater calibration.
 - Skin preservation is a LUT-domain safety audit, not a semantic editing
   guarantee.
 - A deterministic recipe renderer or prompted frontier model might be a strong
@@ -370,7 +372,7 @@ where this list's ordering diverges from that table, the table governs.
 6. Create split units and reserve eval/diagnostic/qualitative identities.
 7. Train tokenizer on train-split accepted canonical LUTs.
 8. Run tokenizer roundtrip/tail/per-family diagnostics.
-9. Run vocabulary resize and embedding/head preflight.
-10. Build the active 12k SFT dataset and freeze eval sets.
+9. Build the active 12k SFT dataset and freeze eval sets.
+10. Run vocabulary resize and embedding/head preflight.
 11. Materialize train-only warmup data, then run generative LUT-token warmup.
 12. Run QLoRA SFT smoke tests.

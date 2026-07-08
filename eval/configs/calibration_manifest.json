@@ -1,35 +1,37 @@
 {
-  "_template": "TEMPLATE - values frozen at calibration; placeholders below. This file is a Stage 10 artifact (see docs/master_plan.md). Style windows and skin-locus thresholds are frozen on dev_human_calibration BEFORE final eval. Until then treat nothing here as authoritative: 'frozen' fields are null and version keys are TODO. 'provisional' fields mirror the not-yet-frozen tables in docs/detailed_behavior_spec.md ('Supported Style Bundles', 'Skin-Locus Safety', 'Human Calibration'). Do NOT invent frozen numbers.",
+  "_template": "TEMPLATE - deterministic threshold-freeze manifest. This file is a Stage 9 artifact (see docs/master_plan.md). V1 has no dev_human_calibration split and no human-rater calibration gate. Style windows, style margins, and skin-locus thresholds are copied from docs/detailed_behavior_spec.md and frozen before final eval. Do NOT treat values as final until frozen is true.",
   "frozen": false,
   "style_window_version": "TODO_set_at_freeze",
   "skin_locus_threshold_version": "TODO_set_at_freeze",
-  "calibration_set": "data/eval/dev_human_calibration/",
+  "source_spec": {
+    "path": "docs/detailed_behavior_spec.md",
+    "commit_or_sha256": "TODO_set_at_freeze"
+  },
   "style_windows": {
-    "_note": "One window per supported style bundle. 'provisional' mirrors docs/detailed_behavior_spec.md 'Supported Style Bundles' (not yet frozen). 'frozen' is filled at calibration.",
-    "matte":        { "provisional": "black point L* +2..+8, contrast spread -1..-7, chroma -1..-5, no strong split tone", "frozen": null },
-    "faded":        { "provisional": "black point L* +2..+10, chroma -4..-12, highlight L* -1..-7, contrast -2..-10", "frozen": null },
-    "filmic":       { "provisional": "highlight L* -2..-8, chroma -1..-6, contrast -2..+4, weak/no split tone", "frozen": null },
-    "cinematic":    { "provisional": "teal/cyan shadows plus orange/yellow highlights, split strength 2..8, chroma -1..-6", "frozen": null },
-    "teal-orange":  { "provisional": "teal/cyan shadows plus orange/yellow highlights, split strength 5..14, neutral DeltaE00 <= 2", "frozen": null },
-    "sepia":        { "provisional": "global b* +2..+12, global a* +0.5..+6, chroma -1..-8, no teal shadows", "frozen": null },
-    "bleach bypass":{ "provisional": "chroma -5..-16, contrast +3..+15, black point L* -1..-8", "frozen": null },
-    "natural":      { "provisional": "small deltas only, neutral drift improved or <= 1.5, must not match another style", "frozen": null }
+    "_note": "One deterministic recipe window per supported style bundle. Frozen values are copied from docs/detailed_behavior_spec.md before final eval.",
+    "matte": { "window": "black point L* +2..+8, contrast spread -1..-7, chroma -1..-5, no strong split tone" },
+    "faded": { "window": "black point L* +2..+10, chroma -4..-12, highlight L* -1..-7, contrast -2..-10" },
+    "filmic": { "window": "highlight L* -2..-8, chroma -1..-6, contrast -2..+4, weak/no split tone" },
+    "cinematic": { "window": "teal/cyan shadows plus orange/yellow highlights, split strength 2..8, chroma -1..-6" },
+    "teal-orange": { "window": "teal/cyan shadows plus orange/yellow highlights, split strength 5..14, neutral DeltaE00 <= 2" },
+    "sepia": { "window": "global b* +2..+12, global a* +0.5..+6, chroma -1..-8, no teal shadows" },
+    "bleach bypass": { "window": "chroma -5..-16, contrast +3..+15, black point L* -1..-8" },
+    "natural": { "window": "small deltas only, neutral drift improved or <= 1.5, must not match another style" }
   },
+  "style_margin_to_nearest_neighbor_min": "TODO_set_before_freeze",
   "skin_locus_thresholds": {
-    "_note": "Fixed skin_locus_v1 chart gate. 'provisional' mirrors docs/detailed_behavior_spec.md 'Skin-Locus Safety'. 'frozen' is filled at calibration.",
+    "_note": "Fixed skin_locus_v1 chart gate copied from docs/detailed_behavior_spec.md.",
     "chart_id": "skin_locus_v1",
-    "skin_locus_clip_rate":                  { "provisional": "== 0",   "frozen": null },
-    "skin_locus_hue_drift_deg_p95":          { "provisional": "<= 8",   "frozen": null },
-    "skin_locus_deltaE00_p95":               { "provisional": "<= 12",  "frozen": null },
-    "skin_locus_chroma_ratio_min":           { "provisional": ">= 0.75","frozen": null },
-    "skin_locus_chroma_ratio_max":           { "provisional": "<= 1.35","frozen": null },
-    "skin_locus_lightness_order_violations": { "provisional": "== 0",   "frozen": null }
+    "skin_locus_clip_rate": "== 0",
+    "skin_locus_hue_drift_deg_p95": "<= 8",
+    "skin_locus_deltaE00_p95": "<= 12",
+    "skin_locus_chroma_ratio_min": ">= 0.75",
+    "skin_locus_chroma_ratio_max": "<= 1.35",
+    "skin_locus_lightness_order_violations": "== 0"
   },
-  "calibration_gates": {
-    "_note": "Provisional acceptance for the calibration itself; see docs/detailed_behavior_spec.md 'Human Calibration'. These gate whether the freeze is accepted, not model output.",
-    "style_precision_recall_min": "70%",
-    "nearest_neighbor_style_confusion_max": "20%",
-    "attribute_direction_agreement_min": "80%",
-    "unacceptable_skin_rate_max": "5%"
+  "freeze": {
+    "frozen_at": "TODO_set_at_freeze",
+    "frozen_by": "TODO_owner",
+    "change_policy": "Any post-freeze threshold change requires a version bump and invalidates affected eval runs."
   }
 }

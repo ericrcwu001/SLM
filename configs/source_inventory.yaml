@@ -15,10 +15,9 @@
 #   - `priority` mirrors the Source Inventory priority order (1 = collect first).
 #   - `access_method` is one of:
 #       direct_download | hf_dataset | scrape | manual | generated
-#   - `url_status: todo_verify` means the URL / dataset id and/or license are NOT
-#     confirmed. Verify the live location and terms before download; do not treat
-#     a todo_verify URL as canonical. The full per-file terms snapshot is still
-#     captured in the provenance registry `license_or_terms_snapshot` field.
+#   - `url_status: todo_verify` means the URL / dataset id or acquisition method
+#     is NOT confirmed. Verify the live location before download; do not treat a
+#     todo_verify URL as canonical.
 #   - `expected_layout` is the on-disk shape under the raw acquisition root (see
 #     training_plan_colab.md "Artifact Storage"): raw files under `luts/raw/`,
 #     metadata under `data/raw_registry/`.
@@ -37,7 +36,6 @@ sources:
     url_or_dataset_id: https://github.com/csjliang/PPR10K
     url_status: verified   # repo/dataset id confirmed; exact asset links TODO(verify)
     access_method: direct_download
-    license: PPR10K research license (academic/research use); snapshot per file in registry
     expected_layout: |
       luts/raw/ppr10k/
         source/<source_photo_id>.tif
@@ -49,7 +47,7 @@ sources:
     notes: >-
       Source images plus 3 expert (a/b/c) XMP/retouched targets are distributed
       via links in the repo README (Google Drive / Baidu). TODO(verify) exact
-      download URLs and license terms snapshot at collection time.
+      download URLs at collection time.
     handling_ref: data_collection_plan.md "PPR10K Plan"
 
   - source_pack_id: fivek_expert_abcde
@@ -59,7 +57,6 @@ sources:
     url_or_dataset_id: https://data.csail.mit.edu/graphics/fivek/
     url_status: verified   # official CSAIL distribution page confirmed
     access_method: direct_download
-    license: MIT-Adobe FiveK license (research use; per-photo Adobe Stock terms); snapshot per file
     expected_layout: |
       luts/raw/fivek/
         raw/<source_photo_id>.dng
@@ -71,7 +68,7 @@ sources:
     approx_item_count: 25000   # 5,000 source photos x 5 experts (A-E)
     notes: >-
       5,000 raw DNGs plus 5 expert (A-E) renditions from the official MIT/CSAIL
-      distribution. TODO(verify) confirm license terms snapshot at collection.
+      distribution.
     handling_ref: data_collection_plan.md "FiveK Plan"
 
   - source_pack_id: freshluts_public
@@ -81,13 +78,12 @@ sources:
     url_or_dataset_id: https://freshluts.com/
     url_status: todo_verify   # confirm site + per-LUT source and scrape method
     access_method: scrape
-    license: per-LUT, varies by upload; record license_or_terms_snapshot per file
     expected_layout: |
       luts/raw/fresh_luts/<pack_or_author>/<lut_id>.cube
     approx_item_count: null   # TODO(verify) depends on scrape scope
     notes: >-
-      Community-uploaded .cube LUTs; license and declared color space vary per
-      upload and MUST be recorded per file. Reject unknown-domain/camera-log
+      Community-uploaded .cube LUTs; declared color space may vary per upload
+      and MUST be recorded per file. Reject unknown-domain/camera-log
       LUTs unless a canonical conversion is defined. TODO(verify) scrape method.
     handling_ref: data_collection_plan.md "Public LUT Sources"
 
@@ -98,7 +94,6 @@ sources:
     url_or_dataset_id: https://rawpedia.rawtherapee.com/Film_Simulation
     url_status: todo_verify   # landing page known; exact archive URLs TODO(verify)
     access_method: direct_download
-    license: RawTherapee film-simulation pack (free redistribution per RawPedia); G'MIC CLUTs under G'MIC/CeCILL terms
     expected_layout: |
       luts/raw/haldclut/rawtherapee/<clut_name>.png
       luts/raw/haldclut/gmic/<clut_name>.png
@@ -106,7 +101,7 @@ sources:
     notes: >-
       RawTherapee film-simulation HaldCLUT archive (linked from RawPedia) and
       the G'MIC CLUT collection (https://gmic.eu/). TODO(verify) exact archive
-      URLs and per-pack license terms before download.
+      URLs before download.
     handling_ref: data_collection_plan.md "Public LUT Sources"
 
   - source_pack_id: public_lut_packs_misc
@@ -116,13 +111,12 @@ sources:
     url_or_dataset_id: null
     url_status: todo_verify   # enumerate one concrete pack per entry before download
     access_method: manual
-    license: per-pack, varies; record license_or_terms_snapshot per pack
     expected_layout: |
       luts/raw/public_packs/<pack_id>/<lut_id>.cube
     approx_item_count: null   # TODO(verify)
     notes: >-
-      Placeholder family. Add one entry per concrete pack with its real URL and
-      license before collection; do not scrape blind. TODO(verify) enumerate.
+      Placeholder family. Add one entry per concrete pack with its real URL before
+      collection; do not scrape blind. TODO(verify) enumerate.
     handling_ref: data_collection_plan.md "Public LUT Sources"
 
   - source_pack_id: procedural_fillers_v1
@@ -132,7 +126,6 @@ sources:
     url_or_dataset_id: null   # generated locally, no external source
     url_status: verified
     access_method: generated
-    license: self-generated (project-owned)
     expected_layout: |
       luts/raw/procedural/<generator_version>/<lut_id>.cube
     approx_item_count: null   # generated on demand for coverage gaps

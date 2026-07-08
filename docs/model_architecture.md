@@ -332,7 +332,8 @@ bf16 compute when available, otherwise fp16
 
 The projector/connector choice must be explicit in run config. If Colab memory
 allows, train the projector fully with a lower learning rate. If not, apply
-adapters or freeze it and report that limitation.
+adapters. Freezing the projector is allowed only for exploratory or
+non-image-conditioning-claim runs and must be reported as a claim limitation.
 
 ## Vocabulary Resize And Embedding Preflight
 
@@ -517,6 +518,7 @@ lut_grid = 17x17x17
 canonical_domain_id
 color_pipeline_version
 icc_conversion_config
+image_preprocessing_config
 cube_serialization_version
 interpolation
 parser_version
@@ -529,10 +531,15 @@ determinism_scope
 library versions
 ```
 
-Startup fails if vocab size, special-token ids, codebook size,
-`vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, canonical domain,
-color pipeline, ICC conversion config, or `.cube` serialization version differ
-from the manifest.
+Startup fails if output-defining identity fields differ from the manifest:
+`base_model_revision`, `adapter_sha256`, vocab size, special-token ids,
+embedding/head row counts, tied-embedding status, codebook size,
+`vq_codebook_sha256`, `vq_decoder_sha256`, token suffix mapping, flatten order,
+LUT grid, canonical domain, color pipeline, ICC conversion config,
+interpolation, parser version, FSM version, safety threshold version, image
+preprocessing config, or `.cube` serialization version. Library-version drift
+outside the locked release environment is reported as a warning unless it changes
+one of the hard-fail fields or violates `determinism_scope`.
 Retraining the VQ tokenizer changes decoded token meaning and therefore requires
 a new manifest, regenerated targets, and re-evaluation.
 
@@ -607,7 +614,7 @@ Memory fallback order:
 1. reduce image pixel budget;
 2. reduce per-device batch to 1;
 3. increase gradient accumulation;
-4. freeze projector;
+4. freeze projector only for exploratory/non-image-conditioning-claim runs;
 5. reduce LoRA target modules;
 6. shorten max sequence length;
 7. run SFT without rollout optimization.

@@ -119,10 +119,11 @@ unsupported.
 ## Supported Style Bundles
 
 Style words are supported only when decomposed into measurable color behavior.
-They are not aesthetic catchalls. Provisional windows are calibrated on
-`dev_human_calibration`, then frozen before final eval into
+They are not aesthetic catchalls. V1 recipe windows are deterministic spec
+thresholds. Before final eval, the active windows are copied into
 `eval/configs/calibration_manifest.json` under version key `style_window_version`
-(a Stage 10 output; see master_plan.md).
+(a Stage 9 output; see master_plan.md). Any change to these windows requires an
+explicit spec/config diff and version bump.
 
 | Style | Provisional Recipe Window |
 | --- | --- |
@@ -141,7 +142,7 @@ For single-style eval rows:
 style_discriminability_pass =
   style_recipe_pass
   and style_multi_match_count == 1
-  and style_margin_to_nearest_neighbor >= calibrated_margin
+  and style_margin_to_nearest_neighbor >= style_margin_to_nearest_neighbor_min
 ```
 
 Composite prompts such as "warm faded film look" are labeled as composite rows
@@ -286,9 +287,9 @@ data pipeline, but active instruction and eval artifacts are canonical sRGB LUTs
 
 ## Safety Gates
 
-These thresholds are starting gates, not immutable science. They should be
-calibrated on the dev split before final reporting, then frozen for the final
-eval.
+These thresholds are deterministic v1 gates. They may be adjusted only before
+final eval freeze, using a recorded spec/config change and version bump; final
+eval must not tune them.
 
 | Gate | Provisional Threshold |
 | --- | --- |
@@ -349,31 +350,25 @@ For exposure/contrast prompts, L* movement is allowed but excess skin-locus
 movement relative to the midtone chart remains capped. Face/skin masks and
 manual review are qualitative diagnostics, not the deterministic safety gate.
 
-## Human Calibration
+## Deterministic Threshold Freeze
 
-Before final eval freeze, build a `dev_human_calibration` set with 30-50
-candidates per style, 15-20 hard negatives per style, identity/constant
-baselines, and balanced people/non-people plus source families.
+V1 has no human-rater calibration stage and no `dev_human_calibration` split.
+Style windows, style margin thresholds, and skin-locus thresholds are
+deterministic spec/config values. Before final eval freeze, copy the active
+values into `eval/configs/calibration_manifest.json` under version keys
+`style_window_version` and `skin_locus_threshold_version`.
 
-Blind raters see source plus graded image and provide:
+The freeze artifact records:
 
-- forced-choice style label or `none/unclear`;
-- attribute-direction checks;
-- magnitude rating;
-- skin-naturalness acceptability.
+- the source spec/config commit or hash;
+- every active style window;
+- `style_margin_to_nearest_neighbor_min`;
+- every skin-locus threshold;
+- the owner/date of the freeze.
 
-Metric windows are calibrated against those labels, then frozen. Provisional
-calibration gates are style precision/recall >= 70%, nearest-neighbor style
-confusion <= 20%, attribute-direction agreement >= 80%, and unacceptable skin
-rate <= 5%.
-
-The calibration set and its frozen outputs are explicit Stage 10 artifacts (see
-master_plan.md): the `dev_human_calibration` set under
-`data/eval/dev_human_calibration/`, and the frozen style windows plus skin-locus
-thresholds recorded in `eval/configs/calibration_manifest.json` under version keys
-`style_window_version` and `skin_locus_threshold_version`. A template with
-placeholder values is checked in before calibration; real values are written only
-when the windows and thresholds are frozen.
+After freeze, any change to those values invalidates the affected eval run and
+requires a version bump. Human review may be used for qualitative examples, but
+human labels are not a stage input, calibration gate, or ship gate in v1.
 
 ## CLI-First Behavior
 

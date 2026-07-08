@@ -60,8 +60,8 @@ Collect sources in this priority order:
 
 The machine-readable acquisition manifest for these families is
 `configs/source_inventory.yaml`. It enumerates, per source, a stable
-`source_pack_id`, dataset URL or id, access method, license, expected on-disk
-layout, and approximate item counts, and records the excluded families below.
+`source_pack_id`, dataset URL or id, access method, expected on-disk layout, and
+approximate item counts, and records the excluded families below.
 Stage 2 collection reads that file, and every candidate's `source_pack_id` in
 the provenance registry must match an entry there. URLs marked `TODO(verify)`
 in the manifest are unconfirmed and must be verified before download.
@@ -85,7 +85,6 @@ Record:
 source_family
 source_url_or_dataset
 download_timestamp
-license_or_terms_snapshot
 author/uploader/pack_id
 image_id
 input_image_id
@@ -653,6 +652,12 @@ Use a real selection policy for the active dataset:
 7. Select examples with facility-location/MMR inside buckets.
 8. Reserve a bounded coverage-tail budget for rare styles/outliers.
 
+Manual approval of an HDBSCAN-noise candidate is allowed only when the row has
+passed the hard quality/representability gates, has a non-duplicative measured
+behavior vector, and fills a documented source/style/usage coverage gap. Approved
+noise rows are counted against the bounded coverage-tail budget, not ordinary
+cluster seed quotas.
+
 Simple rule:
 
 ```text
@@ -662,6 +667,12 @@ facility-location/MMR decides what survives inside each bucket.
 ```
 
 ## Instruction Generation
+
+V1 uses synthetic prompts only. Active and eval prompts are generated from the
+accepted image-LUT pair, measured behavior, and structured tags by the pinned
+teacher profile. This plan does not claim robustness to independently
+human-authored prompt phrasing; `eval_real_world_cli_inputs` covers real-world
+image/file conditions, not real-human prompt distribution.
 
 For each accepted image-LUT pair, generate:
 
