@@ -62,6 +62,14 @@ def test_mixed_requires_both_cues():
     # missing the unsupported component cue
     ok, issues = validate_unsupported_prompt("Just make it warmer overall.", _mixed(fam, attr))
     assert not ok and any("no_unsupported_cue" in i for i in issues)
+    # stem cue matches an inflection ("mut" -> "muted") ...
+    ok, _ = validate_unsupported_prompt("Give it muted colors and change the shirt to red.",
+                                        _mixed(fam, ("muted colors", "mut")))
+    assert ok
+    # ... but must NOT fire on a mid-word substring ("swarmed" does not satisfy "warm")
+    ok, issues = validate_unsupported_prompt("The birds swarmed; change the shirt to red.",
+                                             _mixed(fam, attr))
+    assert not ok and "no_supported_cue" in issues
 
 
 def test_build_plan_deterministic_balanced_leakage_safe(tmp_path, monkeypatch):
@@ -80,9 +88,11 @@ def test_build_plan_deterministic_balanced_leakage_safe(tmp_path, monkeypatch):
     assert eval_imgs.isdisjoint(train_imgs)                 # no train/eval image leakage
     assert eval_imgs.isdisjoint(supported)                  # no eval/supported leakage
     assert train_imgs.isdisjoint(supported)
-    # every bucket (11 pure + 6 mixed) covered at least once in a 34-item slice (2 x 17)
+    # every bucket (11 pure + 6 mixed) covered at least once in a 34-item slice (2 x 17).
+    # Count families directly (not a deduped set of labels) so a duplicated mixed-family
+    # category label drops the total below 17 and fails here.
     cats = {r["category"] for r in p1}
-    assert len(cats) == len(PURE_CATEGORIES) + len({f["category"] for f in MIXED_FAMILIES})
+    assert len(cats) == len(PURE_CATEGORIES) + len(MIXED_FAMILIES) == 17
 
 
 def test_row_from_is_schema_valid_unsupported():
@@ -103,3 +113,7 @@ def test_supported_attrs_and_families_wellformed():
     for fam in MIXED_FAMILIES:
         assert fam["component_category"] in PURE_CATEGORIES
         assert fam["category"].startswith("mixed_partial_supported_plus_")
+    # Each mixed family must carry a UNIQUE category label and target a distinct component:
+    # a duplicated label silently drops a family from the balanced plan's label space.
+    assert len({f["category"] for f in MIXED_FAMILIES}) == len(MIXED_FAMILIES)
+    assert len({f["component_category"] for f in MIXED_FAMILIES}) == len(MIXED_FAMILIES)

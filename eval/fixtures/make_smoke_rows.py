@@ -78,7 +78,7 @@ _UNSUPPORTED = [
     ("Replace the sky with a starry night.", "content_replacement", ["content_replacement"], [], False),
     # mixed (supported global request + unsupported component)
     ("Make the whole photo warmer and remove the background.",
-     "mixed_partial_supported_plus_content_generation", ["content_removal"], ["warmer"], True),
+     "mixed_partial_supported_plus_content_removal", ["content_removal"], ["warmer"], True),
     ("Give it a cinematic look and make the shirt red.",
      "mixed_partial_supported_plus_semantic_recolor", ["semantic_object_recolor"], ["cinematic"], True),
     ("Brighten it overall and blur the background.",

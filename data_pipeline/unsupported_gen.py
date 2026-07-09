@@ -108,7 +108,7 @@ _CATEGORY_CUES: dict[str, tuple[str, ...]] = {
 # Mixed families: a supported global attribute + one unsupported component. The category string
 # matches the smoke-row convention ``mixed_partial_supported_plus_<family>``.
 MIXED_FAMILIES: tuple[dict, ...] = (
-    {"category": "mixed_partial_supported_plus_content_generation",
+    {"category": "mixed_partial_supported_plus_content_removal",
      "unsupported_component": "content_removal", "component_category": "content_removal"},
     {"category": "mixed_partial_supported_plus_semantic_recolor",
      "unsupported_component": "semantic_object_recolor", "component_category": "semantic_object_recolor"},
@@ -202,6 +202,15 @@ def _has_cue(text: str, cues: tuple[str, ...]) -> bool:
     return any(re.search(r"\b" + re.escape(c.strip()) + r"\b", t) for c in cues)
 
 
+def _has_attr_cue(text: str, cue: str) -> bool:
+    # Supported-attribute cues are word STEMS ("warm" for "warmer", "mut" for "muted", "fad" for
+    # "faded", "cinema" for "cinematic"), so anchor at a LEADING word boundary and allow a suffix.
+    # This matches the intended inflections while rejecting the mid-word substring hits that plain
+    # ``cue in text`` accepts (e.g. "swarmed"/"lukewarm" satisfying the "warm" cue), which would
+    # otherwise let a row with no real supported half pass as a mixed boundary case.
+    return re.search(r"\b" + re.escape(cue.strip()), text.lower()) is not None
+
+
 def validate_unsupported_prompt(prompt: str, plan_item: dict) -> tuple[bool, list[str]]:
     """Deterministic guard: the phrasing must actually require the assigned unsupported edit.
 
@@ -217,7 +226,7 @@ def validate_unsupported_prompt(prompt: str, plan_item: dict) -> tuple[bool, lis
         if not _has_cue(prompt, _CATEGORY_CUES[comp_cat]):
             issues.append(f"no_unsupported_cue:{comp_cat}")
         _, attr_cue = plan_item["_attr_pair"]
-        if attr_cue not in prompt.lower():
+        if not _has_attr_cue(prompt, attr_cue):
             issues.append("no_supported_cue")
     else:
         cat = plan_item["category"]
