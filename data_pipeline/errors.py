@@ -16,6 +16,10 @@ class AcquisitionError(PipelineError):
     """A source could not be acquired (network, auth, verification, extraction)."""
 
 
+class StagingError(PipelineError):
+    """Corpus staging failed (pack/stage/push): manifest, shard verify, or transfer error."""
+
+
 class RequiresTokenizer(PipelineError):
     """Token materialization needs a frozen VQ tokenizer, which is not available."""
 

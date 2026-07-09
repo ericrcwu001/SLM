@@ -50,3 +50,6 @@ data/raw_registry/ppr10k_topup_rows.jsonl
 tokenizer/checkpoints/
 tokenizer/final/
 models/
+
+# slm_stage local shard staging dir (downloaded/extracted shards + resume markers).
+**/.shards/

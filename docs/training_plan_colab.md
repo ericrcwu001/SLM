@@ -189,7 +189,7 @@ push   local checkpoints/outputs -> durable root, for survival across session te
 
 ```text
 staging_version
-durable_root                 # e.g. /content/drive/MyDrive/prompt_to_lut or an HF repo ref
+durable_root                 # /content/drive/MyDrive/prompt_to_lut, an HF repo ref, or gs://<bucket>/prompt_to_lut (GCS via gcloud CLI, ADR 0019)
 local_root                   # default /content/slm
 pack:  { include, exclude, shard_max_bytes, compression }
 stage: { min_free_bytes, verify: sha256 }

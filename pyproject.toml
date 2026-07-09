@@ -46,11 +46,13 @@ prompt_to_lut = "cli.prompt_to_lut:main"
 slm_acquire = "data_pipeline.acquire.run_acquire:main"
 slm_datagen = "data_pipeline.run_pipeline:main"
 slm_freeze_split = "data_pipeline.freeze_split:main"
+slm_stage = "data_pipeline.staging.run_staging:main"
 
 [tool.setuptools]
 packages = [
     "eval", "eval.fixtures", "cli",
     "data_pipeline", "data_pipeline.acquire", "data_pipeline.sources", "data_pipeline.configs",
+    "data_pipeline.staging",
     "tokenizer", "tokenizer.mlx",
 ]
 

@@ -1,0 +1,45 @@
+# slm_stage defaults (ADR-0018 "Colab Data Staging"; ADR-0019 GCS durable root).
+# Moves the corpus between a durable root and a fast local root as bounded, sha256-verified,
+# structure-preserving tar shards. Override any field on the CLI (--durable-root, --local-root,
+# --root, --rate-limit) or by pointing --config at a copy of this file.
+staging_version: v1
+
+# Where shards + stage_manifest.json live between sessions. One of:
+#   - a local path or Google Drive FUSE mount, e.g. /content/drive/MyDrive/prompt_to_lut
+#   - a GCS bucket, e.g. gs://<bucket>/prompt_to_lut  (uses the `gcloud storage` CLI; run
+#     `gcloud auth login` first).
+#   - a HuggingFace repo, e.g. hf://datasets/<user>/<repo>  (uses huggingface_hub; run
+#     `hf auth login` first; defaults to a dataset repo). Left null so it must be set
+#     explicitly (--durable-root).
+durable_root: null
+
+# Fast local root that `stage` extracts into; becomes a drop-in SLM_ARTIFACT_ROOT.
+local_root: /content/slm
+
+pack:
+  # Corpus dirs (relative to the artifact root). luts/raw is the bulk (~9 GB of JPGs);
+  # canonical_residual + the data manifests + the frozen tokenizer are small but essential.
+  include:
+    - luts/raw
+    - luts/canonical_residual
+    - data/raw_registry
+    - data/splits
+    - tokenizer/final
+  exclude:
+    - "*.lock"
+    - "*.metadata"
+    - "*.part"
+  shard_max_bytes: 2147483648        # ~2 GiB per shard (sequential transfer beats small-file I/O)
+  compression: none                  # residuals (.npy) and JPGs are already compressed
+
+stage:
+  min_free_bytes: 17179869184        # 16 GiB headroom before extracting (disk-aware skip below this)
+  verify: sha256
+
+push:
+  # Output dirs synced back to the durable root so checkpoints survive session teardown.
+  include:
+    - "models/**/*"
+    - "tokenizer/**/*"
+    - "eval_runs/**/*"
+  rate_limit_s: 0.0

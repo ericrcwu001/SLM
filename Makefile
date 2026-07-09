@@ -1,7 +1,9 @@
 PY ?= python3
 ARTIFACT_ROOT ?= .
+DURABLE_ROOT ?=
+LOCAL_ROOT ?= /content/slm
 
-.PHONY: help install fixtures test smoke cli-demo acquire data data-offline clean clean-data
+.PHONY: help install fixtures test smoke cli-demo acquire data data-offline pack stage push clean clean-data
 
 help:
 	@echo "Targets:"
@@ -13,6 +15,9 @@ help:
 	@echo "  acquire       Stage 2: autonomously download bounded real corpora (network)"
 	@echo "  data          full data-gen pipeline over acquired + procedural LUTs (network)"
 	@echo "  data-offline  full data-gen pipeline over procedural LUTs only (no network)"
+	@echo "  pack          slm_stage: corpus -> tar shards in DURABLE_ROOT (Drive/local/gs://)"
+	@echo "  stage         slm_stage: shards -> LOCAL_ROOT (verified, resumable); set SLM_ARTIFACT_ROOT"
+	@echo "  push          slm_stage: local checkpoints/outputs -> DURABLE_ROOT"
 	@echo "  clean         remove eval_runs + generated eval fixtures"
 	@echo "  clean-data    remove acquired/derived data-gen artifacts (luts/, data/*)"
 
@@ -52,6 +57,18 @@ data-offline:
 	$(PY) -m data_pipeline.run_pipeline \
 		--config data_pipeline/configs/pipeline_default.yaml --out $(ARTIFACT_ROOT) \
 		--sources procedural_fillers_v1
+
+pack:
+	$(PY) -m data_pipeline.staging.run_staging pack \
+		--config configs/staging_default.yaml --root $(ARTIFACT_ROOT) --durable-root $(DURABLE_ROOT)
+
+stage:
+	$(PY) -m data_pipeline.staging.run_staging stage \
+		--config configs/staging_default.yaml --durable-root $(DURABLE_ROOT) --local-root $(LOCAL_ROOT)
+
+push:
+	$(PY) -m data_pipeline.staging.run_staging push \
+		--config configs/staging_default.yaml --durable-root $(DURABLE_ROOT) --local-root $(LOCAL_ROOT)
 
 clean:
 	rm -rf eval_runs
