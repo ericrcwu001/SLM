@@ -31,6 +31,15 @@ make smoke            # generate 50/20 smoke rows, run_eval across decoder-free 
 make cli-demo         # run the CLI on one unsupported + one supported prompt
 ```
 
+## Dataset
+
+The corpus and active SFT dataset are published to the private Hugging Face dataset
+**[`ericrcwu/LUT_SLM`](https://huggingface.co/datasets/ericrcwu/LUT_SLM)** — the durable
+root for `slm_stage` (`configs/staging_default.yaml`). The active SFT set lives under
+`data/active_sft/` there (`active_rows.jsonl` + `active_manifest.json`, teacher
+instructions, and the unsupported/refusal corpus); the full raw corpus is packed as
+`corpus-*.tar` shards.
+
 ## Layout
 
 ```

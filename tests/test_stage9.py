@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from data_pipeline.active_dataset import AcceptanceChecker, assemble_active
+from data_pipeline.active_dataset import AcceptanceChecker, SftRow, assemble_active
 from data_pipeline.behavior_vector import measure_behavior
 from data_pipeline.embeddings import build_pca, lut_behavior_embedding, tag_embedding
 from data_pipeline.errors import RequiresTeacher, RequiresTokenizer
@@ -128,6 +128,24 @@ def test_acceptance_pending_for_gated_criteria():
     assert res.criteria["unsupported_coverage"]["status"] == "pending"
     assert res.criteria["manifests_present"]["status"] == "pending"
     assert res.overall == "pending"
+
+
+def test_acceptance_with_unsupported_corpus():
+    # supported rows + a covering unsupported/refusal corpus (>=8 categories incl mixed).
+    rows = assemble_active([_candidate(i) for i in range(10)])
+    cats = ["local_region_edit", "semantic_object_recolor", "content_removal", "content_generation",
+            "relighting", "texture_detail", "geometry", "reference_style_transfer"]
+    for j, c in enumerate(cats):
+        rows.append(SftRow(id=f"u{j}", is_supported=False, support_label="unsupported",
+                           unsupported_category=c, split="train"))
+    rows.append(SftRow(id="um", is_supported=False, support_label="unsupported",
+                       unsupported_category="mixed_partial_supported_plus_local_edit",
+                       mixed_prompt=True, split="train"))
+    res = AcceptanceChecker(enforce_scale=False).check(rows, leakage_status="pass")
+    # unsupported rows must NOT trip the measured-behavior check (they have no LUT)
+    assert res.criteria["provenance_and_behavior"]["status"] == "pass"
+    # coverage now satisfied
+    assert res.criteria["unsupported_coverage"]["status"] == "pass"
 
 
 def test_eval_sets_procedural_is_diagnostic_only():

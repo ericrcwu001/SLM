@@ -1,0 +1,547 @@
+[unsup] resuming: 6 rows already in data/active_sft/unsupported_cache.jsonl
+  unsup_eval_000007: generated  Can you match the color grading of this photo to the warm golden-hour 
+  unsup_eval_000008: generated  Can you make it look like she's being lit by warm golden-hour sunlight
+  unsup_eval_000009: generated  Can you smooth out the woman's skin and clean up any flyaway hairs aro
+  unsup_eval_000010: generated  Can you straighten the image a bit and fix the perspective on the bamb
+  unsup_eval_000011: generated  Remove the life preserver ring next to the woman and fill in that area
+  unsup_eval_000012: generated  brighten the whole image and remove the tattoo on her arm
+  unsup_eval_000013: generated  make the whole image darker and change the koi fish painted on his fac
+  unsup_eval_000014: generated  boost the contrast overall but keep the background behind them bright 
+  unsup_eval_000015: generated  Can you mute the colors to give it a film-like look and also smooth ou
+  unsup_eval_000016: generated  Give the photo a faded, washed-out look and add dramatic side lighting
+  unsup_eval_000017: generated  Give the whole photo a matte look and add a glowing lantern hanging fr
+  unsup_eval_000018: generated  Keep the white angel wings bright and pure white, but make the dark wo
+  unsup_eval_000019: rejected issues=['no_category_cue:semantic_object_recolor']  Change her red nail polish to a deep purple color while keeping everyt
+  unsup_eval_000020: generated  Can you remove the straw hat from her head so she just looks like she'
+  unsup_eval_000021: generated  Replace the vintage trunk/suitcase the woman is sitting on with a mode
+  unsup_eval_000022: generated  Can you add some white doves flying in the sky above the couple to mak
+  unsup_eval_000023: generated  Brighten up her face so it really pops, but keep the dark background e
+  unsup_eval_000024: generated  Can you make this photo match the moody, desaturated blue-green color 
+  unsup_eval_000025: generated  Make it look like the sun is setting behind her to the left, casting w
+  unsup_eval_000026: generated  Can you sharpen the details on the bronze sphere sculpture so the dent
+  unsup_eval_000027: generated  Can you straighten the photo slightly and tilt it a bit to the left so
+  unsup_eval_000028: generated  There's a distracting bright patch of sky visible between the tree tru
+  unsup_eval_000029: generated  Cool down the color temperature of the whole image and remove the man 
+  unsup_eval_000030: generated  brighten the whole image and also change the color of her blue skirt t
+  unsup_eval_000031: rejected issues=['no_unsupported_cue:local_region_edit']  Make the overall image darker but keep the flowers bright and well-lit
+  unsup_eval_000032: generated  boost the contrast to make the scene more dramatic and also sharpen th
+  unsup_eval_000033: generated  Mute the colors to give it a more subdued, film-like feel and make it 
+  unsup_eval_000034: generated  Give this photo a soft faded look and add a flock of birds flying acro
+  unsup_eval_000035: generated  Can you make the background foliage darker and more desaturated while 
+  unsup_eval_000036: generated  Change the color of her green sheer outer robe to a soft lavender purp
+  unsup_eval_000037: generated  Can you remove the Santa Claus head from the left side of the window d
+  unsup_eval_000038: generated  Replace the green tree background behind the couple with a traditional
+  unsup_eval_000039: generated  Can you add a dramatic full moon rising behind the large butte on the 
+  unsup_eval_000040: generated  Brighten up her face so it looks more evenly lit, but keep the dark ba
+  unsup_eval_000041: rejected issues=['no_category_cue:reference_style_transfer']  Make this photo match the color grading and mood from this other shot 
+  unsup_eval_000042: generated  Make it look like the couple is lit by warm golden-hour sunlight comin
+  unsup_eval_000043: generated  Can you smooth out the coarse whisker hairs around the horse's muzzle 
+  unsup_eval_000044: generated  Can you rotate the image slightly clockwise to straighten her posture 
+  unsup_eval_000045: generated  Remove the large W sign from the left side of the image and fill in th
+  unsup_eval_000046: generated  Can you make the whole image warmer and also remove the shadows on the
+  unsup_eval_000047: generated  Cool down the overall tones of the image and also recolor just the rai
+  unsup_eval_000048: generated  Brighten the whole photo but keep the snowy background darker so the c
+  unsup_eval_000049: generated  Make the whole image darker and also sharpen the details in the foliag
+  unsup_eval_000050: generated  Boost the contrast and make it look like the light is coming from the 
+  unsup_eval_000051: generated  Can you mute the colors to give it a more subdued, editorial feel and 
+  unsup_eval_000052: generated  Can you make just the background water visible through the glass look 
+  unsup_eval_000053: generated  Can you change the color of her red heels to white while keeping every
+  unsup_eval_000054: generated  Can you remove the crowd of people visible in the background near the 
+  unsup_eval_000055: generated  Replace the chandelier in the background with a starry night sky visib
+  unsup_eval_000056: generated  Can you add a flock of birds flying across the sky above the statue?
+  unsup_eval_000057: generated  Brighten up the girl's face so it looks more lit and glowing, but keep
+  unsup_eval_000058: rejected issues=['no_category_cue:reference_style_transfer']  Can you make the colors in this photo match the warm, golden-hour tone
+  unsup_eval_000059: generated  Make it look like the man is lit by warm golden-hour sunlight coming f
+  unsup_eval_000060: generated  Can you smooth out the skin on the bride's arms and back so it looks f
+  unsup_eval_000061: generated  Can you straighten the photo a bit and fix the perspective so the kitc
+  unsup_eval_000062: rejected issues=['no_category_cue:inpainting']  There's a water splash artifact covering part of the man's legs near t
+  unsup_eval_000063: generated  Give this photo a cinematic look and remove the tree trunk from the le
+  unsup_eval_000064: generated  Make the whole photo warmer and also change her white shirt to a light
+  unsup_eval_000065: generated  Cool down the overall tones of the photo but also make the pavement ar
+  unsup_eval_000066: generated  Brighten the whole image and smooth out her skin texture to make it lo
+  unsup_eval_000067: generated  Make the whole image darker and shift the lighting so it looks like it
+  unsup_eval_000068: generated  boost the contrast to make the island pop and add a flock of birds fly
+  unsup_eval_000069: generated  Can you make the background trees greener and more vibrant while keepi
+  unsup_eval_000070: generated  Change the stingray on the left side to a bright orange color while ke
+  unsup_eval_000071: generated  Can you remove the red roses on the left side so only the peach, white
+  unsup_eval_000072: generated  Replace the old film camera she's holding with a modern DSLR camera.
+  unsup_eval_000073: generated  Can you add a few seagulls flying over the water in the background to 
+  unsup_eval_000074: generated  Brighten up the bride's face so it's clearly lit and glowing, but keep
+  unsup_eval_000075: generated  Make this photo look exactly like the attached reference image I took 
+  unsup_eval_000076: generated  Make it look like the sun is setting from the left side, casting warm 
+  unsup_eval_000077: generated  Can you smooth out the woman's skin and clean up any flyaway hairs aro
+  unsup_eval_000078: generated  Can you straighten the horizon line so the ocean and beach don't appea
+  unsup_eval_000079: generated  There's a distracting fence structure visible in the background on the
+  unsup_eval_000080: generated  Apply a matte look to the whole image and remove the water channel run
+  unsup_eval_000081: generated  Give this photo a cinematic look and also change her hair color to pla
+  unsup_eval_000082: generated  Make the overall image warmer but keep the background its original coo
+  unsup_eval_000083: generated  Cool down the warm tones in this shot and also sharpen the spines and 
+  unsup_eval_000084: generated  Brighten the overall image and add warm golden-hour sunlight coming fr
+  unsup_eval_000085: generated  Make the whole image darker and add some falling snowflakes in the air
+  unsup_eval_000086: generated  Can you make the sky look more blue and dramatic while keeping the res
+  unsup_eval_000087: generated  Can you change the color of the ball from blue to red while keeping ev
+  unsup_eval_000088: generated  Can you remove the person in the hat walking in the center of the stre
+  unsup_eval_000089: generated  Replace the blurry background behind her with a cherry blossom garden 
+  unsup_eval_000090: generated  Can you add a flock of birds flying in the sky behind her to make the 
+  unsup_eval_000091: generated  Brighten up the white roses in the foreground to make them really pop,
+  unsup_eval_000092: generated  Can you match the color grading of this photo to the warm, faded film 
+  unsup_eval_000093: generated  Make it look like the golden hour sun is coming from the left side, ca
+  unsup_eval_000094: generated  Can you smooth out the woman's skin and clean up the fine details on h
+  unsup_eval_000095: generated  Can you straighten the image slightly and fix the perspective so the w
+  unsup_eval_000096: rejected issues=['no_category_cue:inpainting']  There's a distracting crack running through the rock she's sitting on 
+  unsup_eval_000097: generated  Give this photo a soft faded look and remove the metal railing she's l
+  unsup_eval_000098: generated  Apply a matte finish to the whole photo and change her bikini to red w
+  unsup_eval_000099: generated  Give this photo a cinematic look and also make the sandy background be
+  unsup_eval_000100: generated  Make the whole image warmer and also smooth out the woman's skin textu
+  unsup_eval_000101: rejected issues=['no_unsupported_cue:relighting']  Cool down the overall tones to give it a blue-hour feel and shift the 
+  unsup_eval_000102: generated  brighten up the whole image and add some dramatic neon light reflectio
+  unsup_eval_000103: generated  Can you make the brick wall on the right side warmer and more orange w
+  unsup_eval_000104: generated  Can you change the stripes on her dress from navy blue to coral pink, 
+  unsup_eval_000105: generated  Can you remove the boat that's visible on the horizon in the top right
+  unsup_eval_000106: generated  Replace the dark gray studio background with a dramatic outdoor stone 
+  unsup_eval_000107: generated  Can you add some motivational text like 'NO PAIN NO GAIN' floating abo
+  unsup_eval_000108: generated  Brighten up the crystal figurines so they sparkle more, but keep the d
+  unsup_eval_000109: generated  Can you match the color grading of this photo to the vintage Kodachrom
+  unsup_eval_000110: generated  Make it look like the golden hour sunset light is hitting her from the
+  unsup_eval_000111: generated  Can you smooth out the skin on both their faces and sharpen the detail
+  unsup_eval_000112: generated  Can you rotate the image slightly clockwise to straighten the horizon 
+  unsup_eval_000113: generated  There's a damaged patch on the right side of her white dress — can you
+  unsup_eval_000114: generated  Can you mute the colors to give this a soft, film-like feel and also r
+  unsup_eval_000115: generated  Give the whole photo a faded, washed-out look and also recolor the che
+  unsup_eval_000116: rejected issues=['no_unsupported_cue:local_region_edit']  Give the whole image a matte look but keep the dog's fur looking natur
+  unsup_eval_000117: generated  Give this beach photo a cinematic color grade and smooth out the woman
+  unsup_eval_000118: generated  Give the whole photo a warmer tone and make it look like the light is 
+  unsup_eval_000119: generated  Give the whole image a cooler, blue-tinted tone and add some falling r
+  unsup_eval_000120: generated  Keep the model's skin tone natural but make the white background a sof
+  unsup_eval_000121: generated  Can you change the woman's blue shirt to a red one while keeping every
+  unsup_eval_000122: generated  Can you remove the car on the left side of the image so the background
+  unsup_eval_000123: generated  Replace the ivy-covered wall behind her with a grand university buildi
+  unsup_eval_000124: generated  Can you add some soft falling cherry blossom petals floating around th
+  unsup_eval_000125: generated  Brighten up her face so it's more visible in the backlit sunlight, but
+  unsup_eval_000126: generated  Can you match the color grading of this photo to the warm golden-hour 
+  unsup_eval_000127: generated  Make it look like the sun is setting from the left side, casting long 
+  unsup_eval_000128: generated  Can you sharpen the background cathedral arches so they're more clearl
+  unsup_eval_000129: generated  Can you rotate the image slightly clockwise so her face is more center
+  unsup_eval_000130: generated  There's a distracting scratch or damaged spot on the flowing red scarf
+  unsup_eval_000131: generated  boost the contrast to make the image more dramatic and also remove the
+  unsup_eval_000132: generated  Mute the colors in the whole photo and also change the woman's dress t
+  unsup_eval_000133: generated  Give the whole photo a faded, washed-out look but keep the sky area un
+  unsup_eval_000134: generated  Give the whole photo a matte, flat look and also sharpen the wispy clo
+  unsup_eval_000135: generated  Give this wedding photo a cinematic look and make it appear as if the 
+  unsup_eval_000136: generated  Make the whole photo warmer and add a bright full moon visible in the 
+  unsup_eval_000137: generated  Keep the woman's skin tones looking natural and warm, but make the blu
+  unsup_eval_000138: generated  Can you change the man's red suit to navy blue while keeping everythin
+  unsup_eval_000139: generated  Can you remove the snow spray/particles flying in the air to the left 
+  unsup_eval_000140: generated  Replace the fallen leaves on the ground behind the child with a bed of
+  unsup_eval_000141: generated  Can you add a glowing full moon in the background sky between the tree
+  unsup_eval_000142: generated  Make the white wall in the background brighter and more vivid, but kee
+  unsup_eval_000143: rejected issues=['no_category_cue:reference_style_transfer']  Make this photo look exactly like the color grading in my golden-hour 
+  unsup_eval_000144: generated  Make it look like the couple is lit by warm golden-hour sunlight comin
+  unsup_eval_000145: generated  Can you smooth out the skin on her face and arms so it looks more poli
+  unsup_eval_000146: generated  Can you rotate the image slightly clockwise so she appears more uprigh
+  unsup_eval_000147: generated  The tree trunk is partially blocking her face — can you remove the tre
+  unsup_eval_000148: generated  Can you darken the overall image and also remove the man from the phot
+  unsup_eval_000149: generated  boost the contrast across the whole image and change the woman's red d
+  unsup_eval_000150: generated  Mute the colors across the whole image but keep the sky area bright an
+  unsup_eval_000151: generated  Give the whole photo a faded, washed-out film look and also smooth out
+  unsup_eval_000152: generated  Apply a matte finish to the whole photo and add warm golden-hour sunli
+  unsup_eval_000153: generated  Give this photo a cinematic color grade and add some rose petals scatt
+  unsup_eval_000154: rejected issues=['no_category_cue:local_region_edit']  Change the yellow pool float to a bright pink color while keeping the 
+  unsup_eval_000155: generated  Can you change the woman's clutch bag to a deep red color while keepin
+  unsup_eval_000156: generated  Can you remove the yellow backpack from her shoulders so it looks like
+  unsup_eval_000157: generated  Replace the cloudy sky behind the couple with a stunning golden sunset
+  unsup_eval_000158: generated  Can you add some butterflies resting on the pink carnations to make th
+  unsup_eval_000159: generated  Brighten up the sparks and the person's face so they're more visible, 
+  unsup_eval_000160: rejected issues=['no_category_cue:reference_style_transfer']  Can you make this photo match the exact color grading and mood from my
+  unsup_eval_000161: generated  Can you make it look like the couple is being lit by warm golden sunse
+  unsup_eval_000162: generated  Can you smooth out her skin a bit and soften the fine lines on her arm
+  unsup_eval_000163: generated  Can you straighten the horizon line a bit? The photo looks slightly ti
+  unsup_eval_000164: rejected issues=['no_category_cue:inpainting']  There's a slight blur/damage on the bouquet of flowers on the right si
+  unsup_eval_000165: generated  brighten up the whole photo and remove the metal railing she's sitting
+  unsup_eval_000166: generated  Make the whole image darker and also turn the acacia tree silhouette d
+  unsup_eval_000167: generated  boost the contrast overall but keep the background blurred and darken 
+  unsup_eval_000168: generated  Give the whole photo a muted, desaturated color grade and also smooth 
+  unsup_eval_000169: generated  Give this photo a soft faded vintage look and add warm golden-hour sun
+  unsup_eval_000170: generated  Give this photo a matte look and add a graffiti wall behind the guy in
+  unsup_eval_000171: generated  Can you make the background buildings look warmer and more golden whil
+  unsup_eval_000172: generated  Can you change the man's brown t-shirt to a bright red color while kee
+  unsup_eval_000173: generated  Can you remove the street lamp in the background between the buildings
+  unsup_eval_000174: generated  Replace the deep cracks in the charred wood with smooth, unburned wood
+  unsup_eval_000175: generated  Can you add a glowing full moon in the dark sky behind the temple to m
+  unsup_eval_000176: generated  Brighten up her face and skin so she looks more radiant, but keep the 
+  unsup_eval_000177: generated  Can you match the color grading of this photo to the warm, faded film 
+  unsup_eval_000178: generated  Can you make it look like the sun is setting on the left side, casting
+  unsup_eval_000179: generated  Can you smooth out the bride's skin and soften the fine details on her
+  unsup_eval_000180: generated  Can you straighten the photo slightly and adjust the perspective so th
+  unsup_eval_000181: generated  There's a small damaged/scratched area in the upper right corner of th
+  unsup_eval_000182: generated  Cool down the color temperature of the whole image and remove the pers
+  unsup_eval_000183: generated  brighten the whole image and also change the USPS truck to be bright r
+  unsup_eval_000184: rejected issues=['no_unsupported_cue:local_region_edit']  Make the overall image darker but keep the stone bridge at its origina
+  unsup_eval_000185: generated  boost the contrast and smooth out the skin texture on both of their fa
+  unsup_eval_000186: generated  Can you mute the colors to give it a more desaturated, moody feel and 
+  unsup_eval_000187: generated  Give the whole photo a faded, washed-out film look and add some paint 
+  unsup_eval_000188: generated  Make the sky more dramatic and stormy-looking with darker blue-grey to
+  unsup_eval_000189: generated  Change the wooden tiki statues to a rich reddish-brown mahogany color 
+  unsup_eval_000190: generated  Can you remove the candelabra from the left side of the image so it's 
+  unsup_eval_000191: generated  Replace the grey metal bridge structure with a romantic wooden covered
+  unsup_eval_000192: generated  Can you add some fireflies glowing around her in the forest background
+  unsup_eval_000193: generated  Brighten up the faces of the family so they're more clearly visible, b
+  unsup_eval_000194: rejected issues=['no_category_cue:reference_style_transfer']  Can you make this photo match the warm golden-hour look of the sunset 
+  unsup_eval_000195: generated  Can you make it look like the light is coming from the left side, cast
+  unsup_eval_000196: generated  Can you smooth out her skin a bit and clean up the flyaway hairs aroun
+  unsup_eval_000197: generated  Can you rotate the image slightly clockwise to straighten their postur
+  unsup_eval_000198: generated  There's a distracting scratch or damaged area on the floor near the ye
+  unsup_eval_000199: generated  Give this photo a warmer, golden-hour tone and remove the street lamp 
+  unsup_eval_000200: generated  make the overall tone cooler and change the door to a deep red color
+  unsup_eval_000201: generated  Brighten the whole image and also make just the frozen lake in the for
+  unsup_eval_000202: generated  Make the overall image darker and smooth out the skin on her face to r
+  unsup_eval_000203: generated  boost the contrast and make it look like the light is coming from the 
+  unsup_eval_000204: generated  Can you mute the colors to give this a vintage feel and also add some 
+  unsup_eval_000205: generated  Can you make the background trees and foliage more vibrant and green w
+  unsup_eval_000206: generated  Change the woman's dark headband to a bright gold color while keeping 
+  unsup_eval_000207: generated  Can you remove the straw hat she's holding so her hands appear empty?
+  unsup_eval_000208: generated  Replace the plain white background behind her with a softly blurred ou
+  unsup_eval_000209: generated  Can you add some glowing fireflies floating around her in the forest t
+  unsup_eval_000210: generated  Brighten up her face so it's more visible, but keep the vivid red of h
+  unsup_eval_000211: generated  Can you match the color grading of this photo to the vintage film look
+  unsup_eval_000212: generated  Make it look like the memorial is lit by warm golden sunset light comi
+  unsup_eval_000213: generated  Can you smooth out the skin on her shoulders and face to give it a mor
+  unsup_eval_000214: generated  Can you rotate the image slightly clockwise to straighten the horizon 
+  unsup_eval_000215: generated  Remove the black trash bag on the ground near her feet and fill in tha
+  unsup_eval_000216: generated  Give this photo a cinematic color grade and remove the people walking 
+  unsup_eval_000217: generated  make the whole image warmer and change the red rose she's holding to a
+  unsup_eval_000218: generated  Cool down the overall tones of the photo and also make the background 
+  unsup_eval_000219: generated  Brighten the whole photo and smooth out the skin texture on the woman 
+  unsup_eval_000220: generated  Make the whole image darker and add a dramatic side light coming from 
+  unsup_eval_000221: generated  boost the contrast to make it look more dramatic and add some rain fal
+  unsup_eval_000222: generated  Can you make the background darker and more desaturated while keeping 
+  unsup_eval_000223: generated  Can you change the green pom-poms on the baby's hat and booties to a b
+  unsup_eval_000224: generated  Can you remove the large tree on the right side so the sunset sky is f
+  unsup_eval_000225: generated  Replace the waterfall in the background with a misty mountain range co
+  unsup_eval_000226: generated  Can you add some falling cherry blossom petals around her in the scene
+  unsup_eval_000227: generated  Brighten up the woman so she's more visible and properly exposed, but 
+  unsup_eval_000228: generated  Can you make this photo match the color grading and mood from the refe
+  unsup_eval_000229: generated  Make it look like the light is coming from the left side, casting a wa
+  unsup_eval_000230: generated  Can you sharpen up the details on the stone in the garden bed so the t
+  unsup_eval_000231: generated  Can you straighten the image a bit? The deck and horizon look slightly
+  unsup_eval_000232: generated  The stone wall has some staining and discoloration running down its fa
+  unsup_eval_000233: generated  Give the whole image a matte, desaturated look and remove the person f
+  unsup_eval_000234: generated  Give this photo a cinematic look and also change the ring to gold whil
+  unsup_eval_000235: generated  Make the overall image warmer and golden-toned, but keep the lotus lea
+  unsup_eval_000236: generated  Cool down the tones of this flower photo and sharpen the petal details
+  unsup_eval_000237: generated  brighten the overall image and add a warm rim light coming from the ri
+  unsup_eval_000238: generated  Make the whole image darker and add a glowing golden butterfly resting
+  unsup_eval_000239: generated  Brighten up just the man's face since it's really dark and hard to see
+  unsup_eval_000240: generated  Can you change the color of the rider's boots from black to brown whil
+  unsup_eval_000241: generated  Can you remove the dark reddish-brown patches from the marigold petals
+  unsup_eval_000242: generated  Replace the grassy meadow background with a golden wheat field at suns
+  unsup_eval_000243: generated  Can you add some pigeons sitting on the roof of the red car?
+  unsup_eval_000244: generated  Brighten up the woman's face so her smile is more visible, but keep th
+  unsup_eval_000245: generated  Can you make this photo match the warm golden-hour color grading from 
+  unsup_eval_000246: generated  Make it look like the scene is lit by warm golden-hour sunlight coming
+  unsup_eval_000247: generated  Can you smooth out the skin on her arms and legs to give it a softer, 
+  unsup_eval_000248: generated  Can you rotate the image 90 degrees clockwise so it fits better in a l
+  unsup_eval_000249: rejected issues=['no_category_cue:inpainting']  Remove the brick building on the left side and fill it in naturally wi
+  unsup_eval_000250: generated  Give this photo a soft faded look and remove the driftwood logs they'r
+  unsup_train_000001: generated  Can you make the grass in the background look more vibrant and green w
+  unsup_train_000002: generated  Can you change the color of her black lace bralette to a deep burgundy
+  unsup_train_000003: generated  Can you remove the lounge chairs from the gravel area in front of the 
+  unsup_train_000004: generated  Replace the green awning over the school entrance with a classic red-a
+  unsup_train_000005: generated  Add a dramatic sunset sky with clouds and a full moon behind her to ma
+  unsup_train_000006: generated  Brighten up the green plants and flowers in the foreground to make the
+  unsup_train_000007: rejected issues=['no_category_cue:reference_style_transfer']  Can you make this family photo match the warm, faded film look of the 
+  unsup_train_000008: generated  Can you make it look like the light is coming from the left side, cast
+  unsup_train_000009: generated  Can you smooth out the model's skin a bit and soften the fine lines on
+  unsup_train_000010: generated  Can you rotate the image slightly clockwise to straighten the horizon 
+  unsup_train_000011: rejected issues=['no_category_cue:inpainting']  There's a slightly overexposed blown-out area near the white flowers o
+  unsup_train_000012: generated  brighten up the whole image and erase the railing in front of her
+  unsup_train_000013: generated  Make the whole image darker and also change the woman's teal top to re
+  unsup_train_000014: generated  boost the contrast overall but also make the background trees darker a
+  unsup_train_000015: generated  Can you mute the colors to give it a more editorial feel and also smoo
+  unsup_train_000016: generated  Give the whole photo a soft faded film look and make it appear as if w
+  unsup_train_000017: generated  Give the whole image a matte, desaturated look and add a glowing full 
+  unsup_train_000018: generated  Can you brighten up just the background trees and stream without affec
+  unsup_train_000019: generated  Can you change the color of her black top to a deep burgundy red while
+  unsup_train_000020: generated  Can you remove the no-parking signs from the walls in this alleyway so
+  unsup_train_000021: generated  Replace the white background behind her with a lush outdoor garden sce
+  unsup_train_000022: generated  Can you add a few more robins in the background behind this one to mak
+  unsup_train_000023: generated  Brighten up her face and skin to make it more luminous, but keep the b
+  unsup_train_000024: generated  Make the colors in this photo match the warm, faded look of the refere
+  unsup_train_000025: generated  Make it look like the couple is lit by warm golden-hour sunlight comin
+  unsup_train_000026: generated  Can you smooth out the skin on her face and chest to reduce the visibl
+  unsup_train_000027: generated  Can you straighten the perspective so the bookshelves on both sides ap
+  unsup_train_000028: generated  There's a distracting branch cutting across her face — can you remove 
+  unsup_train_000029: generated  cool down the tones and remove the red bandana from her hair
+  unsup_train_000030: generated  Make the whole photo brighter and change the car's color to midnight b
+  unsup_train_000031: rejected issues=['no_unsupported_cue:local_region_edit']  make the overall image darker but keep the woman's face at its origina
+  unsup_train_000032: generated  boost the contrast and smooth out her skin texture to make it look fla
+  unsup_train_000033: generated  Can you mute the colors to give it a moody, desaturated feel and also 
+  unsup_train_000034: generated  Give the whole photo a faded, vintage look and add some butterflies fl
+  unsup_train_000035: rejected issues=['no_category_cue:local_region_edit']  Can you make the green leaves in the water more vibrant and saturated 
+  unsup_train_000036: rejected issues=['no_category_cue:semantic_object_recolor']  Can you change her black skirt to a deep navy blue color while keeping
+  unsup_train_000037: generated  Can you remove the stool she's sitting on so it looks like she's float
+  unsup_train_000038: generated  Replace the white curtain in the background with a lush outdoor garden
+  unsup_train_000039: generated  Can you add some cherry blossom petals floating in the air around the 
+  unsup_train_000040: generated  Brighten the woman's face and skin so she stands out more, but keep th
+  unsup_train_000041: generated  Can you match the color grading of this photo to the warm, golden-hour
+  unsup_train_000042: generated  Make it look like the sun is setting just behind her left shoulder, ca
+  unsup_train_000043: generated  Can you sharpen the details on the tree bark and the engravings on the
+  unsup_train_000044: generated  Can you rotate the image slightly clockwise to straighten her posture 
+  unsup_train_000045: generated  Remove the red tassel hanging from the bottom of the fan and fill in t
+  unsup_train_000046: generated  Give the whole scene a warm golden-hour tone and erase the collapsed r
+  unsup_train_000047: rejected issues=['no_unsupported_cue:semantic_object_recolor']  give the whole image a cooler, blue-toned look and also change her top
+  unsup_train_000048: generated  brighten the whole image but keep the background darker than the subje
+  unsup_train_000049: generated  Darken the overall image and smooth out the baby's skin to give it a s
+  unsup_train_000050: generated  boost the contrast and make it look like warm golden-hour sunlight is 
+  unsup_train_000051: generated  Can you mute the colors to give this a soft, dreamy feel and also add 
+  unsup_train_000052: rejected issues=['no_category_cue:local_region_edit']  Make the canal water more vibrant and teal-colored while keeping the b
+  unsup_train_000053: generated  Can you change the color of her graduation gown from black to deep nav
+  unsup_train_000054: generated  Can you remove the fallen leaves scattered on the grass around her so 
+  unsup_train_000055: generated  Replace the bamboo forest background with a misty mountain landscape w
+  unsup_train_000056: generated  Can you add a few white doves flying above the couple to make the phot
+  unsup_train_000057: generated  Brighten up the woman's red sweatshirt to make it pop more, but leave 
+  unsup_train_000058: rejected issues=['no_category_cue:reference_style_transfer']  Can you match the color grading of this photo to the vintage film look
+  unsup_train_000059: generated  Make it look like the scene is lit by warm golden-hour sunlight coming
+  unsup_train_000060: generated  Can you smooth out the skin on the girl's face and arms so it looks a 
+  unsup_train_000061: generated  Can you straighten the image so the shelves appear perfectly horizonta
+  unsup_train_000062: generated  Can you remove the tattoo on her upper arm and fill in the skin so it 
+  unsup_train_000063: generated  Give this photo a cinematic color grade and remove the origami crane s
+  unsup_train_000064: generated  Make the whole photo warmer and also change the man's red tie to navy 
+  unsup_train_000065: rejected issues=['no_unsupported_cue:local_region_edit']  Cool down the overall tones of the photo but keep the bumper sticker's
+  unsup_train_000066: generated  brighten the whole image and smooth out the model's skin texture
+  unsup_train_000067: generated  Darken the overall image and make it look like the light is coming fro
+  unsup_train_000068: generated  boost the contrast to make the wood grain pop and add some pigeons sit
+  unsup_train_000069: generated  Can you make the green trees in the background more vibrant and satura
+  unsup_train_000070: generated  Can you change the orange and black umbrella to a bright red and white
+  unsup_train_000071: generated  Can you remove the colorful beads scattered on the bed in front of the
+  unsup_train_000072: generated  Replace the chain-link fence in the foreground with a blurred bokeh ef
+  unsup_train_000073: generated  Can you add some falling cherry blossom petals floating around her in 
+  unsup_train_000074: generated  Brighten up the white flowers in the center so they really pop, but ke
+  unsup_train_000075: generated  Match the color grading of this photo to the warm golden-hour look fro
+  unsup_train_000076: generated  Make it look like the flowers are lit by warm golden sunset light comi
+  unsup_train_000077: generated  Can you smooth out the skin on her face and arms to give her a more po
+  unsup_train_000078: generated  Can you rotate the image 90 degrees clockwise so she appears to be lyi
+  unsup_train_000079: generated  The curtain on the right side has an awkward red/maroon patch at the b
+  unsup_train_000080: generated  Give this photo a matte, desaturated look and erase the fur coat so he
+  unsup_train_000081: generated  Give this photo a cinematic look and also change the dog's leash to br
+  unsup_train_000082: rejected issues=['no_unsupported_cue:local_region_edit']  Make the whole image warmer but keep the pool water with its original 
+  unsup_train_000083: generated  Cool down the overall tones to give it a more moody feel and also smoo
+  unsup_train_000084: generated  Brighten the overall image and add warm golden-hour sunlight coming fr
+  unsup_train_000085: generated  darken the overall image and add some pigeons perched on the broken wi
+  unsup_train_000086: generated  Keep the couple's white wedding dress and veil bright and pure white, 
+  unsup_train_000087: generated  Can you change the color of just the pink water lily flower buds to wh
+  unsup_train_000088: generated  Can you remove the old tire leaning against the fence behind the woman
+  unsup_train_000089: generated  Replace the yellow paper lantern she's holding with a traditional red 
+  unsup_train_000090: generated  Can you add a few seagulls flying over the water visible through the w
+  unsup_train_000091: generated  Brighten up the woman's face so it looks more naturally lit, but keep 
+  unsup_train_000092: rejected issues=['no_category_cue:reference_style_transfer']  Can you make this photo match the warm, golden-hour film look from the
+  unsup_train_000093: generated  Make it look like the child is lit by warm golden-hour sunlight coming
+  unsup_train_000094: generated  Can you smooth out the skin on both of their faces and clean up the fl
+  unsup_train_000095: generated  Can you straighten the photo slightly and adjust the perspective so th
+  unsup_train_000096: generated  There's a scratch or damaged area on the wooden railing she's leaning 
+  unsup_train_000097: generated  Give the whole photo a faded, washed-out look and remove the birdhouse
+  unsup_train_000098: rejected issues=['no_unsupported_cue:semantic_object_recolor']  Give the photo a matte look and also change just her hat to a bright r
+  unsup_train_000099: generated  Give it a cinematic color grade but keep the background in its origina
+  unsup_train_000100: generated  Can you warm up the tones to give this photo a golden hour feel and al
+  unsup_train_000101: generated  Give the whole photo a cooler, blue-toned color grade and also add war
+  unsup_train_000102: generated  Brighten up the whole photo and add a flock of white doves flying abov
+  unsup_train_000103: generated  Can you brighten up just the background area behind the two people at 
+  unsup_train_000104: generated  Can you change the color of the flag bunting at the top to all blue, k
+  unsup_train_000105: generated  Can you remove the hydrangea flowers from the image so it just shows t
+  unsup_train_000106: generated  Replace the red banners on the right side with cherry blossom branches
+  unsup_train_000107: generated  Can you add a few butterflies flying around the couple to make the sce
+  unsup_train_000108: generated  Brighten up her face so it looks more lit and glowing, but keep the da
+  unsup_train_000109: generated  Make this photo look exactly like the style of the reference image I'm
+  unsup_train_000110: generated  Make it look like the light is coming from the left at golden hour sun
+  unsup_train_000111: generated  Can you sharpen the details on the window frame and the city skyline i
+  unsup_train_000112: generated  Can you rotate the image about 5 degrees clockwise so the bed and head
+  unsup_train_000113: generated  Remove his glasses and fill in the skin underneath so it looks like he
+  unsup_train_000114: generated  Can you mute the colors to give it a soft, faded look and also remove 
+  unsup_train_000115: generated  Give the whole photo a faded, washed-out look and also change the woma
+  unsup_train_000116: rejected issues=['no_unsupported_cue:local_region_edit']  Give the photo a matte look but keep the sofa's floral pattern vivid a
+  unsup_train_000117: generated  Give this photo a cinematic color grade and also smooth out the skin o
+  unsup_train_000118: generated  Give the whole photo a warm golden tone and also add soft sunset light
+  unsup_train_000119: generated  Make the whole image cooler and add falling snowflakes throughout the 
+  unsup_train_000120: rejected issues=['no_category_cue:local_region_edit']  Can you make the lotus flowers more vibrant and saturated pink while k
+  unsup_train_000121: generated  Can you change the color of her yellow shorts to navy blue while keepi
+  unsup_train_000122: generated  Can you remove the yellow maple leaf from the image so only the green 
+  unsup_train_000123: generated  Replace the clear blue sky with a dramatic stormy sky full of dark clo
+  unsup_train_000124: generated  Can you add a few dewdrops on the rose petals to make it look like it 
+  unsup_train_000125: generated  Brighten up the graduate's face so it really pops, but keep the librar
+  unsup_train_000126: generated  Can you make this graduation photo match the warm, golden-hour film lo
+  unsup_train_000127: generated  Make it look like the light is coming from the left side at golden hou
+  unsup_train_000128: generated  Can you smooth out her skin a bit and clean up any flyaway hairs aroun
+  unsup_train_000129: generated  Can you straighten the perspective on the brown fence so it looks like
+  unsup_train_000130: generated  Remove the weather vane from the rooftop and fill in that area so it l
+  unsup_train_000131: generated  Boost the contrast to make the image more dramatic and also remove the
+  unsup_train_000132: generated  Mute the overall colors to give a faded, desaturated look, and also ch
+  unsup_train_000133: generated  Give the photo a faded, washed-out look but also make the sky region m
+  unsup_train_000134: generated  Give the whole photo a matte, faded look and also smooth out the skin 
+  unsup_train_000135: generated  Give this photo a cinematic color grade and also add warm golden-hour 
+  unsup_train_000136: generated  Make the whole scene warmer and add some pigeons on the floor near the
+  unsup_train_000137: generated  Keep everything else the same but change the blurred green background 
+  unsup_train_000138: generated  Can you change the yellow flower she's holding to a bright pink color 
+  unsup_train_000139: generated  Can you remove the red sash/ribbon that the groom is holding out to th
+  unsup_train_000140: generated  Replace the gray studio background with a busy city street scene behin
+  unsup_train_000141: generated  Can you add some falling cherry blossom petals around her in the backg
+  unsup_train_000142: generated  Brighten up the two women so their faces and outfits are more visible,
+  unsup_train_000143: generated  Can you match the color grading of this photo to the warm, faded film 
+  unsup_train_000144: generated  Can you make it look like the light is coming from the left side, like
+  unsup_train_000145: generated  Can you smooth out her skin a bit and soften the fine lines around her
+  unsup_train_000146: generated  Can you straighten the image slightly and adjust the perspective so th
+  unsup_train_000147: generated  The easel's wooden legs are partially hidden by the grass — can you re
+  unsup_train_000148: generated  Make the whole image darker and remove the ceramic jug she's holding f
+  unsup_train_000149: generated  boost the contrast and also change the girl's dress to a soft lavender
+  unsup_train_000150: generated  Can you mute the colors overall but keep the brick wall in the backgro
+  unsup_train_000151: generated  Give this photo a faded, washed-out look and also smooth out the skin 
+  unsup_train_000152: generated  Give the whole photo a matte, desaturated look and add warm golden-hou
+  unsup_train_000153: generated  Give this photo a cinematic color grade and add some birds flying abov
+  unsup_train_000154: generated  Can you make the sky look more dramatic and stormy with darker, moodie
+  unsup_train_000155: generated  Can you change the color of her beige beret to a deep burgundy red whi
+  unsup_train_000156: generated  Can you remove the curtain on the left side of the image so the backgr
+  unsup_train_000157: generated  Replace the bare dead tree branches in the background with lush green 
+  unsup_train_000158: generated  Can you add a dramatic sunset sky with some flying birds in the backgr
+  unsup_train_000159: generated  Brighten up the dark staircase in the foreground so I can see the step
+  unsup_train_000160: generated  Make this photo look exactly like the style and color grading of the r
+  unsup_train_000161: generated  Can you make it look like the sun is setting to the left, casting warm
+  unsup_train_000162: generated  Can you smooth out the skin on her face and shoulders a bit? There are
+  unsup_train_000163: generated  Can you rotate the image slightly clockwise to straighten the tree tru
+  unsup_train_000164: rejected issues=['no_category_cue:inpainting']  There's a scratch or blemish on the circular metallic ring prop behind
+  unsup_train_000165: generated  brighten up the whole image and remove the sun's glare reflection from
+  unsup_train_000166: generated  make the image darker and change the red rose petal on her chest to wh
+  unsup_train_000167: generated  Boost the contrast overall and also darken just the background behind 
+  unsup_train_000168: generated  Mute the colors to give it a soft, faded film look and smooth out the 
+  unsup_train_000169: generated  Give this photo a faded, washed-out film look and add warm golden suns
+  unsup_train_000170: generated  Give this photo of the Hoover Dam a matte, desaturated look and add so
+  unsup_train_000171: generated  Keep her white dress and outfit as-is, but change the red background t
+  unsup_train_000172: generated  Can you change the color of her dark green shawl/wrap to a deep royal 
+  unsup_train_000173: generated  Can you remove the bird from this photo so it's just a clean shot of t
+  unsup_train_000174: generated  Replace the lotus leaves and plants in the background with a misty mou
+  unsup_train_000175: generated  Can you add some floating rose petals falling from above to make the w
+  unsup_train_000176: generated  Make the couple's skin tones warmer and more golden, but keep the red 
+  unsup_train_000177: rejected issues=['no_category_cue:reference_style_transfer']  Can you match the color grading of this photo to the warm, golden-hour
+  unsup_train_000178: generated  Make it look like she's being lit by warm golden-hour sunlight coming 
+  unsup_train_000179: generated  Can you smooth out the rough, pitted texture of the white stone wall b
+  unsup_train_000180: generated  Can you rotate this photo 90 degrees clockwise so the person appears r
+  unsup_train_000181: generated  There's a small damaged/overexposed patch on the veil near her left sh
+  unsup_train_000182: generated  Cool down the tones in this photo and remove the woman sitting on the 
+  unsup_train_000183: generated  brighten the whole image and change the scooter to a bright red color
+  unsup_train_000184: generated  Make the overall image darker but keep the neon sign at its original b
+  unsup_train_000185: generated  Boost the contrast to make the scene more dramatic and also smooth out
+  unsup_train_000186: generated  Mute the colors to give it a soft, desaturated film look and add warm 
+  unsup_train_000187: generated  Give the whole photo a faded, vintage look and also add some cherry bl
+  unsup_train_000188: generated  Keep the woman looking natural but make the background greenery more v
+  unsup_train_000189: generated  Can you change the color of her white dress to a soft pink while keepi
+  unsup_train_000190: generated  Can you remove the large Christmas tree in the center of the atrium so
+  unsup_train_000191: generated  Replace the white sail on the boat behind the couple with a colorful s
+  unsup_train_000192: generated  Can you add some falling cherry blossom petals around her in the image
+  unsup_train_000193: generated  Brighten up her face so it's more evenly lit and visible, but keep the
+  unsup_train_000194: generated  Make this photo match the warm golden-hour color grading from the refe
+  unsup_train_000195: generated  Can you make it look like the dog is lit by warm golden sunset light c
+  unsup_train_000196: generated  Can you smooth out the skin on both women's faces and soften the textu
+  unsup_train_000197: generated  Can you rotate the image slightly clockwise to straighten her posture 
+  unsup_train_000198: generated  There's a small blemish/mark visible on her chest near the neckline — 
+  unsup_train_000199: generated  Can you make the whole photo warmer and also remove the wooden fence a
+  unsup_train_000200: rejected issues=['no_unsupported_cue:semantic_object_recolor']  Cool down the overall tones of the photo and also change just the flow
+  unsup_train_000201: generated  Brighten the whole image but keep the background darker than the foreg
+  unsup_train_000202: generated  Make the whole image darker and also smooth out the man's skin texture
+  unsup_train_000203: generated  Boost the contrast in this photo and make it look like the light is co
+  unsup_train_000204: generated  Mute the colors to give this a soft, faded aesthetic and add falling c
+  unsup_train_000205: generated  Can you make the grey background warmer and more beige-toned while kee
+  unsup_train_000206: rejected issues=['no_category_cue:semantic_object_recolor']  Can you repaint the squirrel spring rider to bright red while keeping 
+  unsup_train_000207: generated  Can you remove the soccer ball from the image so it looks like she's j
+  unsup_train_000208: generated  Replace the white brick wall behind her with a neon-lit urban alleyway
+  unsup_train_000209: generated  Can you add a flock of birds flying over the Paris cityscape in the ba
+  unsup_train_000210: generated  Brighten up her face so it looks more lit and glowing, but keep the ba
+  unsup_train_000211: generated  Can you match the color grading of this photo to the moody blue-teal t
+  unsup_train_000212: generated  Make it look like the donation box is being lit by warm golden light c
+  unsup_train_000213: generated  Can you sharpen the rose petals so the fine texture and edges look cri
+  unsup_train_000214: generated  Can you straighten the image a bit? It looks like the camera was tilte
+  unsup_train_000215: generated  There's a small damaged spot on her black dress near the shoulder stra
+  unsup_train_000216: error TeacherGenerationError: no JSON object in response: "I'm not able to generate requests involving this image as it contains sensitive content. I cannot process or create prompts related to this type of imagery."  
+  unsup_train_000217: generated  make the whole image warmer and also recolor just the rope-twist moldi
+  unsup_train_000218: generated  Make the overall tone cooler and also brighten just the area around th
+  unsup_train_000219: generated  brighten the whole image and smooth out the woman's skin to give her a
+  unsup_train_000220: generated  Darken the overall image and add a dramatic side light coming from the
+  unsup_train_000221: generated  Boost the contrast to make the colors pop and add some butterflies fly
+  unsup_train_000222: generated  Can you make the green grass in the background look more vibrant and l
+  unsup_train_000223: generated  Can you change the color of just the small leaf visible on the right s
+  unsup_train_000224: generated  Can you remove the kayaker on the far left so it looks like there are 
+  unsup_train_000225: generated  Replace the snowy background with a sunny beach scene so the couple lo
+  unsup_train_000226: generated  Can you add some rose petals falling around the couple to make this ro
+  unsup_train_000227: generated  Brighten up her face so it looks more evenly lit, but keep the backgro
+  unsup_train_000228: generated  Can you make this photo match the color grading from my golden-hour su
+  unsup_train_000229: generated  Make it look like the light is coming from the left side, casting a wa
+  unsup_train_000230: generated  Can you sharpen the rocky terrain and desert shrubs in the background 
+  unsup_train_000231: generated  Can you straighten the image so the carrot-shaped chocolates are stand
+  unsup_train_000232: rejected issues=['no_category_cue:inpainting']  There's a shadow cast across her chest and neck from the hair — can yo
+  unsup_train_000233: generated  Give the photo a matte, desaturated look and remove the boxing glove f
+  unsup_train_000234: rejected issues=['no_unsupported_cue:semantic_object_recolor']  Give this photo a cinematic look and change his brown coat to navy blu
+  unsup_train_000235: generated  Give the whole photo a warm golden-hour tone but keep the forest backg
+  unsup_train_000236: generated  Cool down the tones to give it a more clinical feel and smooth out her
+  unsup_train_000237: generated  Brighten the whole image and add a warm side light coming from the lef
+  unsup_train_000238: generated  Make the whole image darker and add a soft shower of rose petals falli
+  unsup_train_000239: rejected issues=['no_category_cue:local_region_edit']  Make the river water look more blue and clear while keeping the surrou
+  unsup_train_000240: generated  Can you change the color of her red top to a deep emerald green while 
+  unsup_train_000241: generated  Can you remove the white teepee tent from the image so the girl is jus
+  unsup_train_000242: generated  Replace the blue sky in the background with a dramatic stormy sky full
+  unsup_train_000243: generated  Can you add a bright sun with rays peeking through the clouds in the s
+  unsup_train_000244: generated  Brighten up the baby's face so it looks more lit and vibrant, but keep
+  unsup_train_000245: rejected issues=['no_category_cue:reference_style_transfer']  Make this photo match the color grading and mood from the golden-hour 
+  unsup_train_000246: generated  Make it look like the sun is setting from the left side, casting warm 
+  unsup_train_000247: generated  Can you smooth out her skin a bit and clean up the flyaway hairs so th
+  unsup_train_000248: generated  Can you straighten the photo slightly and tilt it so the two girls app
+  unsup_train_000249: generated  Remove the woman's hat and fill in her hair naturally so it looks like
+  unsup_train_000250: generated  Give this photo a faded, washed-out look and remove the tattoo on his 
+  unsup_train_000251: generated  Give this photo a matte look and change the baby's onesie to a soft la
+  unsup_train_000252: generated  Give this wedding photo a cinematic look overall, and also brighten up
+  unsup_train_000253: generated  Make the whole image warmer and also smooth out her skin texture to gi
+  unsup_train_000254: generated  Cool down the overall tones to give it a moonlit feel and add soft dir
+  unsup_train_000255: generated  Can you brighten up the whole photo and also add some falling snowflak
+  unsup_train_000256: rejected issues=['no_category_cue:local_region_edit']  Make the glowing white candle in the center brighter and more vibrant 
+  unsup_train_000257: generated  Can you change the color of her navy blue skirt to a deep burgundy red
+  unsup_train_000258: generated  Can you remove the small purple wildflowers in the foreground so the g
+  unsup_train_000259: generated  Replace the overcast sky peeking through the treetops with a warm gold
+  unsup_train_000260: generated  Can you add some falling cherry blossom petals floating around her in 
+  unsup_train_000261: generated  Brighten up the two people in the foreground to make them really pop, 
+  unsup_train_000262: generated  Make this photo look exactly like the color grading in this reference 
+  unsup_train_000263: generated  Make it look like the couple is lit by warm golden-hour sunlight comin
+  unsup_train_000264: generated  Can you smooth out the girl's skin and clean up any stray hairs around
+  unsup_train_000265: generated  Can you straighten the horizon line a bit? It looks slightly tilted to
+  unsup_train_000266: generated  There's a small damaged/scratched area on the white parasol behind her
+  unsup_train_000267: generated  Mute the colors to give this a faded, desaturated look and remove the 
+  unsup_train_000268: generated  give the photo a faded, washed-out look and change the boxing gloves f
+  unsup_train_000269: generated  Apply a matte look to the whole photo but keep the cacti in the backgr
+  unsup_train_000270: generated  Give this scene a cinematic color grade and also sharpen the mountain 
+  unsup_train_000271: generated  Make the whole image warmer and shift the lighting so it looks like go
+  unsup_train_000272: generated  Cool down the warm tones in this photo and add a full moon visible thr
+  unsup_train_000273: generated  Can you brighten just the person's face while keeping the dark surroun
+  unsup_train_000274: generated  Can you change the bride's wedding dress to a soft blush pink color wh
+  unsup_train_000275: generated  Can you remove the white curtains from the background so the windows a
+  unsup_train_000276: generated  Replace the black background with a soft, dreamy garden scene with blu
+  unsup_train_000277: generated  Can you add a glowing full moon visible through the curtains behind he
+  unsup_train_000278: generated  Brighten up the woman's face so it's clearly lit and visible, but keep
+  unsup_train_000279: generated  Can you match the color grading of this photo to the warm golden-hour 
+  unsup_train_000280: generated  Can you make it look like the light is coming from a warm sunset on th
+  unsup_train_000281: generated  Can you smooth out her skin a bit and clean up the flyaway hairs aroun
+  unsup_train_000282: generated  Can you rotate the image 90 degrees clockwise so it looks like they're
+  unsup_train_000283: rejected issues=['no_category_cue:inpainting']  There's a small blemish/damage spot on the gray background near the to
+  unsup_train_000284: generated  boost the contrast to make the canal scene more dramatic and remove th
+  unsup_train_000285: generated  Mute the overall colors of the scene and make the snow on the mountain
+  unsup_train_000286: rejected issues=['no_unsupported_cue:local_region_edit']  Give the whole photo a faded, washed-out look but keep the man's face 
+  unsup_train_000287: generated  Apply a matte look to the whole photo and also smooth out the skin on 
+  unsup_train_000288: generated  Give this photo a cinematic color grade and make it look like the ligh
+  unsup_train_000289: generated  Make the photo warmer and add a sunny sky background with clouds behin
+  unsup_train_000290: generated  Keep the dark silhouetted buildings and canal as they are, but brighte
+  unsup_train_000291: generated  Change the color of the classic car in the foreground to a deep red wh
+  unsup_train_000292: generated  Can you remove the yellow number tag on the wooden post on the left si
+  unsup_train_000293: generated  Replace the hanging letter garland above the crib with a string of col
+  unsup_train_000294: generated  Can you add some floating golden cherry blossom petals drifting around
+  unsup_train_000295: generated  Brighten up her face and skin so she looks more radiant, but keep the 
+  unsup_train_000296: rejected issues=['no_category_cue:reference_style_transfer']  Can you match the color grading of this photo to my other wedding phot
+  unsup_train_000297: generated  Can you make it look like the sun is setting from the left side, casti
+  unsup_train_000298: generated  Can you smooth out the woman's skin and clean up any flyaway hairs aro
+  unsup_train_000299: generated  Can you straighten the horizon line? It looks slightly tilted in this 
+  unsup_train_000300: rejected issues=['no_category_cue:inpainting']  Remove the black cable on the floor in the bottom-left corner and fill
+[unsup] {'generated': 501, 'rejected': 42, 'error': 1, 'dry_run': 0, 'skipped': 6}
+[unsup] assembled: {'generated': 507, 'train_rows': 272, 'eval_rows': 235, 'by_category': {'local_region_edit': 27, 'semantic_object_recolor': 30, 'content_removal': 33, 'content_replacement': 33, 'content_generation': 33, 'selective_preservation': 33, 'reference_style_transfer': 22, 'relighting': 33, 'texture_detail': 33, 'geometry': 33, 'inpainting': 24, 'mixed_partial_supported_plus_content_generation': 62, 'mixed_partial_supported_plus_semantic_recolor': 27, 'mixed_partial_supported_plus_local_edit': 23, 'mixed_partial_supported_plus_texture': 31, 'mixed_partial_supported_plus_relighting': 30}, 'cache_total': 550}

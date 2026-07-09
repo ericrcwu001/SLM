@@ -97,15 +97,17 @@ artifacts/{run_id}/version_manifest.json
 
 ## Artifact Storage
 
-Use a stable artifact root:
+Use a stable artifact root. This project's durable root is the private Hugging Face
+dataset repo:
 
 ```text
-/content/drive/MyDrive/prompt_to_lut/
+hf://datasets/ericrcwu/LUT_SLM
 ```
 
-or a mounted Hugging Face dataset/model repo. This durable root is the source and
-sink for `slm_stage` (see "Colab Data Staging (slm_stage)"): training does not read
-this root directly during a run, it reads the fast local copy staged from it.
+(a local path or `/content/drive/MyDrive/prompt_to_lut/` also works). This durable root
+is the source and sink for `slm_stage` (see "Colab Data Staging (slm_stage)"): training
+does not read this root directly during a run, it reads the fast local copy staged from
+it. The active SFT dataset lives under `data/active_sft/` in that repo.
 
 Required folders:
 
@@ -189,7 +191,7 @@ push   local checkpoints/outputs -> durable root, for survival across session te
 
 ```text
 staging_version
-durable_root                 # /content/drive/MyDrive/prompt_to_lut, an HF repo ref, or gs://<bucket>/prompt_to_lut (GCS via gcloud CLI, ADR 0019)
+durable_root                 # default hf://datasets/ericrcwu/LUT_SLM; also /content/drive/MyDrive/prompt_to_lut or gs://<bucket>/prompt_to_lut (GCS via gcloud CLI, ADR 0019)
 local_root                   # default /content/slm
 pack:  { include, exclude, shard_max_bytes, compression }
 stage: { min_free_bytes, verify: sha256 }

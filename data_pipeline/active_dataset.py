@@ -151,11 +151,12 @@ class AcceptanceChecker:
         crit["no_leakage"] = {"status": PASS if leakage_status == "pass" else FAIL,
                               "detail": f"leakage_status={leakage_status}"}
 
-        # 4 provenance + measured behavior present
-        missing_beh = [r.id for r in rows if not r.measured_behavior]
+        # 4 provenance + measured behavior present (SUPPORTED rows only — an unsupported/refusal
+        # row carries no LUT, hence no measured behavior; requiring it would falsely fail them)
+        missing_beh = [r.id for r in rows if r.is_supported and not r.measured_behavior]
         crit["provenance_and_behavior"] = {
             "status": PASS if not missing_beh else FAIL,
-            "detail": f"{len(missing_beh)} rows missing measured_behavior"}
+            "detail": f"{len(missing_beh)} supported rows missing measured_behavior"}
 
         # 5 canonical-domain metadata on supported rows
         bad_dom = [r.id for r in rows if r.is_supported and r.canonical_domain_id != CANONICAL_DOMAIN_ID]
@@ -186,11 +187,23 @@ class AcceptanceChecker:
             "status": PASS if not any("unmentioned_behavior" in x for x in tag_issues) else FAIL,
             "detail": "reverse tag<->behavior coverage"}
 
-        # 9 unsupported coverage -> needs instruction/boundary rows (teacher)
-        n_unsup = sum(1 for r in rows if not r.is_supported)
-        crit["unsupported_coverage"] = {
-            "status": PENDING, "detail": f"{n_unsup} unsupported rows; boundary/mixed prompts "
-                                         f"need teacher ({INSTRUCTION_STATUS_PENDING})"}
+        # 9 unsupported coverage: refusal rows present, spanning categories + including mixed.
+        # PENDING only while the refusal corpus is absent/thin; PASS once it covers the space.
+        unsup = [r for r in rows if not r.is_supported]
+        unsup_cats = {r.unsupported_category for r in unsup if r.unsupported_category}
+        has_mixed = any(r.mixed_prompt for r in unsup)
+        if not unsup:
+            crit["unsupported_coverage"] = {
+                "status": PENDING, "detail": "0 unsupported rows; boundary/mixed prompts need "
+                                             f"teacher ({INSTRUCTION_STATUS_PENDING})"}
+        elif has_mixed and len(unsup_cats) >= 8:
+            crit["unsupported_coverage"] = {
+                "status": PASS, "detail": f"{len(unsup)} unsupported rows, {len(unsup_cats)} "
+                                          "categories, mixed present"}
+        else:
+            crit["unsupported_coverage"] = {
+                "status": PENDING, "detail": f"{len(unsup)} unsupported rows, {len(unsup_cats)} "
+                                             f"categories, mixed={has_mixed} (need >=8 cats + mixed)"}
 
         # 10 required manifests/configs present
         crit["manifests_present"] = {

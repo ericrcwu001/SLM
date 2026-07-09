@@ -9,21 +9,23 @@ staging_version: v1
 #   - a GCS bucket, e.g. gs://<bucket>/prompt_to_lut  (uses the `gcloud storage` CLI; run
 #     `gcloud auth login` first).
 #   - a HuggingFace repo, e.g. hf://datasets/<user>/<repo>  (uses huggingface_hub; run
-#     `hf auth login` first; defaults to a dataset repo). Left null so it must be set
-#     explicitly (--durable-root).
-durable_root: null
+#     `hf auth login` first; defaults to a dataset repo).
+# This project's private dataset repo. Override per-run with --durable-root.
+durable_root: hf://datasets/ericrcwu/LUT_SLM
 
 # Fast local root that `stage` extracts into; becomes a drop-in SLM_ARTIFACT_ROOT.
 local_root: /content/slm
 
 pack:
   # Corpus dirs (relative to the artifact root). luts/raw is the bulk (~9 GB of JPGs);
-  # canonical_residual + the data manifests + the frozen tokenizer are small but essential.
+  # canonical_residual + the data manifests + the active SFT set + the frozen tokenizer are
+  # small but essential.
   include:
     - luts/raw
     - luts/canonical_residual
     - data/raw_registry
     - data/splits
+    - data/active_sft
     - tokenizer/final
   exclude:
     - "*.lock"
