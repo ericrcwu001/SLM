@@ -635,6 +635,8 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
   </div>
 </header>
 
+<main id="main-content">
+
 <!-- STAT STRIP -->
 <div class="stripwrap">
   <div class="strip wrap">
@@ -658,11 +660,11 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
 </div>
 
 <!-- EVAL HARNESS: SCROLL-SCRUBBED END-TO-END RUN -->
-<main class="harness-tour" id="harness" tabindex="-1">
-  <div class="harness-shell wrap" id="main-content">
+<section class="harness-tour" id="harness" tabindex="-1" aria-labelledby="harness-title">
+  <div class="harness-shell wrap">
     <div class="harness-copy">
       <div class="sec-flag"><span class="ln"></span><span class="eyebrow">Live harness walkthrough</span></div>
-      <h2>From frozen row to ship decision.</h2>
+      <h2 id="harness-title">From frozen row to ship decision.</h2>
       <p class="lede">The same row, contract, and thresholds follow every checkpoint. Scroll to scrub the run, select a stage, or replay it end to end. Values shown in the run are illustrative; the contracts and artifacts match the implementation.</p>
       <div class="harness-controls">
         <button class="hplay" id="harnessPlay" type="button" aria-pressed="false"><span class="playmark" aria-hidden="true"></span><span id="harnessPlayLabel">Replay full run</span></button>
@@ -829,7 +831,7 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
       </div>
     </div>
   </div>
-</main>
+</section>
 
 <!-- OVERVIEW -->
 <section class="sec wrap" id="overview">
@@ -1264,6 +1266,8 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
     </div>
   </div>
 </section>
+
+</main>
 
 <!-- FOOTER -->
 <footer>
