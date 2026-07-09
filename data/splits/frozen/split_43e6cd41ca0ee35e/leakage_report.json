@@ -1,0 +1,15 @@
+{
+  "status": "pass",
+  "leakage_policy_version": "frozen_v1",
+  "per_axis_violation_counts": {},
+  "example_pair_ids": {},
+  "skipped_axes": [
+    "image_semantics:near_neighbor_no_embedding",
+    "prompt_semantics:near_neighbor_no_embedding"
+  ],
+  "cross_split_scopes": [
+    "train_vs_eval",
+    "train_vs_diagnostic",
+    "train_vs_qualitative"
+  ]
+}

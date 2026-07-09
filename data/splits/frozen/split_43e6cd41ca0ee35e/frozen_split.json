@@ -1,0 +1,35 @@
+{
+  "split_id": "split_43e6cd41ca0ee35e",
+  "leakage_policy_version": "frozen_v1",
+  "frozen_at_utc": "2026-07-09T07:27:17.234906+00:00",
+  "seed": 1234,
+  "ratios": {
+    "train": 0.8,
+    "eval": 0.1,
+    "diagnostic": 0.07,
+    "qualitative": 0.03
+  },
+  "split_distribution": {
+    "train": 3810,
+    "eval": 394,
+    "diagnostic": 267,
+    "qualitative": 130
+  },
+  "unit_count": 2804,
+  "accepted_candidates": {
+    "accepted": 4620,
+    "with_residual": 4620,
+    "missing_residual": 0
+  },
+  "corpus_id": "corpus_07a691b22a221ac7",
+  "pca_basis_sha256": "3ccc20b4771dd2e794f38cb16e7aff4190252668bb9f326179c029c8db3f68b4",
+  "active_axes": [
+    "exact:normalized_lut_hash",
+    "lut_behavior:pca64_cosine_near"
+  ],
+  "skipped_axes": [
+    "image_semantics:near_neighbor_no_embedding",
+    "prompt_semantics:near_neighbor_no_embedding"
+  ],
+  "note": "LUT-space leakage freeze (the tokenizer is LUT-only). Image/prompt semantic-near axes need CLIP/MiniLM embeddings + teacher prompts (not yet wired); freeze those separately for the downstream SFT."
+}
