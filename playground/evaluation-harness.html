@@ -1,0 +1,1968 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An interactive, client-facing explanation of the Prompt-to-LUT SFT evaluation harness.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2317201f'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Georgia,serif' font-size='34' fill='%23b8e8c8'%3EL%3C/text%3E%3C/svg%3E">
+  <title>Inside the Prompt-to-LUT Evaluation Harness</title>
+  <style>
+    :root {
+      --paper: #f2efe6;
+      --paper-bright: #fbfaf5;
+      --ink: #171b1b;
+      --muted: #68706f;
+      --rule: rgba(23, 27, 27, 0.16);
+      --charcoal: #17201f;
+      --charcoal-2: #202b29;
+      --mint: #b8e8c8;
+      --mint-deep: #357d59;
+      --coral: #df735e;
+      --coral-soft: #f0d7d0;
+      --amber: #d7aa52;
+      --blue: #9cc6dd;
+      --shadow: 0 28px 80px rgba(32, 36, 32, 0.14);
+      --radius-sm: 12px;
+      --radius-md: 22px;
+      --radius-lg: 34px;
+      --max: 1240px;
+      --space-section: clamp(88px, 9vw, 136px);
+      --space-section-compact: clamp(68px, 7vw, 104px);
+      --space-module: clamp(44px, 5vw, 72px);
+      --serif: Georgia, "Times New Roman", serif;
+      --sans: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; overflow-x: clip; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(23, 27, 27, 0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23, 27, 27, 0.028) 1px, transparent 1px),
+        var(--paper);
+      background-size: 32px 32px;
+      font-family: var(--sans);
+      line-height: 1.55;
+      overflow-x: clip;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      opacity: .045;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.65'/%3E%3C/svg%3E");
+    }
+
+    .scroll-progress {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 90;
+      height: 3px;
+      background: linear-gradient(90deg, var(--mint), var(--amber), var(--coral));
+      transform: scaleX(0);
+      transform-origin: left;
+      will-change: transform;
+      box-shadow: 0 0 18px rgba(185,248,209,.45);
+    }
+
+    a { color: inherit; }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    code { font-family: var(--mono); }
+
+    .skip-link {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 100;
+      transform: translateY(-180%);
+      background: var(--ink);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .shell { width: min(calc(100% - 48px), var(--max)); margin: 0 auto; }
+    .section { padding: var(--space-section) 0; position: relative; }
+    .section-compact { padding: var(--space-section-compact) 0; }
+    .section::before {
+      content: "";
+      position: absolute;
+      width: clamp(180px, 24vw, 360px);
+      aspect-ratio: 1;
+      right: -12vw;
+      top: 12%;
+      border: 1px solid rgba(23,27,27,.055);
+      border-radius: 50%;
+      pointer-events: none;
+      animation: ambientOrbit 22s linear infinite;
+    }
+    .section-dark { color: var(--paper-bright); background: var(--charcoal); }
+    .section-dark::before { border-color: rgba(255,255,255,.06); }
+    .section-kicker,
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: .76rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .section-dark .section-kicker { color: #a9b7b3; }
+    .section-kicker::before,
+    .eyebrow::before {
+      content: "";
+      width: 26px;
+      height: 1px;
+      background: currentColor;
+      transform-origin: left;
+      animation: ruleBreathe 3.6s ease-in-out infinite;
+    }
+    .display {
+      margin: 0;
+      font-family: var(--serif);
+      font-weight: 400;
+      letter-spacing: -.045em;
+      line-height: .96;
+      text-wrap: balance;
+    }
+    .section-title { max-width: 860px; font-size: clamp(3rem, 6.6vw, 6.2rem); }
+    .section-intro {
+      max-width: 720px;
+      margin: 28px 0 0;
+      color: var(--muted);
+      font-size: clamp(1.05rem, 1.7vw, 1.28rem);
+    }
+    .section-dark .section-intro { color: #c2ceca; }
+    .small-note { color: var(--muted); font-size: .84rem; }
+    .section-dark .small-note { color: #91a29e; }
+
+    .site-header {
+      position: absolute;
+      inset: 0 0 auto;
+      z-index: 20;
+      padding: 24px 0;
+      color: #f7f4ea;
+      animation: headerEnter .9s .15s both cubic-bezier(.2,.8,.2,1);
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: .76rem; letter-spacing: .12em; text-transform: uppercase; }
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(255,255,255,.55);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      font-family: var(--serif);
+      font-size: 1rem;
+      animation: brandPulse 4s ease-in-out infinite;
+    }
+    .nav-links { display: flex; align-items: center; gap: 22px; }
+    .nav-links a { text-decoration: none; font-size: .8rem; color: rgba(255,255,255,.72); }
+    .nav-links a { position: relative; transition: color .25s ease, transform .25s ease; }
+    .nav-links a::after { content: ""; position: absolute; left: 0; right: 0; bottom: -7px; height: 1px; background: var(--mint); transform: scaleX(0); transform-origin: right; transition: transform .35s ease; }
+    .nav-links a:hover, .nav-links a:focus-visible { color: white; transform: translateY(-2px); }
+    .nav-links a:hover::after, .nav-links a:focus-visible::after { transform: scaleX(1); transform-origin: left; }
+    .nav-cta {
+      padding: 9px 13px;
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 999px;
+    }
+
+    .hero {
+      min-height: 920px;
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      color: var(--paper-bright);
+      background:
+        radial-gradient(circle at 82% 22%, rgba(185,248,209,.14), transparent 28%),
+        radial-gradient(circle at 13% 78%, rgba(255,118,95,.11), transparent 26%),
+        var(--charcoal);
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 680px;
+      height: 680px;
+      right: -310px;
+      bottom: -310px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 50%;
+      box-shadow: 0 0 0 72px rgba(255,255,255,.018), 0 0 0 144px rgba(255,255,255,.012);
+      transform: translate3d(0, var(--hero-parallax, 0px), 0);
+      transition: transform .12s linear;
+    }
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      opacity: .12;
+      background-image: linear-gradient(rgba(255,255,255,.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.2) 1px, transparent 1px);
+      background-size: 72px 72px;
+      mask-image: linear-gradient(to bottom, transparent, black 35%, black 75%, transparent);
+      animation: gridDrift 18s linear infinite;
+    }
+    .hero-inner {
+      position: relative;
+      z-index: 2;
+      padding: clamp(150px, 16vh, 190px) 0 clamp(72px, 8vh, 104px);
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(310px, .8fr);
+      gap: clamp(48px, 6vw, 82px);
+      align-items: end;
+    }
+    .hero-copy { padding-bottom: 20px; }
+    .hero .eyebrow { color: var(--mint); }
+    .hero-title { max-width: 850px; font-size: clamp(4.2rem, 10vw, 9.2rem); }
+    .hero-title .accent { color: var(--mint); font-style: italic; }
+    .hero-title .accent { display: inline-block; animation: accentFloat 4.8s ease-in-out infinite; }
+    .hero-deck {
+      max-width: 650px;
+      margin: 34px 0 0;
+      color: #bcc7c3;
+      font-size: clamp(1.12rem, 1.7vw, 1.36rem);
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 38px;
+    }
+    .meta-chip {
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      color: #d9e1de;
+      font-size: .76rem;
+      letter-spacing: .04em;
+      animation: chipFloat 5.2s ease-in-out infinite;
+      animation-delay: calc(var(--chip-index, 0) * -1s);
+      transition: background .25s ease, border-color .25s ease, transform .25s ease;
+    }
+    .meta-chip:hover { background: rgba(185,248,209,.12); border-color: rgba(185,248,209,.5); transform: translateY(-4px); }
+
+    .hero-instrument {
+      position: relative;
+      min-height: 560px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 220px 220px 24px 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.015));
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 40px 90px rgba(0,0,0,.24);
+      animation: instrumentHover 6.5s ease-in-out infinite;
+      will-change: transform;
+    }
+    .hero-instrument::before { content: ""; position: absolute; inset: -30% -20%; background: linear-gradient(110deg, transparent 38%, rgba(185,248,209,.08) 48%, transparent 58%); transform: translateX(-55%) rotate(8deg); animation: instrumentScan 6s ease-in-out infinite; }
+    .instrument-head {
+      position: absolute;
+      top: 38px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 154px;
+      height: 154px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(7,10,10,.35);
+    }
+    .instrument-head::before,
+    .instrument-head::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      border: 1px dashed rgba(185,248,209,.35);
+      animation: spin 18s linear infinite;
+    }
+    .instrument-head::before { inset: 13px; }
+    .instrument-head::after { inset: 32px; animation-direction: reverse; animation-duration: 12s; }
+    .instrument-number { font-family: var(--serif); font-size: 3.6rem; color: var(--mint); line-height: 1; }
+    .instrument-number { font-variant-numeric: tabular-nums; }
+    .instrument-label { position: absolute; top: 205px; width: 100%; text-align: center; color: #aab8b4; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; }
+    .token-rail {
+      position: absolute;
+      top: 244px;
+      left: 34px;
+      right: 34px;
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 5px;
+    }
+    .token-dot {
+      aspect-ratio: 1;
+      border-radius: 3px;
+      background: rgba(255,255,255,.09);
+      border: 1px solid rgba(255,255,255,.08);
+      animation: tokenPulse 3.2s ease-in-out infinite;
+      animation-delay: calc(var(--i) * 38ms);
+    }
+    .instrument-footer {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      bottom: 26px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .instrument-stat { padding: 12px 14px; border-top: 1px solid rgba(255,255,255,.14); }
+    .instrument-stat { transition: background .3s ease, transform .3s ease; }
+    .instrument-stat:hover { background: rgba(185,248,209,.08); transform: translateY(-3px); }
+    .instrument-stat strong { display: block; font-family: var(--serif); font-size: 1.5rem; font-weight: 400; color: white; }
+    .instrument-stat strong { animation: countGlow 4.4s ease-in-out infinite; }
+    .instrument-stat span { color: #91a19c; font-size: .64rem; text-transform: uppercase; letter-spacing: .055em; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes tokenPulse { 0%, 100% { background: rgba(255,255,255,.08); transform: translateY(0) scale(1); } 50% { background: rgba(185,248,209,.48); transform: translateY(-3px) scale(1.05); } }
+    @keyframes gridDrift { to { background-position: 72px 72px; } }
+    @keyframes headerEnter { from { opacity: 0; transform: translateY(-18px); } }
+    @keyframes brandPulse { 50% { border-color: var(--mint); box-shadow: 0 0 0 6px rgba(185,248,209,.08); } }
+    @keyframes accentFloat { 50% { transform: translateY(-7px) rotate(-1deg); text-shadow: 0 12px 28px rgba(185,248,209,.12); } }
+    @keyframes chipFloat { 50% { transform: translateY(-3px); } }
+    @keyframes instrumentHover { 50% { transform: translateY(-12px) rotate(.35deg); } }
+    @keyframes instrumentScan { 50%, 100% { transform: translateX(55%) rotate(8deg); } }
+    @keyframes ruleBreathe { 50% { transform: scaleX(1.55); opacity: .55; } }
+    @keyframes ambientOrbit { 50% { transform: translate(-5vw, 50px) rotate(180deg) scale(1.08); border-radius: 38% 62% 58% 42%; } to { transform: rotate(360deg); } }
+    @keyframes countGlow { 50% { color: var(--mint); text-shadow: 0 0 20px rgba(185,248,209,.22); } }
+
+    .trust-strip { background: var(--paper-bright); border-bottom: 1px solid var(--rule); }
+    .trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .trust-item { padding: 28px 24px 30px; border-right: 1px solid var(--rule); }
+    .trust-item { position: relative; overflow: hidden; transition: background .3s ease, transform .3s ease; }
+    .trust-item::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--coral); transform: scaleX(0); transform-origin: left; transition: transform .4s ease; }
+    .trust-item:hover { background: #ece9df; transform: translateY(-3px); }
+    .trust-item:hover::after { transform: scaleX(1); }
+    .trust-item:last-child { border-right: 0; }
+    .trust-item strong { display: block; font-family: var(--serif); font-size: 1.45rem; font-weight: 400; }
+    .trust-item span { color: var(--muted); font-size: .76rem; letter-spacing: .06em; text-transform: uppercase; }
+
+    .thesis-grid {
+      display: grid;
+      grid-template-columns: .85fr 1.15fr;
+      gap: clamp(58px, 7vw, 96px);
+      align-items: start;
+    }
+    .thesis-quote {
+      position: sticky;
+      top: 32px;
+      padding: 38px 0 10px 36px;
+      border-left: 1px solid var(--ink);
+      font-family: var(--serif);
+      font-size: clamp(2.2rem, 4.2vw, 4.6rem);
+      line-height: 1.02;
+      letter-spacing: -.035em;
+    }
+    .thesis-quote em { color: var(--mint-deep); font-style: italic; }
+    .principles { display: grid; gap: 0; border-top: 1px solid var(--rule); }
+    .principle {
+      display: grid;
+      grid-template-columns: 74px 1fr;
+      gap: 24px;
+      padding: 32px 0 34px;
+      border-bottom: 1px solid var(--rule);
+      transition: padding-left .35s ease, background .35s ease;
+    }
+    .principle:hover { padding-left: 16px; background: rgba(251,250,245,.48); }
+    .principle-number { color: var(--coral); font-family: var(--mono); font-size: .8rem; }
+    .principle h3 { margin: 0 0 8px; font-size: 1.15rem; }
+    .principle p { margin: 0; color: var(--muted); }
+
+    .pipeline-wrap { margin-top: var(--space-module); position: relative; }
+    .pipeline-line {
+      position: absolute;
+      left: 36px;
+      top: 34px;
+      bottom: 38px;
+      width: 1px;
+      background: rgba(255,255,255,.16);
+    }
+    .pipeline-progress { width: 100%; height: 0; background: var(--mint); transition: height .55s ease; }
+    .layer {
+      position: relative;
+      display: grid;
+      grid-template-columns: 72px minmax(220px, .7fr) minmax(0, 1.3fr);
+      gap: clamp(20px, 3vw, 34px);
+      align-items: start;
+      padding: 34px 0 36px;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+      transition: background .4s ease, padding-left .4s ease;
+    }
+    .layer.is-active { background: linear-gradient(90deg, rgba(185,248,209,.055), transparent 72%); padding-left: 10px; }
+    .layer-index {
+      position: relative;
+      z-index: 2;
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.22);
+      background: var(--charcoal);
+      color: #b7c5c1;
+      font-family: var(--mono);
+      transition: .35s ease;
+    }
+    .layer.is-active .layer-index { color: var(--charcoal); background: var(--mint); border-color: var(--mint); transform: scale(1.06); }
+    .layer.is-active .layer-index { animation: activeLayerPulse 1.8s ease-in-out infinite; }
+    .layer-name h3 { margin: 5px 0 8px; font-family: var(--serif); font-weight: 400; font-size: 2rem; }
+    .layer-name span { color: #82928d; font-size: .76rem; text-transform: uppercase; letter-spacing: .1em; }
+    .layer-copy { color: #c1cdc9; padding-top: 7px; }
+    .layer-copy p { margin: 0 0 10px; }
+    .layer-rule { color: var(--mint); font-family: var(--mono); font-size: .78rem; }
+
+    .flow-theatre {
+      position: relative;
+      padding: var(--space-section) 0;
+      color: var(--paper-bright);
+      background:
+        radial-gradient(circle at 12% 18%, rgba(156,198,221,.1), transparent 30%),
+        radial-gradient(circle at 88% 74%, rgba(223,115,94,.1), transparent 32%),
+        #101716;
+      overflow: hidden;
+    }
+    .flow-theatre::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: .14;
+      background-image:
+        linear-gradient(rgba(255,255,255,.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+      pointer-events: none;
+    }
+    .flow-heading {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, .55fr);
+      gap: clamp(32px, 6vw, 90px);
+      align-items: end;
+      margin-bottom: clamp(42px, 6vw, 72px);
+    }
+    .flow-heading .section-kicker { color: var(--mint); }
+    .flow-heading .section-title { max-width: 900px; }
+    .flow-heading-copy { margin: 0; color: #aab9b5; font-size: 1.05rem; }
+    .flow-console {
+      --flow-progress: 0%;
+      position: relative;
+      z-index: 2;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 30px;
+      background: rgba(20,29,28,.88);
+      box-shadow: 0 44px 120px rgba(0,0,0,.38);
+      overflow: hidden;
+      backdrop-filter: blur(14px);
+    }
+    .flow-console::after {
+      content: "";
+      position: absolute;
+      width: 400px;
+      aspect-ratio: 1;
+      right: -220px;
+      bottom: -240px;
+      border: 1px solid rgba(185,232,200,.13);
+      border-radius: 50%;
+      box-shadow: 0 0 0 54px rgba(185,232,200,.02), 0 0 0 108px rgba(185,232,200,.016);
+      pointer-events: none;
+      animation: flowOrbit 18s linear infinite;
+    }
+    .flow-console-bar {
+      position: relative;
+      z-index: 3;
+      min-height: 66px;
+      padding: 16px 20px 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .flow-live { display: flex; align-items: center; gap: 12px; color: #b7c4c0; font-size: .75rem; letter-spacing: .09em; text-transform: uppercase; }
+    .flow-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 6px rgba(185,232,200,.08); animation: livePulse 1.8s ease-in-out infinite; }
+    .flow-replay {
+      min-height: 38px;
+      padding: 8px 14px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,.045);
+      color: white;
+      cursor: pointer;
+      font-size: .76rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      transition: transform .25s ease, border-color .25s ease, background .25s ease;
+    }
+    .flow-replay:hover, .flow-replay:focus-visible { transform: translateY(-2px); border-color: var(--mint); background: rgba(185,232,200,.08); }
+    .flow-stage-rail {
+      position: relative;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      padding: 23px 26px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .flow-rail-line {
+      position: absolute;
+      top: 41px;
+      left: calc(8.333% + 26px);
+      right: calc(8.333% + 26px);
+      height: 1px;
+      pointer-events: none;
+      background: rgba(255,255,255,.13);
+    }
+    .flow-rail-progress {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--flow-progress);
+      background: linear-gradient(90deg, var(--blue), var(--mint), var(--amber));
+      box-shadow: 0 0 16px rgba(185,232,200,.42);
+      transition: width .8s cubic-bezier(.2,.8,.2,1);
+    }
+    .flow-stage-button {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      padding: 0 4px;
+      border: 0;
+      background: transparent;
+      color: #7f908b;
+      cursor: pointer;
+      font-size: .66rem;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      transition: color .35s ease;
+    }
+    .flow-stage-button span:last-child { white-space: nowrap; }
+    .flow-stage-number {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 50%;
+      background: #141d1c;
+      color: #8da09a;
+      font-family: var(--mono);
+      transition: transform .45s cubic-bezier(.2,.8,.2,1), color .35s ease, background .35s ease, border-color .35s ease, box-shadow .35s ease;
+    }
+    .flow-stage-button.is-complete { color: #a9bab5; }
+    .flow-stage-button.is-complete .flow-stage-number { border-color: var(--mint-deep); color: var(--mint); background: #183027; }
+    .flow-stage-button.is-active { color: white; }
+    .flow-stage-button.is-active .flow-stage-number { transform: translateY(-2px) scale(1.12); color: #14201c; background: var(--mint); border-color: var(--mint); box-shadow: 0 0 0 8px rgba(185,232,200,.08), 0 0 26px rgba(185,232,200,.18); }
+    .flow-screen { position: relative; z-index: 2; min-height: 490px; overflow: hidden; }
+    .flow-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(112deg, transparent 32%, rgba(255,255,255,.025) 50%, transparent 68%);
+      transform: translateX(-100%);
+      animation: screenScan 7s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .flow-scene {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: minmax(260px, .72fr) minmax(0, 1.28fr);
+      gap: clamp(34px, 6vw, 86px);
+      align-items: center;
+      padding: clamp(38px, 6vw, 72px);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(48px) scale(.985);
+      transition: opacity .55s ease, transform .7s cubic-bezier(.2,.8,.2,1), visibility 0s linear .7s;
+      pointer-events: none;
+    }
+    .flow-scene.is-active { opacity: 1; visibility: visible; transform: translateX(0) scale(1); transition-delay: .12s, .12s, 0s; pointer-events: auto; }
+    .flow-scene-copy { position: relative; z-index: 2; }
+    .flow-scene-copy small { display: block; margin-bottom: 16px; color: var(--mint); font-family: var(--mono); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
+    .flow-scene-copy h3 { max-width: 520px; margin: 0; font-family: var(--serif); font-size: clamp(2.4rem, 5vw, 5rem); font-weight: 400; letter-spacing: -.035em; line-height: .96; }
+    .flow-scene-copy p { max-width: 500px; margin: 22px 0 0; color: #aab9b5; }
+    .flow-visual {
+      position: relative;
+      min-height: 330px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 24px;
+      background: rgba(255,255,255,.025);
+      overflow: hidden;
+    }
+    .flow-visual::before { content: ""; position: absolute; inset: 22px; border: 1px solid rgba(255,255,255,.055); border-radius: 50%; }
+    .intake-visual { display: grid; grid-template-columns: .78fr 1.22fr; gap: 12px; width: min(90%, 570px); }
+    .intake-image {
+      min-height: 230px;
+      position: relative;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 62% 34%, #ffe1ad 0 6%, transparent 7%),
+        linear-gradient(145deg, transparent 52%, rgba(17,29,29,.42) 53%),
+        linear-gradient(35deg, #66877c, #dfa06b 48%, #2f4542 49% 100%);
+      box-shadow: 0 22px 48px rgba(0,0,0,.22);
+      animation: intakeImage 4.6s ease-in-out infinite;
+    }
+    .intake-image::before, .intake-image::after { content: ""; position: absolute; background: rgba(255,255,255,.48); }
+    .intake-image::before { left: 50%; top: 18px; bottom: 18px; width: 1px; }
+    .intake-image::after { top: 50%; left: 18px; right: 18px; height: 1px; }
+    .intake-prompt { align-self: center; padding: 26px 24px; border: 1px solid rgba(185,232,200,.22); border-radius: 18px; background: #1b2523; box-shadow: 0 22px 50px rgba(0,0,0,.22); }
+    .intake-prompt span { display: block; margin-bottom: 12px; color: var(--mint); font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; }
+    .intake-prompt strong { display: block; font-family: var(--serif); font-size: clamp(1.15rem, 2vw, 1.55rem); font-weight: 400; line-height: 1.28; }
+    .intake-prompt em { display: inline-block; margin-top: 18px; padding: 5px 8px; border-radius: 999px; background: rgba(185,232,200,.12); color: var(--mint); font-family: var(--mono); font-size: .65rem; font-style: normal; }
+    .generation-diagram { position: relative; width: min(92%, 570px); height: 290px; }
+    .signal-chip { position: absolute; left: 0; width: 116px; padding: 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 11px; background: #1b2523; color: #becac6; font-size: .69rem; text-align: center; }
+    .signal-chip:first-child { top: 66px; }
+    .signal-chip:nth-child(2) { top: 154px; }
+    .signal-chip::after { content: ""; position: absolute; left: calc(100% + 6px); top: 50%; width: 74px; height: 1px; background: linear-gradient(90deg, var(--blue), transparent); animation: signalTravel 1.5s ease-in-out infinite; }
+    .model-core { position: absolute; left: 50%; top: 48%; width: 126px; height: 126px; transform: translate(-50%,-50%); display: grid; place-items: center; border: 1px solid rgba(185,232,200,.35); border-radius: 50%; background: radial-gradient(circle, rgba(185,232,200,.16), rgba(20,29,28,.96) 68%); color: var(--mint); font-family: var(--serif); font-size: 2.7rem; box-shadow: 0 0 0 18px rgba(185,232,200,.025), 0 0 55px rgba(185,232,200,.12); animation: modelThink 2.2s ease-in-out infinite; }
+    .model-core::before { content: ""; position: absolute; inset: -15px; border: 1px dashed rgba(185,232,200,.22); border-radius: 50%; animation: spin 12s linear infinite; }
+    .generation-tokens { position: absolute; right: 0; top: 42px; width: 122px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+    .generation-tokens span { aspect-ratio: 1; border-radius: 4px; background: rgba(185,232,200,.08); border: 1px solid rgba(185,232,200,.14); animation: flowToken 2.2s ease-in-out infinite; animation-delay: calc(var(--token-i) * 70ms); }
+    .generation-tokens::before { content: "64 learned codes"; position: absolute; top: calc(100% + 13px); width: 100%; color: #82938e; font-family: var(--mono); font-size: .62rem; text-align: center; text-transform: uppercase; }
+    .decode-diagram { display: grid; grid-template-columns: 1fr auto 1fr; gap: clamp(18px, 3vw, 34px); align-items: center; width: min(90%, 580px); }
+    .decode-token-bank { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 20px; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; }
+    .decode-token-bank span { aspect-ratio: 1; border-radius: 4px; background: var(--blue); opacity: .22; animation: decodeToken 1.8s ease-in-out infinite; animation-delay: calc(var(--token-i) * 75ms); }
+    .decode-arrow { color: var(--mint); font-size: 2rem; animation: arrowNudge 1.5s ease-in-out infinite; }
+    .lut-cube { position: relative; width: 150px; height: 150px; transform: rotate(-5deg); }
+    .lut-cube span { position: absolute; inset: 12px; border: 1px solid rgba(185,232,200,.42); background-image: linear-gradient(rgba(185,232,200,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(185,232,200,.12) 1px, transparent 1px); background-size: 18px 18px; box-shadow: inset 0 0 30px rgba(185,232,200,.035); }
+    .lut-cube span:nth-child(1) { transform: translate(-18px,18px); opacity: .3; }
+    .lut-cube span:nth-child(2) { transform: translate(-9px,9px); opacity: .55; }
+    .lut-cube span:nth-child(3) { background-color: rgba(185,232,200,.05); animation: cubeGlow 2.4s ease-in-out infinite; }
+    .lut-cube::after { content: "17 × 17 × 17"; position: absolute; left: 10px; right: 10px; bottom: -18px; color: var(--mint); font-family: var(--mono); font-size: .68rem; text-align: center; }
+    .measure-grid { position: relative; z-index: 2; width: min(90%, 580px); display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .measure-chip { min-height: 78px; display: grid; place-items: center; gap: 4px; padding: 12px 8px; border: 1px solid rgba(255,255,255,.11); border-radius: 13px; background: #192321; opacity: .38; transform: translateY(8px); animation: checkCascade 3.4s ease-in-out infinite; animation-delay: calc(var(--check-i) * 170ms); }
+    .measure-chip strong { color: var(--mint); font-family: var(--mono); font-size: .75rem; }
+    .measure-chip span { color: #9eada9; font-size: .66rem; text-align: center; }
+    .confidence-card { position: relative; z-index: 2; width: min(88%, 560px); padding: 28px; border: 1px solid rgba(255,255,255,.12); border-radius: 20px; background: #182220; box-shadow: 0 26px 60px rgba(0,0,0,.24); }
+    .confidence-card-head { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 34px; }
+    .confidence-card-head span { color: #91a29d; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+    .confidence-card-head strong { color: var(--mint); font-family: var(--mono); font-size: .74rem; }
+    .confidence-axis { position: relative; height: 58px; border-top: 1px solid rgba(255,255,255,.15); }
+    .confidence-threshold { position: absolute; left: 60%; top: -13px; bottom: 12px; width: 1px; background: var(--coral); }
+    .confidence-threshold::after { content: "ship floor"; position: absolute; top: -21px; left: 6px; color: var(--coral); font-size: .61rem; white-space: nowrap; }
+    .confidence-interval { position: absolute; left: 67%; top: 21px; width: 22%; height: 5px; border-radius: 999px; background: var(--mint); transform-origin: left; animation: intervalGrow 2.8s ease-in-out infinite; }
+    .confidence-interval::before, .confidence-interval::after { content: ""; position: absolute; top: -6px; width: 1px; height: 17px; background: var(--mint); }
+    .confidence-interval::before { left: 0; }
+    .confidence-interval::after { right: 0; }
+    .confidence-dot { position: absolute; left: 78%; top: 14px; width: 18px; height: 18px; border: 4px solid #182220; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 1px var(--mint), 0 0 22px rgba(185,232,200,.28); }
+    .confidence-verdict { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 7px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.09); }
+    .confidence-verdict span { color: #9dadA8; font-size: .75rem; }
+    .confidence-verdict strong { display: inline-flex; align-items: center; gap: 8px; color: var(--mint); font-family: var(--serif); font-size: 1.7rem; font-weight: 400; }
+    .evidence-visual { position: relative; z-index: 2; width: min(90%, 570px); min-height: 260px; }
+    .evidence-file { position: absolute; width: 190px; min-height: 116px; padding: 18px; border: 1px solid rgba(255,255,255,.13); border-radius: 14px; background: #1a2523; box-shadow: 0 18px 44px rgba(0,0,0,.22); animation: fileFloat 4.5s ease-in-out infinite; animation-delay: var(--file-delay); }
+    .evidence-file:nth-child(1) { left: 2%; top: 18px; transform: rotate(-4deg); }
+    .evidence-file:nth-child(2) { left: 19%; top: 100px; transform: rotate(2deg); }
+    .evidence-file:nth-child(3) { left: 42%; top: 38px; transform: rotate(-1deg); }
+    .evidence-file span { display: block; color: var(--mint); font-family: var(--mono); font-size: .7rem; }
+    .evidence-file i { display: block; width: 72%; height: 4px; margin-top: 16px; border-radius: 99px; background: rgba(255,255,255,.12); box-shadow: 0 11px 0 rgba(255,255,255,.08), 0 22px 0 rgba(255,255,255,.06); }
+    .evidence-seal { position: absolute; right: 2%; bottom: 6px; width: 118px; height: 118px; display: grid; place-items: center; border: 1px solid rgba(185,232,200,.36); border-radius: 50%; color: var(--mint); background: rgba(185,232,200,.05); font-family: var(--serif); font-size: 2.6rem; box-shadow: 0 0 0 12px rgba(185,232,200,.025); animation: sealArrive 3s ease-in-out infinite; }
+    .flow-caption {
+      position: relative;
+      z-index: 3;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 18px 24px;
+      border-top: 1px solid rgba(255,255,255,.1);
+      background: rgba(6,10,9,.28);
+      color: #a9b8b4;
+      font-size: .78rem;
+    }
+    .flow-caption strong { color: white; font-weight: 650; }
+    .flow-counter { color: var(--mint); font-family: var(--mono); white-space: nowrap; }
+
+    .playground-grid {
+      display: grid;
+      grid-template-columns: minmax(290px, .72fr) minmax(0, 1.28fr);
+      gap: clamp(24px, 3vw, 38px);
+      margin-top: var(--space-module);
+      align-items: start;
+    }
+    .control-panel,
+    .result-panel {
+      border: 1px solid var(--rule);
+      border-radius: var(--radius-md);
+      background: rgba(251,250,245,.76);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: transform .35s ease, box-shadow .35s ease;
+    }
+    .control-panel:hover, .result-panel:hover { transform: translateY(-5px); box-shadow: 0 34px 90px rgba(32,36,32,.18); }
+    .panel-head { padding: 24px 26px; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .panel-head h3 { margin: 0; font-family: var(--serif); font-size: 1.55rem; font-weight: 400; }
+    .status-pill { padding: 6px 9px; border-radius: 999px; background: var(--mint); color: #153b29; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .controls { padding: 26px; display: grid; gap: 24px; }
+    .field label { display: block; margin-bottom: 8px; color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .scenario-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .scenario-button {
+      border: 1px solid var(--rule);
+      background: transparent;
+      min-height: 44px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: .82rem;
+      transition: .2s ease;
+    }
+    .scenario-button:hover, .scenario-button:focus-visible { transform: translateY(-2px); border-color: var(--ink); }
+    .scenario-button.is-selected { background: var(--ink); color: white; border-color: var(--ink); }
+    .prompt-card { padding: 20px; min-height: 126px; border-radius: 14px; background: #e9e6dd; font-family: var(--serif); font-size: 1.25rem; line-height: 1.4; }
+    .prompt-card { position: relative; overflow: hidden; }
+    .prompt-card::after { content: ""; position: absolute; width: 80px; height: 180%; top: -40%; left: -110px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.46), transparent); transform: rotate(18deg); animation: promptSweep 7s ease-in-out infinite; }
+    .toggle-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .toggle-button { border: 1px solid var(--rule); padding: 11px; background: transparent; cursor: pointer; }
+    .toggle-button:first-child { border-radius: 10px 0 0 10px; }
+    .toggle-button:last-child { border-radius: 0 10px 10px 0; }
+    .toggle-button.is-selected { background: var(--mint); border-color: var(--mint-deep); }
+    .run-button {
+      min-height: 54px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--ink);
+      color: var(--paper-bright);
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 12px 26px rgba(23,27,27,.18);
+      transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+    .run-button:hover, .run-button:focus-visible { transform: translateY(-2px); background: var(--charcoal-2); box-shadow: 0 18px 32px rgba(23,27,27,.24); }
+    .run-button:disabled { cursor: wait; opacity: .72; transform: none; box-shadow: none; }
+
+    .result-body { padding: 26px; }
+    .execution-trace {
+      --trace-progress: 0%;
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin: -2px 0 26px;
+      padding: 4px 0 18px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .trace-line { position: absolute; left: 10%; right: 10%; top: 17px; height: 1px; background: var(--rule); }
+    .trace-progress { position: absolute; inset: 0 auto 0 0; width: var(--trace-progress); background: linear-gradient(90deg, var(--blue), var(--mint-deep)); transition: width .5s cubic-bezier(.2,.8,.2,1); }
+    .trace-node { position: relative; z-index: 2; display: grid; justify-items: center; gap: 7px; color: #8c9391; font-size: .59rem; letter-spacing: .05em; text-align: center; text-transform: uppercase; transition: color .3s ease; }
+    .trace-dot { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid var(--rule); border-radius: 50%; background: var(--paper-bright); font-family: var(--mono); font-size: .62rem; transition: background .35s ease, color .35s ease, transform .35s ease, border-color .35s ease, box-shadow .35s ease; }
+    .trace-node.is-complete { color: var(--mint-deep); }
+    .trace-node.is-complete .trace-dot { border-color: var(--mint-deep); color: var(--mint-deep); }
+    .trace-node.is-active { color: var(--ink); font-weight: 700; }
+    .trace-node.is-active .trace-dot { transform: scale(1.12); border-color: var(--mint-deep); background: var(--mint); color: #173323; box-shadow: 0 0 0 6px rgba(53,125,89,.08); animation: tracePulse 1.4s ease-in-out infinite; }
+    .row-preview { display: grid; grid-template-columns: 132px 1fr; gap: 22px; align-items: stretch; margin-bottom: 26px; }
+    .image-proxy {
+      min-height: 120px;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 62% 34%, rgba(255,226,176,.95) 0 7%, transparent 8%),
+        linear-gradient(145deg, transparent 52%, rgba(17,29,29,.35) 53%),
+        linear-gradient(35deg, #77968a, #e1a36e 48%, #334746 49% 100%);
+      background-size: 110% 110%;
+      animation: imageBreath 7s ease-in-out infinite;
+    }
+    .image-proxy::after { content: "input image"; position: absolute; left: 10px; bottom: 8px; padding: 4px 7px; background: rgba(0,0,0,.54); color: white; border-radius: 6px; font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; }
+    .row-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+    .meta-box { padding: 13px; border: 1px solid var(--rule); border-radius: 12px; }
+    .meta-box span { display: block; color: var(--muted); font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; }
+    .meta-box strong { font-size: .9rem; }
+
+    .evaluation-stack { display: grid; gap: 10px; }
+    .eval-step {
+      display: grid;
+      grid-template-columns: 58px 1fr auto;
+      align-items: center;
+      gap: 14px;
+      min-height: 58px;
+      padding: 11px 15px;
+      border: 1px solid var(--rule);
+      border-radius: 12px;
+      background: rgba(255,255,255,.55);
+      opacity: .46;
+      transform: translateX(8px);
+      transition: opacity .28s ease, transform .28s ease, border-color .28s ease, background .28s ease;
+    }
+    .eval-step.is-running { opacity: 1; transform: translateX(0); border-color: var(--amber); background: #fff9e8; }
+    .eval-step.is-running { animation: stepRunning .8s ease-in-out infinite alternate; }
+    .eval-step.is-pass { opacity: 1; transform: translateX(0); border-color: rgba(45,141,97,.46); background: #effaf2; }
+    .eval-step.is-fail { opacity: 1; transform: translateX(0); border-color: rgba(255,118,95,.6); background: #fff0ed; }
+    .eval-step.is-na { opacity: .72; transform: translateX(0); }
+    .eval-code { font-family: var(--mono); color: var(--muted); font-size: .77rem; }
+    .eval-label strong { display: block; font-size: .88rem; }
+    .eval-label span { color: var(--muted); font-size: .74rem; }
+    .eval-verdict { min-width: 78px; text-align: right; font-family: var(--mono); font-size: .72rem; }
+    .final-verdict {
+      margin-top: 22px;
+      padding: 22px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: var(--ink);
+      color: white;
+      overflow: hidden;
+    }
+    .final-verdict::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 25%, rgba(185,248,209,.12) 50%, transparent 75%); transform: translateX(-100%); animation: verdictSweep 5s ease-in-out infinite; }
+    .final-verdict { position: relative; }
+    .final-verdict strong { font-family: var(--serif); font-size: 1.5rem; font-weight: 400; }
+    .final-verdict span { color: #afbbb7; font-size: .78rem; }
+    .verdict-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.09); font-size: 1.25rem; }
+    .final-verdict.is-complete .verdict-mark { color: var(--mint); background: rgba(185,232,200,.12); animation: verdictArrive .65s cubic-bezier(.2,.8,.2,1) both; }
+
+    .slices-layout { display: grid; grid-template-columns: 1.05fr .95fr; gap: clamp(48px, 6vw, 78px); align-items: start; margin-top: var(--space-module); }
+    .slice-list { border-top: 1px solid var(--rule); }
+    .slice-row {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 24px;
+      padding: 24px 0 26px;
+      border-bottom: 1px solid var(--rule);
+      transition: transform .3s ease, background .3s ease, padding-left .3s ease;
+    }
+    .slice-row:hover { transform: translateX(7px); padding-left: 12px; background: rgba(251,250,245,.5); }
+    .slice-row strong { font-family: var(--mono); font-size: .78rem; color: var(--mint-deep); }
+    .slice-row p { margin: 0; color: var(--muted); }
+    .slice-map {
+      position: sticky;
+      top: 30px;
+      min-height: 560px;
+      border-radius: 48px 48px 44% 44% / 48px 48px 18% 18%;
+      background: var(--ink);
+      color: white;
+      padding: 64px 46px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .slice-map::before { content: ""; position: absolute; inset: 15%; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; animation: spin 28s linear infinite; }
+    .slice-map h3 { margin: 0 0 12px; font-family: var(--serif); font-weight: 400; font-size: 2.35rem; line-height: 1.05; }
+    .slice-map p { margin: 0; color: #adbbb7; }
+    .slice-points { position: relative; height: 340px; margin-top: 28px; }
+    .slice-point { position: absolute; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; text-align: center; padding: 8px; font-size: .68rem; line-height: 1.1; color: #17201f; background: var(--tone); box-shadow: 0 0 0 7px rgba(255,255,255,.045); animation: float 5s ease-in-out infinite; animation-delay: var(--delay); }
+    @keyframes float { 50% { transform: translateY(-10px) rotate(2deg); } }
+
+    .gate-board { margin-top: var(--space-module); display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .gate {
+      padding: 24px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 16px;
+      background: rgba(255,255,255,.025);
+      transition: transform .35s ease, border-color .35s ease, background .35s ease;
+    }
+    .gate:hover { transform: translateY(-6px); border-color: rgba(185,248,209,.34); background: rgba(185,248,209,.05); }
+    .gate-top { display: flex; justify-content: space-between; align-items: start; gap: 18px; }
+    .gate h3 { margin: 0; font-size: .92rem; font-weight: 650; }
+    .gate-value { color: var(--mint); font-family: var(--mono); font-size: .8rem; white-space: nowrap; }
+    .gate p { margin: 9px 0 16px; color: #98aaa5; font-size: .82rem; }
+    .gate-track { height: 5px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+    .gate-fill { height: 100%; width: var(--width); background: var(--tone); transform-origin: left; transform: scaleX(0); transition: transform .9s cubic-bezier(.2,.8,.2,1); }
+    .gate.is-visible .gate-fill { transform: scaleX(1); }
+    .gate-callout { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 24px; border: 1px solid rgba(185,248,209,.32); background: rgba(185,248,209,.07); border-radius: 16px; }
+    .gate-callout strong { font-family: var(--serif); font-size: 1.5rem; font-weight: 400; }
+    .gate-callout span { color: #9eb0ab; }
+    .gate-callout code { color: var(--mint); font-size: .78rem; }
+
+    .comparison-grid { display: grid; grid-template-columns: .82fr 1.18fr; gap: clamp(48px, 6vw, 80px); margin-top: var(--space-module); align-items: start; }
+    .comparison-claim { padding: 32px 0 34px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+    .comparison-claim strong { display: block; font-family: var(--serif); font-size: clamp(2rem, 4vw, 4rem); font-weight: 400; line-height: 1.02; }
+    .comparison-claim p { color: var(--muted); margin: 18px 0 0; }
+    .baseline-bars { display: grid; gap: 18px; }
+    .bar-row { display: grid; grid-template-columns: 150px 1fr 54px; gap: 14px; align-items: center; }
+    .bar-label { font-size: .82rem; }
+    .bar-track { height: 18px; background: #dedbd2; border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 100%; width: 0; background: var(--tone); transition: width 1s cubic-bezier(.2,.8,.2,1); }
+    .bar-fill { position: relative; overflow: hidden; }
+    .bar-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.46), transparent); transform: translateX(-100%); animation: barShimmer 3.8s ease-in-out infinite; }
+    .bar-row.is-visible .bar-fill { width: var(--width); }
+    .bar-value { font-family: var(--mono); font-size: .76rem; text-align: right; }
+    .baseline-note { padding: 18px; border-left: 3px solid var(--coral); background: var(--coral-soft); font-size: .88rem; }
+    .frontier-finding { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 26px; }
+    .finding-card { min-height: 170px; padding: 18px; border: 1px solid var(--rule); border-radius: 14px; background: var(--paper-bright); }
+    .finding-card { transition: transform .35s ease, background .35s ease, border-color .35s ease; }
+    .finding-card:hover { transform: translateY(-7px) rotate(-.4deg); background: #fffdf7; border-color: rgba(45,141,97,.42); }
+    .finding-card span { color: var(--muted); font-size: .67rem; text-transform: uppercase; letter-spacing: .08em; }
+    .finding-card strong { display: block; margin-top: 24px; font-family: var(--serif); font-size: 1.6rem; font-weight: 400; line-height: 1.08; }
+
+    .evidence-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: var(--space-module); }
+    .evidence-card { position: relative; min-height: 340px; padding: 28px; border: 1px solid var(--rule); border-radius: var(--radius-md); background: var(--paper-bright); overflow: hidden; }
+    .evidence-card { transition: transform .4s ease, box-shadow .4s ease, border-color .4s ease; }
+    .evidence-card:hover { transform: translateY(-9px); box-shadow: 0 26px 60px rgba(32,36,32,.12); border-color: rgba(45,141,97,.34); }
+    .evidence-card:hover .evidence-icon { transform: rotate(8deg) scale(1.08); }
+    .evidence-card::after { content: attr(data-index); position: absolute; right: -8px; bottom: -42px; color: rgba(23,27,27,.045); font-family: var(--serif); font-size: 11rem; }
+    .evidence-card h3 { margin: 20px 0 10px; font-family: var(--serif); font-size: 2rem; font-weight: 400; }
+    .evidence-card p { color: var(--muted); }
+    .evidence-icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--mint); font-family: var(--mono); }
+    .evidence-icon { transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+    .evidence-list { margin: 22px 0 0; padding: 0; list-style: none; }
+    .evidence-list li { padding: 8px 0; border-top: 1px solid var(--rule); font-size: .82rem; }
+
+    .report-shell { margin-top: var(--space-module); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow); background: var(--paper-bright); color: var(--ink); }
+    .report-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--rule); }
+    .window-dots { display: flex; gap: 6px; }
+    .window-dots i { width: 9px; height: 9px; border-radius: 50%; background: #d2d0c8; }
+    .window-dots i:first-child { background: var(--coral); }
+    .window-dots i:nth-child(2) { background: var(--amber); }
+    .window-dots i:nth-child(3) { background: var(--mint-deep); }
+    .report-toolbar code { color: var(--muted); font-size: .72rem; }
+    .report-grid { display: grid; grid-template-columns: 240px 1fr; min-height: 490px; }
+    .report-nav { padding: 20px; border-right: 1px solid var(--rule); background: #ebe8df; }
+    .report-nav button { width: 100%; padding: 11px 12px; border: 0; background: transparent; text-align: left; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: .8rem; }
+    .report-nav button { transition: background .25s ease, color .25s ease, transform .25s ease; }
+    .report-nav button:hover { transform: translateX(4px); color: var(--ink); }
+    .report-nav button.is-selected { color: var(--ink); background: var(--paper-bright); }
+    .report-view { padding: 32px; overflow: hidden; }
+    .report-view h3 { margin: 0 0 6px; font-family: var(--serif); font-size: 2rem; font-weight: 400; }
+    .report-view > p { color: var(--muted); margin-top: 0; }
+    .report-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: .78rem; }
+    .report-table th, .report-table td { padding: 12px 9px; border-bottom: 1px solid var(--rule); text-align: left; }
+    .report-table tbody tr { animation: tableRowEnter .45s both cubic-bezier(.2,.8,.2,1); animation-delay: calc(var(--row-index, 0) * 70ms); }
+    .report-table th { color: var(--muted); font-size: .65rem; text-transform: uppercase; letter-spacing: .07em; }
+    .pass-text { color: var(--mint-deep); font-weight: 800; }
+    .fail-text { color: #c74c39; font-weight: 800; }
+    .report-footer-note { margin-top: 24px; padding: 15px; background: #eae7dd; border-radius: 12px; font-size: .82rem; }
+
+    .closing {
+      min-height: 780px;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      background: var(--coral);
+      color: #24120e;
+    }
+    .closing::before { content: ""; position: absolute; width: 500px; height: 500px; border: 1px solid rgba(36,18,14,.22); border-radius: 50%; left: -180px; top: -210px; box-shadow: 0 0 0 70px rgba(36,18,14,.035), 0 0 0 140px rgba(36,18,14,.025); }
+    .closing::before { animation: closingOrbit 18s linear infinite; }
+    .closing-grid { display: grid; grid-template-columns: 1fr .7fr; gap: 90px; align-items: end; position: relative; z-index: 2; }
+    .closing h2 { font-size: clamp(4rem, 9vw, 8.5rem); }
+    .closing h2 em { color: var(--paper-bright); font-style: italic; }
+    .closing-copy { padding-bottom: 14px; }
+    .closing-copy p { font-size: 1.2rem; max-width: 440px; }
+    .closing-list { margin-top: 30px; border-top: 1px solid rgba(36,18,14,.3); }
+    .closing-list div { padding: 13px 0; border-bottom: 1px solid rgba(36,18,14,.3); display: flex; justify-content: space-between; gap: 20px; font-size: .82rem; }
+    .closing-list span:last-child { font-family: var(--mono); }
+    footer { padding: 24px 0; background: var(--charcoal); color: #99aaa5; font-size: .75rem; }
+    footer .shell { display: flex; justify-content: space-between; gap: 20px; }
+
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .58s ease, transform .58s cubic-bezier(.2,.8,.2,1); transition-delay: var(--reveal-delay, 0ms); }
+    .reveal.is-visible { opacity: 1; transform: translateY(0); }
+    @keyframes activeLayerPulse { 50% { box-shadow: 0 0 0 9px rgba(185,248,209,.08); } }
+    @keyframes promptSweep { 45%, 100% { left: calc(100% + 110px); } }
+    @keyframes imageBreath { 50% { background-size: 120% 120%; filter: saturate(1.12) contrast(1.04); } }
+    @keyframes stepRunning { to { transform: translateX(4px); box-shadow: 0 0 0 4px rgba(239,182,77,.08); } }
+    @keyframes verdictSweep { 45%, 100% { transform: translateX(100%); } }
+    @keyframes barShimmer { 55%, 100% { transform: translateX(100%); } }
+    @keyframes closingOrbit { to { transform: rotate(360deg) scale(1.08); } }
+    @keyframes tableRowEnter { from { opacity: 0; transform: translateX(12px); } }
+    @keyframes flowOrbit { to { transform: rotate(360deg); } }
+    @keyframes livePulse { 50% { opacity: .45; transform: scale(.8); box-shadow: 0 0 0 11px rgba(185,232,200,0); } }
+    @keyframes screenScan { 50%, 100% { transform: translateX(100%); } }
+    @keyframes intakeImage { 50% { transform: translateY(-7px) rotate(.5deg); filter: saturate(1.1); } }
+    @keyframes signalTravel { 50% { width: 94px; opacity: .42; } }
+    @keyframes modelThink { 50% { transform: translate(-50%,-50%) scale(1.055); box-shadow: 0 0 0 25px rgba(185,232,200,.015), 0 0 70px rgba(185,232,200,.18); } }
+    @keyframes flowToken { 0%, 100% { opacity: .2; transform: scale(.9); } 45% { opacity: 1; transform: scale(1.08); background: var(--mint); } }
+    @keyframes decodeToken { 0%, 100% { opacity: .18; transform: translateX(0); } 45% { opacity: .9; transform: translateX(3px); } }
+    @keyframes arrowNudge { 50% { transform: translateX(7px); } }
+    @keyframes cubeGlow { 50% { transform: translate(2px,-2px); border-color: var(--mint); box-shadow: inset 0 0 40px rgba(185,232,200,.1), 0 0 24px rgba(185,232,200,.1); } }
+    @keyframes checkCascade { 0%, 18%, 100% { opacity: .38; transform: translateY(8px); border-color: rgba(255,255,255,.11); } 38%, 78% { opacity: 1; transform: translateY(0); border-color: rgba(185,232,200,.38); background: #1a2b25; } }
+    @keyframes intervalGrow { 0%, 20% { transform: scaleX(0); opacity: 0; } 50%, 100% { transform: scaleX(1); opacity: 1; } }
+    @keyframes fileFloat { 50% { margin-top: -7px; filter: brightness(1.08); } }
+    @keyframes sealArrive { 0%, 22% { transform: scale(.76) rotate(-12deg); opacity: .35; } 55%, 100% { transform: scale(1) rotate(0); opacity: 1; } }
+    @keyframes tracePulse { 50% { box-shadow: 0 0 0 10px rgba(53,125,89,0); } }
+    @keyframes verdictArrive { from { transform: scale(.55) rotate(-18deg); opacity: 0; } }
+    :focus-visible { outline: 3px solid var(--mint-deep); outline-offset: 3px; }
+
+    @media (min-width: 981px) {
+      .control-panel { position: sticky; top: 24px; }
+      .frontier-finding { grid-template-columns: 1fr; }
+      .finding-card { min-height: 0; display: grid; grid-template-columns: minmax(112px, .34fr) 1fr; align-items: center; gap: 18px; }
+      .finding-card strong { margin-top: 0; font-size: 1.25rem; }
+    }
+
+    @media (max-width: 980px) {
+      .hero { min-height: auto; }
+      .hero-inner, .thesis-grid, .flow-heading, .flow-scene, .playground-grid, .slices-layout, .comparison-grid, .closing-grid { grid-template-columns: 1fr; }
+      .hero-instrument { min-height: 610px; max-width: 620px; width: 100%; justify-self: center; }
+      .thesis-quote, .slice-map { position: relative; top: auto; }
+      .layer { grid-template-columns: 64px 1fr; }
+      .layer-copy { grid-column: 2; }
+      .flow-heading-copy { max-width: 680px; }
+      .flow-screen { min-height: 720px; }
+      .flow-scene { gap: 28px; align-content: center; }
+      .flow-scene-copy { max-width: 620px; }
+      .flow-visual { min-height: 320px; }
+      .evidence-grid { grid-template-columns: 1fr; }
+      .frontier-finding { grid-template-columns: 1fr; }
+      .report-grid { grid-template-columns: 190px 1fr; }
+      .closing-copy { max-width: 650px; }
+    }
+
+    @media (max-width: 720px) {
+      .shell { width: min(calc(100% - 24px), var(--max)); }
+      .section { padding: 76px 0; }
+      .site-header { padding: 18px 0; }
+      .nav-links a:not(.nav-cta) { display: none; }
+      .hero-inner { padding-top: 126px; padding-bottom: 62px; gap: 48px; }
+      .hero-title { font-size: clamp(3.5rem, 18vw, 6rem); }
+      .hero-instrument { min-height: 520px; border-radius: 150px 150px 22px 22px; }
+      .instrument-head { width: 126px; height: 126px; }
+      .instrument-number { font-size: 3rem; }
+      .instrument-label { top: 178px; }
+      .token-rail { top: 218px; left: 24px; right: 24px; gap: 3px; }
+      .instrument-footer { left: 20px; right: 20px; bottom: 20px; gap: 8px; }
+      .instrument-stat { padding: 12px; }
+      .instrument-stat strong { font-size: 1.45rem; }
+      .instrument-stat span { font-size: .64rem; letter-spacing: .055em; }
+      .trust-grid { grid-template-columns: 1fr 1fr; }
+      .trust-item:nth-child(2) { border-right: 0; }
+      .trust-item:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
+      .principle { grid-template-columns: 42px 1fr; padding: 26px 0 28px; }
+      .layer { grid-template-columns: 54px 1fr; gap: 16px; }
+      .layer-index { width: 54px; height: 54px; }
+      .pipeline-line { left: 27px; }
+      .flow-console { border-radius: 22px; }
+      .flow-console-bar { padding: 14px 16px; }
+      .flow-live { font-size: .66rem; letter-spacing: .06em; }
+      .flow-replay { padding-inline: 11px; }
+      .flow-stage-rail { padding: 18px 6px 16px; }
+      .flow-rail-line { top: 36px; }
+      .flow-rail-line { left: 9%; right: 9%; }
+      .flow-stage-button { font-size: .51rem; letter-spacing: .02em; }
+      .flow-stage-number { width: 35px; height: 35px; }
+      .flow-screen { min-height: 675px; }
+      .flow-scene { padding: 34px 22px; }
+      .flow-scene-copy h3 { font-size: clamp(2.7rem, 13vw, 4.2rem); }
+      .flow-visual { min-height: 300px; }
+      .intake-visual { width: 96%; }
+      .intake-prompt { padding: 20px 16px; }
+      .signal-chip { width: 88px; font-size: .6rem; }
+      .signal-chip::after { width: 42px; }
+      .model-core { width: 102px; height: 102px; font-size: 2.2rem; }
+      .generation-tokens { width: 91px; gap: 5px; }
+      .decode-diagram { width: 96%; gap: 12px; }
+      .decode-token-bank { padding: 12px; gap: 5px; }
+      .lut-cube { width: 116px; height: 116px; }
+      .measure-grid { width: 96%; gap: 7px; }
+      .measure-chip { min-height: 72px; padding-inline: 5px; }
+      .confidence-card { width: 94%; padding: 22px 18px; }
+      .evidence-file { width: 154px; min-height: 102px; padding: 14px; }
+      .evidence-seal { width: 94px; height: 94px; }
+      .flow-caption { align-items: flex-start; padding: 16px; }
+      .row-preview { grid-template-columns: 1fr; }
+      .image-proxy { min-height: 180px; }
+      .eval-step { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; min-height: 62px; }
+      .eval-verdict { grid-column: auto; min-width: 34px; text-align: right; }
+      .slice-row { grid-template-columns: 1fr; gap: 7px; }
+      .slice-map { min-height: 520px; padding: 44px 26px; }
+      .gate-board { grid-template-columns: 1fr; }
+      .gate-callout { grid-column: 1; grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 106px minmax(0, 1fr) 62px; gap: 6px; }
+      .bar-value { white-space: nowrap; }
+      .report-grid { grid-template-columns: 1fr; }
+      .report-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; overflow: visible; border-right: 0; border-bottom: 1px solid var(--rule); }
+      .report-nav button { width: auto; min-width: 0; }
+      .report-view { padding: 22px 18px 26px; overflow-x: auto; }
+      .report-table { min-width: 600px; }
+      footer .shell { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+      .reveal { opacity: 1; transform: none; }
+      .scroll-progress { display: none; }
+      .flow-scene { transition: none; }
+      .measure-chip { opacity: 1; transform: none; border-color: rgba(185,232,200,.28); background: #1a2b25; }
+    }
+  </style>
+</head>
+<body>
+  <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="shell nav">
+      <div class="brand"><span class="brand-mark">L</span><span>Prompt-to-LUT / Evaluation</span></div>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#layers">Layers</a>
+        <a href="#flow">Full flow</a>
+        <a href="#playground">Playground</a>
+        <a href="#ship-gates">Ship gates</a>
+        <a class="nav-cta" href="#evidence">Evidence</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="shell hero-inner">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">A transparent model-quality system</p>
+          <h1 class="display hero-title" id="hero-title">Inside the <span class="accent">evaluation</span> harness.</h1>
+          <p class="hero-deck">How I test whether a fine-tuned vision-language model can turn a photo and a natural-language edit into a reliable, safe, compact 3D color transform — and refuse everything outside its remit.</p>
+          <div class="hero-meta" aria-label="Key system facts">
+            <span class="meta-chip">Qwen2.5-VL-3B base</span>
+            <span class="meta-chip">64 learned LUT tokens</span>
+            <span class="meta-chip">17³ canonical LUT</span>
+            <span class="meta-chip">L0–L7 deterministic verdict</span>
+          </div>
+        </div>
+
+        <div class="hero-instrument reveal" aria-label="Animated representation of the 64-token model output">
+          <div class="instrument-head">
+            <span class="instrument-number">64</span>
+          </div>
+          <div class="instrument-label">discrete LUT codes</div>
+          <div class="token-rail" id="tokenRail" aria-hidden="true"></div>
+          <div class="instrument-footer">
+            <div class="instrument-stat"><strong>67</strong><span>max new tokens</span></div>
+            <div class="instrument-stat"><strong>17³</strong><span>decoded grid</span></div>
+            <div class="instrument-stat"><strong>3</strong><span>final-report seeds</span></div>
+            <div class="instrument-stat"><strong>10k</strong><span>bootstrap draws</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="trust-strip" aria-label="Evaluation principles">
+      <div class="shell trust-grid">
+        <div class="trust-item"><strong>Frozen rows</strong><span>Same cases for every contender</span></div>
+        <div class="trust-item"><strong>Paired tests</strong><span>Compare row by row, not anecdotes</span></div>
+        <div class="trust-item"><strong>Exact refusal</strong><span>Unsupported means &lt;unsupported&gt;</span></div>
+        <div class="trust-item"><strong>Judge is advisory</strong><span>Never overrides deterministic failure</span></div>
+      </div>
+    </aside>
+
+    <section class="section section-compact" id="why">
+      <div class="shell thesis-grid">
+        <blockquote class="thesis-quote reveal">A model does not pass because its output <em>looks plausible.</em> It passes because the entire artifact survives a measurable chain of obligations.</blockquote>
+        <div class="principles reveal">
+          <article class="principle">
+            <span class="principle-number">01</span>
+            <div><h3>Test the product behavior, not the training loss.</h3><p>The harness starts from the client-visible contract: understand a global color request, produce a valid transform, preserve image integrity, and refuse requests that a global LUT cannot solve.</p></div>
+          </article>
+          <article class="principle">
+            <span class="principle-number">02</span>
+            <div><h3>Make every failure attributable.</h3><p>Boundary, syntax, decode, color direction, target fidelity, safety, and style are separate layers. A failure says what broke, not merely that a score went down.</p></div>
+          </article>
+          <article class="principle">
+            <span class="principle-number">03</span>
+            <div><h3>Challenge the need for fine-tuning.</h3><p>The SFT checkpoint must beat nulls, constants, deterministic recipes, prompt-only ablations, image ablations, and frontier prompting — otherwise the claim is narrowed.</p></div>
+          </article>
+          <article class="principle">
+            <span class="principle-number">04</span>
+            <div><h3>Separate diagnosis from shipping.</h3><p>Small slices and qualitative examples illuminate behavior. Only predeclared, adequately powered metrics can approve a release.</p></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-dark" id="layers">
+      <div class="shell">
+        <p class="section-kicker reveal">The deterministic stack</p>
+        <h2 class="display section-title reveal">Nine lenses. One non-negotiable verdict.</h2>
+        <p class="section-intro reveal">Supported rows must clear every deterministic layer from L0 through L7. The L8 judge adds explanation and qualitative context, but it cannot rescue an invalid or unsafe transform.</p>
+
+        <div class="pipeline-wrap" id="pipeline">
+          <div class="pipeline-line" aria-hidden="true"><div class="pipeline-progress" id="pipelineProgress"></div></div>
+
+          <article class="layer reveal" data-layer="0">
+            <div class="layer-index">L0</div>
+            <div class="layer-name"><span>Scope</span><h3>Boundary</h3></div>
+            <div class="layer-copy"><p>Supported requests must not be refused. Unsupported requests pass only with the exact token <code>&lt;unsupported&gt;</code>.</p><div class="layer-rule">No partial compliance. No friendly prose.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="1">
+            <div class="layer-index">L1</div>
+            <div class="layer-name"><span>Form</span><h3>Syntax</h3></div>
+            <div class="layer-copy"><p>A supported output is exactly LUT-BOS, 64 valid code tokens, and LUT-EOS. Runtime constrained generation should make syntax failures implementation bugs.</p><div class="layer-rule">Free generation measures learned discipline.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="2">
+            <div class="layer-index">L2</div>
+            <div class="layer-name"><span>Artifact</span><h3>Decode &amp; export</h3></div>
+            <div class="layer-copy"><p>The 64 codes decode through the frozen VQ decoder into a finite canonical 17×17×17 residual LUT and a valid pinned <code>.cube</code> export.</p><div class="layer-rule">Domain, grid, hashes, and interpolation must match.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="3">
+            <div class="layer-index">L3</div>
+            <div class="layer-name"><span>Compression</span><h3>Tokenizer gate</h3></div>
+            <div class="layer-copy"><p>The frozen tokenizer must satisfy reconstruction quality across the mean, difficult tail, source families, and target classes before model scores are trusted.</p><div class="layer-rule">Bad compression cannot masquerade as bad SFT.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="4">
+            <div class="layer-index">L4</div>
+            <div class="layer-name"><span>Intent</span><h3>Direction</h3></div>
+            <div class="layer-copy"><p>Measured Lab behavior must move in every requested direction — warmer, cooler, brighter, softer contrast, more green, and other supported axes — within calibrated magnitude windows.</p><div class="layer-rule">Intent is checked numerically, not by label matching.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="5">
+            <div class="layer-index">L5</div>
+            <div class="layer-name"><span>Similarity</span><h3>Target fidelity</h3></div>
+            <div class="layer-copy"><p>Depending on the row, the decoded LUT must match an exact target, one of several valid references, or a declared behavior window using image and chart ΔE00.</p><div class="layer-rule">Underspecified requests get multiple valid answers — not a fake single truth.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="6">
+            <div class="layer-index">L6</div>
+            <div class="layer-name"><span>Integrity</span><h3>LUT safety</h3></div>
+            <div class="layer-copy"><p>Clip rate, out-of-range values, smoothness, foldover, neutral drift, and skin-locus behavior are tested before a transform can pass.</p><div class="layer-rule">A pretty average cannot hide a dangerous tail.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="7">
+            <div class="layer-index">L7</div>
+            <div class="layer-name"><span>Semantics</span><h3>Style recipe</h3></div>
+            <div class="layer-copy"><p>Named styles must land inside recipe windows and remain discriminable from neighboring styles rather than collapsing into one generic warm filter.</p><div class="layer-rule">Correct family, correct margin, no multi-match.</div></div>
+          </article>
+          <article class="layer reveal" data-layer="8">
+            <div class="layer-index">L8</div>
+            <div class="layer-name"><span>Context</span><h3>LLM / VLM judge</h3></div>
+            <div class="layer-copy"><p>A pinned judge records perceptual and instruction-alignment commentary for review. It is evidence, not authority.</p><div class="layer-rule">L8 cannot override L0–L7.</div></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="flow-theatre" id="flow" aria-labelledby="flow-title">
+      <div class="shell">
+        <div class="flow-heading">
+          <div>
+            <p class="section-kicker reveal">The complete run, in motion</p>
+            <h2 class="display section-title reveal" id="flow-title">Follow one row from intent to evidence.</h2>
+          </div>
+          <p class="flow-heading-copy reveal">A release claim is the last frame, not the first. Watch the same frozen row move through generation, artifact recovery, deterministic measurement, statistical gating, and an auditable report.</p>
+        </div>
+
+        <div class="flow-console reveal" id="flowConsole">
+          <div class="flow-console-bar">
+            <div class="flow-live"><span class="flow-live-dot" aria-hidden="true"></span><span id="flowLiveLabel">Guided run ready</span></div>
+            <button class="flow-replay" id="flowReplay" type="button">Replay full run ↻</button>
+          </div>
+
+          <div class="flow-stage-rail" id="flowStageRail" role="group" aria-label="Evaluation flow stages">
+            <div class="flow-rail-line" aria-hidden="true"><span class="flow-rail-progress"></span></div>
+            <button class="flow-stage-button is-active" type="button" aria-pressed="true" data-flow-step="0"><span class="flow-stage-number">01</span><span>Intake</span></button>
+            <button class="flow-stage-button" type="button" aria-pressed="false" data-flow-step="1"><span class="flow-stage-number">02</span><span>Generate</span></button>
+            <button class="flow-stage-button" type="button" aria-pressed="false" data-flow-step="2"><span class="flow-stage-number">03</span><span>Decode</span></button>
+            <button class="flow-stage-button" type="button" aria-pressed="false" data-flow-step="3"><span class="flow-stage-number">04</span><span>Measure</span></button>
+            <button class="flow-stage-button" type="button" aria-pressed="false" data-flow-step="4"><span class="flow-stage-number">05</span><span>Gate</span></button>
+            <button class="flow-stage-button" type="button" aria-pressed="false" data-flow-step="5"><span class="flow-stage-number">06</span><span>Evidence</span></button>
+          </div>
+
+          <div class="flow-screen" id="flowScreen" aria-live="polite">
+            <article class="flow-scene is-active" data-flow-scene="0">
+              <div class="flow-scene-copy"><small>01 / Frozen row intake</small><h3>Start with the product contract.</h3><p>The harness binds a source image, an instruction, a support label, an acceptance mode, and leakage-safe provenance before the model is called.</p></div>
+              <div class="flow-visual">
+                <div class="intake-visual">
+                  <div class="intake-image" aria-hidden="true"></div>
+                  <div class="intake-prompt"><span>Instruction</span><strong>“Make the portrait a little warmer while keeping skin neutral.”</strong><em>supported · subtle_control</em></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="flow-scene" data-flow-scene="1" aria-hidden="true">
+              <div class="flow-scene-copy"><small>02 / Image-conditioned generation</small><h3>Turn context into a compact sequence.</h3><p>Image and prompt meet the pinned checkpoint. Constrained mode admits only LUT-BOS, exactly 64 learned codes, and LUT-EOS.</p></div>
+              <div class="flow-visual">
+                <div class="generation-diagram">
+                  <div class="signal-chip">source image</div><div class="signal-chip">edit prompt</div>
+                  <div class="model-core" aria-label="Model inference">Q</div>
+                  <div class="generation-tokens" id="flowGenerationTokens" aria-label="Animated 64-code output"></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="flow-scene" data-flow-scene="2" aria-hidden="true">
+              <div class="flow-scene-copy"><small>03 / Artifact recovery</small><h3>Decode codes into a real transform.</h3><p>The frozen VQ decoder reconstructs a finite canonical residual LUT. Export checks pin domain, grid, interpolation, and file validity.</p></div>
+              <div class="flow-visual">
+                <div class="decode-diagram">
+                  <div class="decode-token-bank" id="flowDecodeTokens" aria-label="Learned code sequence"></div>
+                  <div class="decode-arrow" aria-hidden="true">→</div>
+                  <div class="lut-cube" aria-label="Canonical 17 by 17 by 17 LUT"><span></span><span></span><span></span></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="flow-scene" data-flow-scene="3" aria-hidden="true">
+              <div class="flow-scene-copy"><small>04 / Deterministic obligations</small><h3>Measure what actually changed.</h3><p>Boundary, grammar, decode, tokenizer quality, direction, fidelity, safety, and style are evaluated independently. The judge remains advisory.</p></div>
+              <div class="flow-visual">
+                <div class="measure-grid" aria-label="Nine evaluation layers">
+                  <div class="measure-chip" style="--check-i:0"><strong>L0 ✓</strong><span>boundary</span></div>
+                  <div class="measure-chip" style="--check-i:1"><strong>L1 ✓</strong><span>syntax</span></div>
+                  <div class="measure-chip" style="--check-i:2"><strong>L2 ✓</strong><span>decode</span></div>
+                  <div class="measure-chip" style="--check-i:3"><strong>L3 ✓</strong><span>tokenizer</span></div>
+                  <div class="measure-chip" style="--check-i:4"><strong>L4 ✓</strong><span>direction</span></div>
+                  <div class="measure-chip" style="--check-i:5"><strong>L5 ✓</strong><span>fidelity</span></div>
+                  <div class="measure-chip" style="--check-i:6"><strong>L6 ✓</strong><span>safety</span></div>
+                  <div class="measure-chip" style="--check-i:7"><strong>L7 —</strong><span>style n/a</span></div>
+                  <div class="measure-chip" style="--check-i:8"><strong>L8 ◇</strong><span>advisory</span></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="flow-scene" data-flow-scene="4" aria-hidden="true">
+              <div class="flow-scene-copy"><small>05 / Powered release decision</small><h3>Aggregate rows, then test the claim.</h3><p>Frozen slices roll into confidence bounds, paired deltas, multiple-test correction, and minimum-N rules. A point estimate alone cannot ship.</p></div>
+              <div class="flow-visual">
+                <div class="confidence-card">
+                  <div class="confidence-card-head"><span>Supported prompt → LUT pass</span><strong>Wilson lower ≥ 60%</strong></div>
+                  <div class="confidence-axis"><span class="confidence-threshold"></span><span class="confidence-interval"></span><span class="confidence-dot"></span></div>
+                  <div class="confidence-verdict"><span>Lower bound clears the frozen floor</span><strong>Gate passes ✓</strong></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="flow-scene" data-flow-scene="5" aria-hidden="true">
+              <div class="flow-scene-copy"><small>06 / Auditable release packet</small><h3>Leave a trail someone else can replay.</h3><p>Every row result, model identity, decoder hash, resolved config, confidence interval, and gate decision lands in a versioned evidence packet.</p></div>
+              <div class="flow-visual">
+                <div class="evidence-visual">
+                  <div class="evidence-file" style="--file-delay:-1s"><span>metrics_by_row.parquet</span><i></i></div>
+                  <div class="evidence-file" style="--file-delay:-2.3s"><span>version_manifest.json</span><i></i></div>
+                  <div class="evidence-file" style="--file-delay:-.4s"><span>summary.md + gates.csv</span><i></i></div>
+                  <div class="evidence-seal" aria-label="Auditable run complete">✓</div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="flow-caption"><span id="flowStatus"><strong>Freeze the row.</strong> Inputs and obligations are declared before inference.</span><span class="flow-counter" id="flowCounter">01 / 06</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="playground">
+      <div class="shell">
+        <p class="section-kicker reveal">Interactive row walkthrough</p>
+        <h2 class="display section-title reveal">Put one evaluation row through the harness.</h2>
+        <p class="section-intro reveal">Choose a representative request and generation mode. The simulation shows how the row is classified, parsed, decoded, measured, and finally accepted or rejected.</p>
+
+        <div class="playground-grid reveal">
+          <section class="control-panel" aria-labelledby="controls-heading">
+            <div class="panel-head"><h3 id="controls-heading">Row controls</h3><span class="status-pill">Illustrative</span></div>
+            <div class="controls">
+              <div class="field">
+                <label>Prompt scenario</label>
+                <div class="scenario-buttons" id="scenarioButtons">
+                  <button class="scenario-button is-selected" type="button" data-scenario="warm">Warm portrait</button>
+                  <button class="scenario-button" type="button" data-scenario="composite">Composite edit</button>
+                  <button class="scenario-button" type="button" data-scenario="style">Named style</button>
+                  <button class="scenario-button" type="button" data-scenario="unsupported">Mixed unsupported</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Instruction</label>
+                <div class="prompt-card" id="promptText">“Make the portrait a little warmer while keeping skin neutral.”</div>
+              </div>
+              <div class="field">
+                <label>Generation mode</label>
+                <div class="toggle-row" id="modeButtons">
+                  <button type="button" class="toggle-button" data-mode="free">Free generation</button>
+                  <button type="button" class="toggle-button is-selected" data-mode="constrained">Runtime constrained</button>
+                </div>
+              </div>
+              <button type="button" class="run-button" id="runEvaluation">Run this row →</button>
+              <p class="small-note">This is an explanatory simulation of the real layer logic, not a live model call.</p>
+            </div>
+          </section>
+
+          <section class="result-panel" aria-labelledby="result-heading" aria-live="polite">
+            <div class="panel-head"><h3 id="result-heading">Layer-by-layer result</h3><span class="small-note" id="runState">Ready</span></div>
+            <div class="result-body">
+              <div class="execution-trace" id="executionTrace" aria-label="Interactive evaluation progress">
+                <div class="trace-line" aria-hidden="true"><span class="trace-progress"></span></div>
+                <div class="trace-node is-active" data-trace-step="0"><span class="trace-dot">01</span><span>Capture</span></div>
+                <div class="trace-node" data-trace-step="1"><span class="trace-dot">02</span><span>Generate</span></div>
+                <div class="trace-node" data-trace-step="2"><span class="trace-dot">03</span><span>Decode</span></div>
+                <div class="trace-node" data-trace-step="3"><span class="trace-dot">04</span><span>Measure</span></div>
+                <div class="trace-node" data-trace-step="4"><span class="trace-dot">05</span><span>Verdict</span></div>
+              </div>
+              <div class="row-preview">
+                <div class="image-proxy" aria-label="Stylized proxy for an input portrait"></div>
+                <div class="row-meta">
+                  <div class="meta-box"><span>Support label</span><strong id="supportLabel">Supported</strong></div>
+                  <div class="meta-box"><span>Acceptance mode</span><strong id="acceptanceMode">Behavior window</strong></div>
+                  <div class="meta-box"><span>Eval slice</span><strong id="evalSlice">Subtle control</strong></div>
+                  <div class="meta-box"><span>Output budget</span><strong id="outputBudget">67 tokens</strong></div>
+                </div>
+              </div>
+
+              <div class="evaluation-stack" id="evaluationStack"></div>
+              <div class="final-verdict" id="finalVerdict">
+                <div><strong>Awaiting run</strong><br><span>Select a scenario and start the walkthrough.</span></div>
+                <div class="verdict-mark">·</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="slices">
+      <div class="shell">
+        <p class="section-kicker reveal">Frozen evaluation design</p>
+        <h2 class="display section-title reveal">One headline number, many ways to break it.</h2>
+        <p class="section-intro reveal">The aggregate pass rate answers “does it work?” The slices answer “where, for whom, and under what conditions does it stop working?”</p>
+
+        <div class="slices-layout">
+          <div class="slice-list reveal">
+            <div class="slice-row"><strong>usage_weighted_headline</strong><p>The client-facing mix of common supported requests, reserved for the primary quality claim.</p></div>
+            <div class="slice-row"><strong>image_sensitivity</strong><p>Identical text across different images where the correct LUTs must differ. Defends against a prompt-only shortcut.</p></div>
+            <div class="slice-row"><strong>hard_cli_inputs</strong><p>Phone exports, screenshots, heavy JPEG compression, odd white balance, ICC variation, and size extremes.</p></div>
+            <div class="slice-row"><strong>subtle_control</strong><p>Small but visible edits that expose a model that only knows exaggerated transformations.</p></div>
+            <div class="slice-row"><strong>style_discriminability</strong><p>Single-style rows with neighbor-exclusion tests, recipe windows, and confusion analysis.</p></div>
+            <div class="slice-row"><strong>expert_holdout</strong><p>Held-out PPR10K and FiveK expert identities absent from the SFT training set.</p></div>
+            <div class="slice-row"><strong>unseen_family</strong><p>Held-out source, style, or LUT families that measure generalization beyond memorized packs.</p></div>
+            <div class="slice-row"><strong>unsupported + boundary_pairs</strong><p>Local edits, geometry, generation, reference transfer, mixed traps, and contrastive near-boundary pairs.</p></div>
+          </div>
+
+          <aside class="slice-map reveal" aria-label="Map of evaluation slices">
+            <h3>Coverage, not decoration.</h3>
+            <p>Each bubble represents a different failure surface. Headline claims come only from eligible rows with frozen provenance and leakage-safe split units.</p>
+            <div class="slice-points" aria-hidden="true">
+              <div class="slice-point" style="--size:118px;--tone:var(--mint);--delay:-1s;left:3%;top:6%">headline</div>
+              <div class="slice-point" style="--size:92px;--tone:var(--coral);--delay:-3s;left:55%;top:3%">unsupported</div>
+              <div class="slice-point" style="--size:84px;--tone:var(--amber);--delay:-2s;left:31%;top:38%">styles</div>
+              <div class="slice-point" style="--size:108px;--tone:var(--blue);--delay:-4s;left:65%;top:43%">image sensitivity</div>
+              <div class="slice-point" style="--size:76px;--tone:#ddd8c9;--delay:-.5s;left:7%;top:66%">hard CLI</div>
+              <div class="slice-point" style="--size:70px;--tone:#cdb8f1;--delay:-2.5s;left:45%;top:77%">holdout</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-dark" id="ship-gates">
+      <div class="shell">
+        <p class="section-kicker reveal">Predeclared release criteria</p>
+        <h2 class="display section-title reveal">A model ships on confidence bounds, not point estimates.</h2>
+        <p class="section-intro reveal">Every gated metric has a frozen slice, minimum sample size, direction of the bound, test family, and underpowered behavior. The current v1 headline floor is 350 rows because the reserve is approximately 382 eligible supported rows.</p>
+
+        <div class="gate-board" id="gateBoard">
+          <article class="gate reveal"><div class="gate-top"><h3>Supported prompt → LUT pass</h3><span class="gate-value">Wilson lower ≥ 60%</span></div><p>All deterministic obligations from boundary through style.</p><div class="gate-track"><div class="gate-fill" style="--width:60%;--tone:var(--mint)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Free-generation valid tokens</h3><span class="gate-value">Wilson lower ≥ 85%</span></div><p>Valid 64-code sequence or exact refusal, measured over all rows.</p><div class="gate-track"><div class="gate-fill" style="--width:85%;--tone:var(--blue)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Unsupported recall &amp; precision</h3><span class="gate-value">Each lower ≥ 80%</span></div><p>Catch out-of-scope work without refusing legitimate global edits.</p><div class="gate-track"><div class="gate-fill" style="--width:80%;--tone:var(--coral)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Boundary F1 &amp; mixed recall</h3><span class="gate-value">Lower ≥ 80%</span></div><p>Includes traps that combine a supported lure with an impossible local task.</p><div class="gate-track"><div class="gate-fill" style="--width:80%;--tone:var(--amber)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Near-boundary pair accuracy</h3><span class="gate-value">Wilson lower ≥ 85%</span></div><p>Contrastive pairs differ by the smallest wording that changes supportability.</p><div class="gate-track"><div class="gate-fill" style="--width:85%;--tone:#cdb8f1"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Over-refusal</h3><span class="gate-value">Wilson upper ≤ 10%</span></div><p>The model cannot protect itself by saying “unsupported” to difficult valid work.</p><div class="gate-track"><div class="gate-fill" style="--width:10%;--tone:var(--coral)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Safety failure</h3><span class="gate-value">Wilson upper ≤ 5%</span></div><p>Absolute v1 gate covering clipping, foldover, neutral drift, and skin-locus risk.</p><div class="gate-track"><div class="gate-fill" style="--width:5%;--tone:var(--coral)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Versus deterministic renderer</h3><span class="gate-value">Paired lower ≥ +10pp</span></div><p>Primary headline advantage on the same frozen rows under the v1 power design.</p><div class="gate-track"><div class="gate-fill" style="--width:62%;--tone:var(--mint)"></div></div></article>
+
+          <div class="gate-callout reveal">
+            <div><strong>Statistics are part of the product contract.</strong><br><span>Three final-report seeds, Wilson intervals, stratified paired bootstrap with at least 10,000 draws, paired binary tests, and Holm–Bonferroni over the ship-gate family.</span></div>
+            <code>min_N → evaluable, not silently pass</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-compact" id="baselines">
+      <div class="shell">
+        <p class="section-kicker reveal">The SFT model must earn the claim</p>
+        <h2 class="display section-title reveal">Better than what?</h2>
+        <p class="section-intro reveal">Fine-tuning is not treated as the default winner. Every alternative is tested on the same frozen rows, and the resulting statement is limited to what the comparisons actually support.</p>
+
+        <div class="comparison-grid">
+          <div class="reveal">
+            <div class="comparison-claim"><strong>The model must outperform shortcuts, not merely produce attractive examples.</strong><p>If it fails the image-conditioning ablations, I do not claim image-conditioned learning. If it fails the frontier comparison, I keep only the advantages that remain true: local operation, compact output, latency, determinism, or cost.</p></div>
+            <div class="frontier-finding">
+              <article class="finding-card"><span>Frontier probe</span><strong>Every complete LUT moved in the correct direction.</strong></article>
+              <article class="finding-card"><span>Dominant failure</span><strong>Completion and token ceilings — not color intent.</strong></article>
+              <article class="finding-card"><span>Project advantage</span><strong>64 codes instead of roughly 100k raw-float tokens.</strong></article>
+            </div>
+          </div>
+
+          <div class="baseline-bars reveal" id="baselineBars" aria-label="Illustrative baseline ladder">
+            <div class="bar-row"><span class="bar-label">Always unsupported</span><div class="bar-track"><div class="bar-fill" style="--width:8%;--tone:#bbb7ad"></div></div><span class="bar-value">null</span></div>
+            <div class="bar-row"><span class="bar-label">Identity / constant LUT</span><div class="bar-track"><div class="bar-fill" style="--width:22%;--tone:#a8a49a"></div></div><span class="bar-value">null</span></div>
+            <div class="bar-row"><span class="bar-label">Deterministic recipe</span><div class="bar-track"><div class="bar-fill" style="--width:52%;--tone:var(--amber)"></div></div><span class="bar-value">pinned</span></div>
+            <div class="bar-row"><span class="bar-label">Prompt-only SFT</span><div class="bar-track"><div class="bar-fill" style="--width:46%;--tone:#cdb8f1"></div></div><span class="bar-value">ablation</span></div>
+            <div class="bar-row"><span class="bar-label">Blank / shuffled image</span><div class="bar-track"><div class="bar-fill" style="--width:39%;--tone:var(--blue)"></div></div><span class="bar-value">ablation</span></div>
+            <div class="bar-row"><span class="bar-label">Prompted frontier</span><div class="bar-track"><div class="bar-fill" style="--width:69%;--tone:var(--coral)"></div></div><span class="bar-value">raw LUT</span></div>
+            <div class="bar-row"><span class="bar-label">Image-conditioned SFT</span><div class="bar-track"><div class="bar-fill" style="--width:82%;--tone:var(--mint-deep)"></div></div><span class="bar-value">target</span></div>
+            <div class="baseline-note">Bars communicate the evaluation ladder, not final model results. Actual release decisions use paired row-level deltas and confidence bounds, never a decorative leaderboard.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="evidence">
+      <div class="shell">
+        <p class="section-kicker reveal">Auditability</p>
+        <h2 class="display section-title reveal">Every claim leaves an evidence trail.</h2>
+        <p class="section-intro reveal">The harness produces enough structure to reproduce a run, inspect individual failures, and distinguish model defects from parser, tokenizer, data, or evaluation defects.</p>
+
+        <div class="evidence-grid">
+          <article class="evidence-card reveal" data-index="1"><div class="evidence-icon">ID</div><h3>Frozen identity</h3><p>Rows, split units, model artifacts, tokenizer hashes, canonical domain, parser/FSM versions, safety thresholds, and config versions are recorded.</p><ul class="evidence-list"><li><code>version_manifest.json</code></li><li><code>config_resolved.yaml</code></li><li>row-level provenance and leakage keys</li></ul></article>
+          <article class="evidence-card reveal" data-index="2"><div class="evidence-icon">ΔE</div><h3>Measured behavior</h3><p>Per-row layer results preserve the facts behind the aggregate: direction deltas, image/chart ΔE00, safety flags, style margins, and refusal classifications.</p><ul class="evidence-list"><li><code>metrics_by_row.parquet</code></li><li>attribute, target, style, safety tables</li><li>representative failure row IDs</li></ul></article>
+          <article class="evidence-card reveal" data-index="3"><div class="evidence-icon">CI</div><h3>Decision record</h3><p>Overall results, paired deltas, seed summaries, adjusted gate outcomes, and qualitative artifacts are written together as the release packet.</p><ul class="evidence-list"><li><code>overall.csv</code> + <code>gates.csv</code></li><li><code>baseline_delta.csv</code></li><li><code>summary.md</code> + qualitative outputs</li></ul></article>
+        </div>
+
+        <div class="report-shell reveal">
+          <div class="report-toolbar"><div class="window-dots"><i></i><i></i><i></i></div><code>eval_runs / checkpoint_sft_042 /</code></div>
+          <div class="report-grid">
+            <nav class="report-nav" aria-label="Report views" id="reportNav">
+              <button type="button" class="is-selected" data-view="overall">Overall</button>
+              <button type="button" data-view="gates">Ship gates</button>
+              <button type="button" data-view="errors">Error analysis</button>
+              <button type="button" data-view="manifest">Version manifest</button>
+            </nav>
+            <div class="report-view" id="reportView"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing">
+      <div class="shell closing-grid">
+        <h2 class="display reveal">The goal is not a model that <em>usually</em> looks right.</h2>
+        <div class="closing-copy reveal">
+          <p>It is a system whose scope, artifact validity, color behavior, safety, generalization, and comparative advantage are legible before anyone depends on it.</p>
+          <div class="closing-list">
+            <div><span>Primary outcome</span><span>supported_prompt_to_lut_pass_rate</span></div>
+            <div><span>Runtime path</span><span>64 codes → VQ decode → .cube</span></div>
+            <div><span>Unsupported path</span><span>exact &lt;unsupported&gt;</span></div>
+            <div><span>Release principle</span><span>predeclare → measure → audit</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="shell"><span>Prompt-to-LUT evaluation harness / client explainer</span><span>Self-contained HTML · accessible motion · no external dependencies</span></div></footer>
+
+  <script>
+    const tokenRail = document.getElementById('tokenRail');
+    for (let index = 0; index < 64; index += 1) {
+      const dot = document.createElement('span');
+      dot.className = 'token-dot';
+      dot.style.setProperty('--i', index);
+      tokenRail.appendChild(dot);
+    }
+
+    document.querySelectorAll('.meta-chip').forEach((chip, index) => chip.style.setProperty('--chip-index', index));
+
+    document.querySelectorAll('.trust-grid, .principles, .pipeline-wrap, .playground-grid, .slice-list, .gate-board, .frontier-finding, .baseline-bars, .evidence-grid').forEach((group) => {
+      [...group.children].forEach((child, index) => {
+        if (child.classList.contains('trust-item') || child.classList.contains('principle') || child.classList.contains('slice-row') || child.classList.contains('finding-card')) {
+          child.classList.add('reveal');
+        }
+        if (child.classList.contains('reveal') || child.classList.contains('gate') || child.classList.contains('bar-row') || child.classList.contains('principle') || child.classList.contains('layer') || child.classList.contains('slice-row') || child.classList.contains('finding-card') || child.classList.contains('evidence-card')) {
+          child.style.setProperty('--reveal-delay', `${Math.min(index * 45, 225)}ms`);
+        }
+      });
+    });
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          if (entry.target.classList.contains('gate')) entry.target.classList.add('is-visible');
+          if (entry.target.classList.contains('bar-row')) entry.target.classList.add('is-visible');
+        }
+      });
+    }, { threshold: 0.16 });
+
+    document.querySelectorAll('.reveal, .gate, .bar-row').forEach((element) => revealObserver.observe(element));
+
+    const layers = [...document.querySelectorAll('.layer')];
+    const pipeline = document.getElementById('pipeline');
+    const pipelineProgress = document.getElementById('pipelineProgress');
+    const scrollProgress = document.getElementById('scrollProgress');
+    const updatePipeline = () => {
+      const rect = pipeline.getBoundingClientRect();
+      const viewportAnchor = window.innerHeight * 0.52;
+      const progress = Math.max(0, Math.min(1, (viewportAnchor - rect.top) / Math.max(1, rect.height)));
+      pipelineProgress.style.height = `${progress * 100}%`;
+      const pageProgress = window.scrollY / Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      scrollProgress.style.transform = `scaleX(${Math.max(0, Math.min(1, pageProgress))})`;
+      document.documentElement.style.setProperty('--hero-parallax', `${Math.min(window.scrollY * .12, 110)}px`);
+      layers.forEach((layer) => {
+        const layerRect = layer.getBoundingClientRect();
+        layer.classList.toggle('is-active', layerRect.top < viewportAnchor && layerRect.bottom > viewportAnchor - 120);
+      });
+    };
+    window.addEventListener('scroll', updatePipeline, { passive: true });
+    updatePipeline();
+
+    const motionAllowed = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (motionAllowed) {
+      document.querySelectorAll('.control-panel, .result-panel, .evidence-card, .finding-card').forEach((card) => {
+        card.addEventListener('pointermove', (event) => {
+          if (window.innerWidth < 900) return;
+          const rect = card.getBoundingClientRect();
+          const rotateY = ((event.clientX - rect.left) / rect.width - .5) * 2.2;
+          const rotateX = -((event.clientY - rect.top) / rect.height - .5) * 2.2;
+          card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-4px)`;
+        });
+        card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+      });
+    }
+
+    const generationTokens = document.getElementById('flowGenerationTokens');
+    const decodeTokens = document.getElementById('flowDecodeTokens');
+    for (let index = 0; index < 16; index += 1) {
+      [generationTokens, decodeTokens].forEach((container) => {
+        const token = document.createElement('span');
+        token.style.setProperty('--token-i', index);
+        container.appendChild(token);
+      });
+    }
+
+    const flowConsole = document.getElementById('flowConsole');
+    const flowButtons = [...document.querySelectorAll('[data-flow-step]')];
+    const flowScenes = [...document.querySelectorAll('[data-flow-scene]')];
+    const flowStatus = document.getElementById('flowStatus');
+    const flowCounter = document.getElementById('flowCounter');
+    const flowLiveLabel = document.getElementById('flowLiveLabel');
+    const flowReplay = document.getElementById('flowReplay');
+    const flowMessages = [
+      ['Freeze the row.','Inputs and obligations are declared before inference.'],
+      ['Generate the contract.','The model emits one exact, compact sequence.'],
+      ['Recover the artifact.','Frozen decoding turns learned codes into a canonical LUT.'],
+      ['Test each obligation.','Deterministic layers make every failure attributable.'],
+      ['Decide with bounds.','Powered aggregates and paired tests govern release.'],
+      ['Write the evidence.','The complete run remains inspectable and reproducible.']
+    ];
+    let flowIndex = 0;
+    let flowTimer = null;
+    let flowHasPlayed = false;
+
+    const setFlowStage = (nextIndex) => {
+      flowIndex = Math.max(0, Math.min(flowScenes.length - 1, nextIndex));
+      const progress = flowIndex / Math.max(1, flowScenes.length - 1) * 100;
+      flowConsole.style.setProperty('--flow-progress', `${progress}%`);
+      flowButtons.forEach((button, index) => {
+        button.classList.toggle('is-active', index === flowIndex);
+        button.classList.toggle('is-complete', index < flowIndex);
+        button.setAttribute('aria-pressed', String(index === flowIndex));
+      });
+      flowScenes.forEach((scene, index) => {
+        const isActive = index === flowIndex;
+        scene.classList.toggle('is-active', isActive);
+        scene.setAttribute('aria-hidden', String(!isActive));
+      });
+      const [title, detail] = flowMessages[flowIndex];
+      flowStatus.innerHTML = `<strong>${title}</strong> ${detail}`;
+      flowCounter.textContent = `${String(flowIndex + 1).padStart(2,'0')} / ${String(flowScenes.length).padStart(2,'0')}`;
+      flowLiveLabel.textContent = flowIndex === flowScenes.length - 1 ? 'Guided run complete' : 'Guided run in progress';
+    };
+
+    const scheduleFlowStage = () => {
+      clearTimeout(flowTimer);
+      if (!motionAllowed || flowIndex >= flowScenes.length - 1) return;
+      flowTimer = setTimeout(() => {
+        setFlowStage(flowIndex + 1);
+        scheduleFlowStage();
+      }, 1850);
+    };
+
+    const playFullFlow = () => {
+      clearTimeout(flowTimer);
+      setFlowStage(0);
+      if (motionAllowed) scheduleFlowStage();
+      else setFlowStage(flowScenes.length - 1);
+    };
+
+    flowReplay.addEventListener('click', playFullFlow);
+    flowButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        clearTimeout(flowTimer);
+        setFlowStage(Number(button.dataset.flowStep));
+        flowLiveLabel.textContent = 'Stage selected';
+      });
+    });
+
+    if (motionAllowed) {
+      const flowObserver = new IntersectionObserver((entries) => {
+        if (flowHasPlayed || !entries.some((entry) => entry.isIntersecting)) return;
+        flowHasPlayed = true;
+        playFullFlow();
+        flowObserver.disconnect();
+      }, { threshold: .32 });
+      flowObserver.observe(flowConsole);
+    } else {
+      flowLiveLabel.textContent = 'Reduced motion mode';
+      flowReplay.textContent = 'Show final stage →';
+    }
+
+    const instrumentNumber = document.querySelector('.instrument-number');
+    let counterAnimated = false;
+    const counterObserver = new IntersectionObserver((entries) => {
+      if (counterAnimated || !entries.some((entry) => entry.isIntersecting)) return;
+      counterAnimated = true;
+      const start = performance.now();
+      const animateCount = (time) => {
+        const progress = Math.min(1, (time - start) / 1100);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        instrumentNumber.textContent = Math.round(64 * eased);
+        if (progress < 1) requestAnimationFrame(animateCount);
+      };
+      requestAnimationFrame(animateCount);
+    }, { threshold: .5 });
+    counterObserver.observe(instrumentNumber);
+
+    const scenarios = {
+      warm: {
+        prompt: '“Make the portrait a little warmer while keeping skin neutral.”',
+        supported: true,
+        supportLabel: 'Supported',
+        acceptance: 'Behavior window',
+        slice: 'Subtle control',
+        output: '67 tokens',
+        outcomes: ['pass','pass','pass','pass','pass','pass','pass','na','pass'],
+        details: ['Correctly accepted','64-code grammar valid','Canonical 17³ LUT','Tokenizer certified','b* warmer; skin stable','Inside calibrated window','Neutral + skin gates pass','No named-style obligation','Advisory score recorded'],
+        verdict: ['Row passes','Every deterministic obligation is satisfied.','✓']
+      },
+      composite: {
+        prompt: '“Make it warmer with softer contrast.”',
+        supported: true,
+        supportLabel: 'Supported',
+        acceptance: 'Behavior window',
+        slice: 'Usage-weighted headline',
+        output: '67 tokens',
+        outcomes: ['pass','pass','pass','pass','pass','pass','pass','na','pass'],
+        details: ['Correctly accepted','64-code grammar valid','Canonical 17³ LUT','Tokenizer certified','Warmth + contrast both pass','Joint window satisfied','No clipping or foldover','No named-style obligation','Advisory score recorded'],
+        verdict: ['Row passes','Both requested axes move correctly without compromising safety.','✓']
+      },
+      style: {
+        prompt: '“Give this image a warm sepia tone.”',
+        supported: true,
+        supportLabel: 'Supported',
+        acceptance: 'Multi-reference',
+        slice: 'Style discriminability',
+        output: '67 tokens',
+        outcomes: ['pass','pass','pass','pass','pass','pass','pass','pass','pass'],
+        details: ['Correctly accepted','64-code grammar valid','Canonical 17³ LUT','Tokenizer certified','Warm + muted directions pass','Matches an allowed reference','Safety gates pass','Sepia window + margin pass','Advisory score recorded'],
+        verdict: ['Row passes','The transform matches sepia without collapsing into a neighboring warm style.','✓']
+      },
+      unsupported: {
+        prompt: '“Make the whole photo warmer and remove the background.”',
+        supported: false,
+        supportLabel: 'Unsupported',
+        acceptance: 'Exact refusal',
+        slice: 'Mixed unsupported',
+        output: '1 token',
+        outcomes: ['pass','pass','na','na','na','na','na','na','na'],
+        details: ['Exact <unsupported>','Refusal token is valid','Not applicable','Not applicable','Not applicable','Not applicable','Not applicable','Not applicable','Judge not needed'],
+        verdict: ['Row passes','The supported lure does not override the impossible local edit.','✓']
+      }
+    };
+
+    const stepLabels = [
+      ['L0','Boundary'], ['L1','Syntax'], ['L2','Decode / export'], ['L3','Tokenizer gate'],
+      ['L4','Direction'], ['L5','Target fidelity'], ['L6','LUT safety'], ['L7','Style recipe'], ['L8','Judge']
+    ];
+
+    const stack = document.getElementById('evaluationStack');
+    stepLabels.forEach(([code, label]) => {
+      const step = document.createElement('div');
+      step.className = 'eval-step';
+      step.innerHTML = `<span class="eval-code">${code}</span><span class="eval-label"><strong>${label}</strong><span>Awaiting evaluation</span></span><span class="eval-verdict">—</span>`;
+      stack.appendChild(step);
+    });
+
+    let currentScenario = 'warm';
+    let currentMode = 'constrained';
+    let runTimer = null;
+
+    const renderScenarioMeta = () => {
+      const scenario = scenarios[currentScenario];
+      document.getElementById('promptText').textContent = scenario.prompt;
+      document.getElementById('supportLabel').textContent = scenario.supportLabel;
+      document.getElementById('acceptanceMode').textContent = scenario.acceptance;
+      document.getElementById('evalSlice').textContent = scenario.slice;
+      document.getElementById('outputBudget').textContent = scenario.output;
+    };
+
+    const resetSteps = () => {
+      document.querySelectorAll('.eval-step').forEach((step) => {
+        step.className = 'eval-step';
+        step.querySelector('.eval-label span').textContent = 'Awaiting evaluation';
+        step.querySelector('.eval-verdict').textContent = '—';
+      });
+    };
+
+    const runButton = document.getElementById('runEvaluation');
+    const resultPanel = document.querySelector('.result-panel');
+    const trace = document.getElementById('executionTrace');
+    const traceNodes = [...document.querySelectorAll('[data-trace-step]')];
+    const state = document.getElementById('runState');
+    const verdict = document.getElementById('finalVerdict');
+
+    const setTraceStage = (activeIndex) => {
+      const boundedIndex = Math.max(0, Math.min(traceNodes.length - 1, activeIndex));
+      trace.style.setProperty('--trace-progress', `${boundedIndex / Math.max(1, traceNodes.length - 1) * 100}%`);
+      traceNodes.forEach((node, index) => {
+        node.classList.toggle('is-active', index === boundedIndex);
+        node.classList.toggle('is-complete', index < boundedIndex);
+      });
+    };
+
+    const resetInteractiveRun = () => {
+      if (runTimer) clearTimeout(runTimer);
+      runTimer = null;
+      resetSteps();
+      setTraceStage(0);
+      state.textContent = 'Ready';
+      verdict.classList.remove('is-complete');
+      verdict.innerHTML = '<div><strong>Awaiting run</strong><br><span>Select a scenario and start the walkthrough.</span></div><div class="verdict-mark">·</div>';
+      resultPanel.setAttribute('aria-busy', 'false');
+      runButton.disabled = false;
+      runButton.textContent = 'Run this row →';
+    };
+
+    document.getElementById('scenarioButtons').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-scenario]');
+      if (!button) return;
+      currentScenario = button.dataset.scenario;
+      document.querySelectorAll('[data-scenario]').forEach((item) => item.classList.toggle('is-selected', item === button));
+      renderScenarioMeta();
+      resetInteractiveRun();
+    });
+
+    document.getElementById('modeButtons').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-mode]');
+      if (!button) return;
+      currentMode = button.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach((item) => item.classList.toggle('is-selected', item === button));
+      resetInteractiveRun();
+    });
+
+    runButton.addEventListener('click', () => {
+      if (runTimer) clearTimeout(runTimer);
+      const scenario = scenarios[currentScenario];
+      const steps = [...document.querySelectorAll('.eval-step')];
+      resetSteps();
+      setTraceStage(0);
+      state.textContent = 'Capturing frozen row';
+      verdict.classList.remove('is-complete');
+      verdict.innerHTML = '<div><strong>Evaluating…</strong><br><span>Image and instruction are entering the harness.</span></div><div class="verdict-mark">···</div>';
+      resultPanel.setAttribute('aria-busy', 'true');
+      runButton.disabled = true;
+      runButton.textContent = 'Running row…';
+
+      if (window.innerWidth <= 980) {
+        resultPanel.scrollIntoView({ behavior: motionAllowed ? 'smooth' : 'auto', block: 'start' });
+      }
+
+      let index = 0;
+      const advance = () => {
+        if (index > 0) steps[index - 1].classList.remove('is-running');
+        if (index >= steps.length) {
+          const [title, detail, mark] = scenario.verdict;
+          verdict.innerHTML = `<div><strong>${title}</strong><br><span>${detail}</span></div><div class="verdict-mark">${mark}</div>`;
+          verdict.classList.add('is-complete');
+          setTraceStage(4);
+          state.textContent = 'Complete';
+          resultPanel.setAttribute('aria-busy', 'false');
+          runButton.disabled = false;
+          runButton.textContent = 'Run another row →';
+          runTimer = null;
+          return;
+        }
+        const outcome = scenario.outcomes[index];
+        const step = steps[index];
+        setTraceStage(index < 2 ? 1 : index < 4 ? 2 : 3);
+        state.textContent = index < 2
+          ? (currentMode === 'constrained' ? 'Generating · grammar mask on' : 'Generating · free mode')
+          : index < 4 ? 'Decoding canonical LUT' : 'Measuring deterministic layers';
+        step.classList.add('is-running');
+        step.querySelector('.eval-label span').textContent = 'Checking…';
+        step.querySelector('.eval-verdict').textContent = 'RUN';
+        runTimer = setTimeout(() => {
+          step.classList.remove('is-running');
+          step.classList.add(outcome === 'pass' ? 'is-pass' : outcome === 'fail' ? 'is-fail' : 'is-na');
+          step.querySelector('.eval-label span').textContent = scenario.details[index];
+          step.querySelector('.eval-verdict').textContent = outcome === 'pass' ? 'PASS' : outcome === 'fail' ? 'FAIL' : 'N/A';
+          index += 1;
+          advance();
+        }, motionAllowed ? 380 : 0);
+      };
+      runTimer = setTimeout(advance, motionAllowed ? 520 : 0);
+    });
+
+    renderScenarioMeta();
+
+    const reportViews = {
+      overall: {
+        title: 'Overall performance',
+        deck: 'Illustrative report shape: the real file preserves every seed, mode, split, sample count, confidence interval, and downstream layer rate.',
+        headers: ['Model','Mode','N','Pass rate','95% CI','Valid tokens'],
+        rows: [
+          ['SFT checkpoint','constrained','382','—','—','—'],
+          ['SFT checkpoint','free generation','382','—','—','—'],
+          ['Deterministic renderer','pinned','382','—','—','n/a'],
+          ['Prompt-only ablation','constrained','382','—','—','—']
+        ],
+        note: 'Dashes are intentional: this client explainer does not invent final SFT results.'
+      },
+      gates: {
+        title: 'Ship-gate decision',
+        deck: 'Each row declares its bound, threshold, observed value, minimum sample size, and adjusted family-level status.',
+        headers: ['Metric','Bound','Threshold','N','min N','Status'],
+        rows: [
+          ['Supported pass rate','lower','≥ 60%','—','350','pending'],
+          ['Valid token rate','lower','≥ 85%','—','350','pending'],
+          ['Safety failure','upper','≤ 5%','—','350','pending'],
+          ['vs renderer','paired lower','≥ +10pp','—','350','pending']
+        ],
+        note: 'Underpowered gates become not evaluable. They never silently pass.'
+      },
+      errors: {
+        title: 'Layered error analysis',
+        deck: 'Failures are grouped by the first failed obligation so remediation can target data, tokenizer, decoding, model behavior, or evaluation logic.',
+        headers: ['First failure','Count','Representative evidence','Likely owner'],
+        rows: [
+          ['L0 boundary','—','mixed unsupported row IDs','SFT / support taxonomy'],
+          ['L1 syntax','—','invalid sequence traces','generation / FSM'],
+          ['L5 fidelity','—','image + chart ΔE00','model / target quality'],
+          ['L6 safety','—','foldover / neutral / skin flags','model / calibration']
+        ],
+        note: 'The report preserves examples, but examples cannot substitute for the powered aggregate.'
+      },
+      manifest: {
+        title: 'Version manifest',
+        deck: 'The run binds the learned model to the exact tokenizer, decoder, canonical domain, color pipeline, parser, grammar, and threshold configuration.',
+        headers: ['Component','Pinned identity','Why it matters'],
+        rows: [
+          ['Base model','model ID + revision','Reconstructs the checkpoint lineage'],
+          ['VQ tokenizer','codebook + decoder SHA','Defines the 64-code meaning'],
+          ['Canonical LUT domain','17³ / sRGB / trilinear','Prevents metric-domain drift'],
+          ['Parser + FSM','versioned','Prevents grammar drift'],
+          ['Safety config','versioned thresholds','Prevents post-hoc gate tuning']
+        ],
+        note: 'Startup self-checks fail closed on mismatched pinned identities.'
+      }
+    };
+
+    const reportView = document.getElementById('reportView');
+    const renderReport = (viewName) => {
+      const view = reportViews[viewName];
+      reportView.innerHTML = `
+        <h3>${view.title}</h3>
+        <p>${view.deck}</p>
+        <table class="report-table">
+          <thead><tr>${view.headers.map((header) => `<th>${header}</th>`).join('')}</tr></thead>
+          <tbody>${view.rows.map((row, index) => `<tr style="--row-index:${index}">${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+        <div class="report-footer-note">${view.note}</div>`;
+    };
+    renderReport('overall');
+
+    document.getElementById('reportNav').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-view]');
+      if (!button) return;
+      document.querySelectorAll('[data-view]').forEach((item) => item.classList.toggle('is-selected', item === button));
+      renderReport(button.dataset.view);
+    });
+  </script>
+</body>
+</html>

@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>The LUT dataset, end to end</title>
-<meta name="description" content="How the color-grading training corpus behind the Prompt to LUT model is collected, canonicalized, filtered, and certified." />
+<title>From frozen row to ship decision — Prompt-to-LUT</title>
+<meta name="description" content="An animated walkthrough of how the Prompt-to-LUT dataset is built and how the eval harness scores every model output." />
+<meta name="theme-color" content="#0A0B0D" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230A0B0D'/%3E%3Cpath d='M16 44 30 12l7 18 11-10-9 32z' fill='%23E9B44C'/%3E%3C/svg%3E" />
 
 <!--
   Client-facing dataset methodology explainer.
@@ -68,6 +70,10 @@ body{
 }
 ::selection{background:var(--accent-soft);color:var(--accent-2);}
 
+.skip-link{position:fixed;top:10px;left:12px;z-index:120;padding:9px 13px;border-radius:8px;
+  background:var(--accent);color:var(--on-accent);font-weight:600;transform:translateY(-160%);transition:transform .2s var(--ease);}
+.skip-link:focus{transform:none;}
+
 h1,h2,h3{font-weight:600;letter-spacing:-0.02em;line-height:1.05;margin:0;}
 p{margin:0;}
 a{color:inherit;text-decoration:none;}
@@ -113,6 +119,7 @@ nav{
 .navlinks{display:flex;gap:26px;align-items:center;}
 .navlinks a{font-size:13.5px;color:var(--text-2);transition:color .2s var(--ease);}
 .navlinks a:hover{color:var(--text);}
+.navlinks a:first-child{color:var(--accent);}
 @media(max-width:820px){.navlinks{display:none;}}
 
 /* ---------- Buttons ---------- */
@@ -128,16 +135,24 @@ nav{
 .btn-ghost{border-color:var(--line-2);color:var(--text);}
 .btn-ghost:hover{background:var(--bg-2);border-color:var(--text-3);}
 .btn svg{width:16px;height:16px;}
+.btn:focus-visible,.pbtn:focus-visible,.gq:focus-visible{
+  outline:2px solid var(--accent);outline-offset:3px;
+}
+.gq:focus-visible{border-radius:8px;}
 
 /* ---------- Hero ---------- */
-.hero{padding:70px 0 40px;min-height:calc(100dvh - 64px);display:flex;align-items:center;}
+.hero{padding-block:70px 40px;min-height:calc(100dvh - 64px);display:flex;align-items:center;}
 .hero-grid{display:grid;grid-template-columns:1.05fr 0.95fr;gap:56px;align-items:center;width:100%;}
 .hero h1{font-size:clamp(2.5rem,5.4vw,4.15rem);margin:22px 0 22px;letter-spacing:-0.035em;}
 .hero h1 .hl{color:var(--accent);font-style:italic;padding-bottom:2px;}
 .hero-cta{display:flex;gap:14px;margin-top:34px;flex-wrap:wrap;}
 @media(max-width:900px){
   .hero-grid{grid-template-columns:1fr;gap:36px;}
-  .hero{padding:48px 0 24px;min-height:auto;}
+  .hero{padding-block:48px 24px;min-height:auto;}
+}
+@media(max-width:520px){
+  .hero-cta{gap:10px;}
+  .hero-cta .btn{padding:11px 14px;font-size:13.5px;}
 }
 
 /* Before / after grade viewer (real photo) */
@@ -179,11 +194,163 @@ nav{
   .strip .cell:nth-child(1),.strip .cell:nth-child(2){border-bottom:1px solid var(--line);}}
 
 /* ---------- Section scaffolding ---------- */
-.sec{padding:104px 0;}
+.sec{padding-block:88px;}
 .sec-head{max-width:64ch;margin-bottom:52px;}
 .sec-head h2{font-size:clamp(1.9rem,3.8vw,2.9rem);margin:14px 0 20px;}
 .sec-flag{display:flex;align-items:center;gap:14px;}
 .sec-flag .ln{height:1px;width:44px;background:var(--line-2);}
+@media(max-width:760px){.sec{padding-block:72px;}.sec-head{margin-bottom:40px;}}
+
+/* ---------- Animated eval-harness tour ---------- */
+.harness-tour{
+  min-height:460dvh;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  background:
+    radial-gradient(80% 50% at 78% 38%,rgba(233,180,76,0.075),transparent 70%),
+    radial-gradient(55% 38% at 18% 74%,rgba(127,160,183,0.055),transparent 72%),
+    var(--bg-1);
+  position:relative;isolation:isolate;
+}
+.harness-tour::before{content:"";position:absolute;inset:0;z-index:-1;opacity:.22;pointer-events:none;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:52px 52px;mask-image:linear-gradient(to bottom,transparent 2%,#000 18%,#000 82%,transparent 98%);}
+.harness-shell{position:sticky;top:64px;min-height:calc(100dvh - 64px);padding-block:18px 14px;
+  display:grid;grid-template-columns:minmax(260px,.72fr) minmax(570px,1.45fr);gap:42px;align-items:center;}
+.harness-copy h2{font-size:clamp(2rem,3.4vw,3rem);margin:10px 0 12px;max-width:10.5ch;text-wrap:balance;}
+.harness-copy>.lede{font-size:.92rem;line-height:1.55;max-width:43ch;}
+.harness-controls{display:flex;align-items:center;gap:14px;margin:16px 0 12px;}
+.hplay{appearance:none;border:1px solid rgba(233,180,76,.4);background:var(--accent-soft);color:var(--accent);
+  border-radius:var(--r-btn);padding:9px 13px;font:500 12px/1 "Geist Mono",monospace;letter-spacing:.03em;
+  cursor:pointer;display:inline-flex;align-items:center;gap:9px;transition:background .2s,transform .18s var(--ease);}
+.hplay:hover{background:rgba(233,180,76,.18);}.hplay:active{transform:translateY(1px);}
+.hplay:focus-visible,.hstep:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}
+.playmark{width:7px;height:7px;background:currentColor;clip-path:polygon(0 0,100% 50%,0 100%);}
+.hplay[aria-pressed="true"] .playmark{clip-path:none;box-shadow:5px 0 0 currentColor;width:2px;}
+.scroll-hint{font:400 10px/1.4 "Geist Mono",monospace;color:var(--text-3);letter-spacing:.08em;}
+.hsteps{list-style:none;margin:0;padding:0;border-top:1px solid var(--line);max-width:340px;}
+.hsteps li{border-bottom:1px solid var(--line);}
+.hstep{appearance:none;width:100%;border:0;background:none;color:var(--text-3);padding:6px 2px;
+  display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;text-align:left;cursor:pointer;
+  font:400 12px/1.25 "Geist",sans-serif;transition:color .25s,transform .25s var(--ease);}
+.hstep .hn{font:400 10px/1 "Geist Mono",monospace;letter-spacing:.08em;}
+.hstep b{font-weight:500;color:inherit;}
+.hstep .hlayer{font:400 9px/1 "Geist Mono",monospace;color:var(--text-3);letter-spacing:.08em;}
+.hstep::after{content:"";position:absolute;left:-1px;width:2px;height:0;background:var(--accent);transition:height .3s var(--ease);}
+.hsteps li{position:relative;}
+.hstep[aria-selected="true"]{color:var(--text);transform:translateX(7px);}
+.hstep[aria-selected="true"] .hn,.hstep[aria-selected="true"] .hlayer{color:var(--accent);}
+.hstep[aria-selected="true"]::after{height:22px;}
+
+.harness-console{height:min(580px,calc(100dvh - 104px));min-height:500px;border:1px solid var(--line-2);
+  border-radius:18px;background:rgba(10,11,13,.88);overflow:hidden;box-shadow:0 48px 100px -54px rgba(0,0,0,.95),inset 0 1px 0 rgba(255,255,255,.04);
+  display:flex;flex-direction:column;position:relative;}
+.hconsole-top{height:48px;flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--line);}
+.hconsole-id{display:flex;align-items:center;gap:10px;font:400 10px/1 "Geist Mono",monospace;letter-spacing:.08em;color:var(--text-3);}
+.runlights{display:flex;gap:5px}.runlights i{width:6px;height:6px;border-radius:50%;background:var(--text-3);opacity:.45;}
+.runlights i:first-child{background:var(--accent);opacity:1;box-shadow:0 0 10px rgba(233,180,76,.7);}
+.hconsole-status{font:500 10px/1 "Geist Mono",monospace;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;}
+.hrun-meter{height:2px;flex:0 0 2px;background:var(--bg-3);overflow:hidden;}
+.hrun-meter span{display:block;width:12.5%;height:100%;background:var(--accent);box-shadow:0 0 12px rgba(233,180,76,.7);transition:width .6s var(--ease);}
+.hscene-view{position:relative;flex:1;min-height:0;overflow:hidden;}
+.hscene{position:absolute;inset:0;padding:25px 28px 24px;opacity:0;transform:translateY(18px) scale(.985);
+  pointer-events:none;transition:opacity .46s var(--ease),transform .56s var(--ease);overflow:auto;}
+.hscene.active{opacity:1;transform:none;pointer-events:auto;}
+.scene-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:24px;}
+.scene-k{font:500 10px/1 "Geist Mono",monospace;color:var(--accent);letter-spacing:.14em;text-transform:uppercase;margin-bottom:9px;}
+.scene-head h3{font-size:clamp(1.45rem,2.5vw,2.1rem);letter-spacing:-.03em;}
+.scene-head p{color:var(--text-2);font-size:12.5px;line-height:1.55;max-width:31ch;text-align:right;}
+.scene-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.microcard{border:1px solid var(--line);border-radius:11px;background:var(--bg-1);padding:16px;min-width:0;position:relative;overflow:hidden;}
+.microcard.wide{grid-column:1/-1;}.microcard.gold{border-color:rgba(233,180,76,.3);background:rgba(233,180,76,.045);}
+.microcard.steel{border-color:rgba(127,160,183,.25);background:rgba(127,160,183,.04);}
+.micro-k{font:500 9px/1.2 "Geist Mono",monospace;color:var(--text-3);letter-spacing:.11em;text-transform:uppercase;margin-bottom:9px;}
+.micro-v{font:500 14px/1.35 "Geist Mono",monospace;color:var(--text);overflow-wrap:anywhere;}
+.micro-note{font-size:11.5px;line-height:1.5;color:var(--text-3);margin-top:7px;}
+.hchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;}
+.hchip{font:400 9px/1 "Geist Mono",monospace;padding:5px 7px;border-radius:4px;border:1px solid var(--line-2);color:var(--text-2);background:var(--bg-2);}
+.hchip.ok{color:var(--accent);border-color:rgba(233,180,76,.32);background:var(--accent-soft);}
+.terminal{border:1px solid var(--line);border-radius:10px;background:#08090a;padding:14px 15px;
+  font:400 10.5px/1.65 "Geist Mono",monospace;color:var(--text-2);overflow:hidden;}
+.terminal.wide{grid-column:1/-1;}
+.terminal .prompt{color:var(--accent);}.terminal .dim{color:var(--text-3);}
+.terminal .cursor{display:inline-block;width:6px;height:1em;background:var(--accent);vertical-align:-2px;animation:blink 1s steps(1) infinite;}
+@keyframes blink{50%{opacity:0;}}
+
+.mode-lane{padding:16px;border-left:2px solid var(--line-2);background:linear-gradient(90deg,var(--bg-1),transparent);}
+.mode-lane+.mode-lane{margin-top:10px;}.mode-lane.live{border-left-color:var(--accent);}
+.mode-head{display:flex;justify-content:space-between;gap:12px;font:500 10px/1 "Geist Mono",monospace;color:var(--text-2);}
+.mode-head em{font-style:normal;color:var(--accent);}
+.tokenstream{display:flex;gap:4px;margin-top:14px;overflow:hidden;mask-image:linear-gradient(90deg,#000 88%,transparent);}
+.tokenstream i{width:15px;height:15px;border-radius:3px;background:var(--accent);opacity:.22;flex:0 0 auto;}
+.hscene.active .tokenstream i{animation:tokenWave 1.35s var(--ease) both;animation-delay:calc(var(--i) * 35ms);}
+@keyframes tokenWave{0%{transform:translateX(24px) scale(.55);opacity:0}55%{opacity:.9}100%{transform:none;opacity:.45}}
+
+.branch{display:grid;grid-template-columns:1fr 42px 1fr;align-items:stretch;gap:9px;}
+.branch-arrow{display:grid;place-items:center;color:var(--text-3);font:400 16px/1 "Geist Mono",monospace;}
+.branch-card{border:1px solid var(--line);border-radius:12px;padding:17px;background:var(--bg-1);}
+.branch-card.pass{border-color:rgba(233,180,76,.35);}.branch-card.refuse{border-color:rgba(127,160,183,.35);}
+.branch-output{font:500 12px/1.4 "Geist Mono",monospace;margin:12px 0;color:var(--text);}
+.branch-card.refuse .branch-output{color:var(--diag);font-size:15px;}
+.passline{display:flex;align-items:center;gap:9px;color:var(--text-2);font-size:11.5px;margin-top:7px;}
+.passline i{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font:600 9px/1 "Geist Mono",monospace;
+  color:var(--accent);border:1px solid rgba(233,180,76,.35);background:var(--accent-soft);}
+
+.decode-flow{display:grid;grid-template-columns:1fr auto 1.08fr;gap:20px;align-items:center;margin-top:12px;}
+.mini-tokens{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;}
+.mini-tokens i{aspect-ratio:1;border-radius:2px;background:var(--accent);opacity:.68;transform:scale(0);}
+.hscene.active .mini-tokens i{animation:tokenPop .45s var(--ease) forwards;animation-delay:calc(var(--i) * 9ms);}
+@keyframes tokenPop{to{transform:scale(1);}}
+.decode-arrow{text-align:center;color:var(--accent);font:500 10px/1.8 "Geist Mono",monospace;}
+.cube-mini{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;perspective:300px;transform:rotateX(55deg) rotateZ(-45deg) scale(.8);}
+.cube-mini i{aspect-ratio:1;border:1px solid rgba(233,180,76,.45);background:rgba(233,180,76,.13);transform:scale(0);}
+.hscene.active .cube-mini i{animation:cubeBuild .6s var(--ease) forwards;animation-delay:calc(var(--i) * 10ms);}
+@keyframes cubeBuild{to{transform:scale(1);}}
+
+.gate-stack{display:grid;gap:8px;}
+.hgate{display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--bg-1);
+  opacity:.35;transform:translateX(-10px);}
+.hscene.active .hgate{animation:gatePass .48s var(--ease) forwards;animation-delay:calc(var(--i) * 150ms);}
+@keyframes gatePass{to{opacity:1;transform:none;border-color:rgba(233,180,76,.24)}}
+.hgate .layer{font:500 11px/1 "Geist Mono",monospace;color:var(--accent);}.hgate b{font-size:12.5px;font-weight:500;}
+.hgate .metric{font:400 10px/1 "Geist Mono",monospace;color:var(--text-3);}
+.hgate .tick{color:var(--accent);}
+.judge-lock{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;margin:8px auto 18px;
+  border:1px solid rgba(233,180,76,.35);color:var(--accent);font:500 12px/1 "Geist Mono",monospace;
+  box-shadow:0 0 0 10px rgba(233,180,76,.035),0 0 0 20px rgba(233,180,76,.018);}
+.judge-rule{text-align:center;color:var(--text-2);font-size:13px;line-height:1.6;max-width:42ch;margin:0 auto;}
+.judge-rule b{color:var(--text);font-weight:500;}
+
+.ci-row{display:grid;grid-template-columns:120px 1fr 54px;gap:12px;align-items:center;margin:13px 0;}
+.ci-name{font:400 10px/1.2 "Geist Mono",monospace;color:var(--text-2);}
+.ci-track{height:2px;background:var(--line-2);position:relative;}
+.ci-track::before{content:"";position:absolute;left:var(--lo);right:calc(100% - var(--hi));top:-3px;height:8px;background:rgba(127,160,183,.28);border-left:1px solid var(--diag);border-right:1px solid var(--diag);}
+.ci-track i{position:absolute;left:var(--mid);top:50%;width:8px;height:8px;border-radius:50%;transform:translate(-50%,-50%) scale(0);background:var(--accent);box-shadow:0 0 10px rgba(233,180,76,.55);}
+.hscene.active .ci-track i{animation:ciPop .5s var(--ease) forwards;animation-delay:calc(var(--i) * 140ms);}
+@keyframes ciPop{to{transform:translate(-50%,-50%) scale(1)}}
+.ci-val{text-align:right;font:500 11px/1 "Geist Mono",monospace;color:var(--text);}
+.artifact-tree{font:400 11px/1.8 "Geist Mono",monospace;color:var(--text-2);}
+.artifact-tree .folder{color:var(--accent);}.artifact-tree .file{display:block;padding-left:18px;}
+.ship-decision{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:16px;padding:17px 18px;
+  border:1px solid rgba(233,180,76,.35);border-radius:11px;background:var(--accent-soft);}
+.ship-decision strong{font:600 18px/1 "Geist",sans-serif;color:var(--text);}.ship-decision span{font:500 10px/1 "Geist Mono",monospace;color:var(--accent);letter-spacing:.12em;}
+.scene-count{position:absolute;right:24px;bottom:18px;font:500 42px/1 "Geist Mono",monospace;color:rgba(255,255,255,.035);letter-spacing:-.08em;pointer-events:none;}
+
+@media(max-width:1050px){
+  .harness-tour{min-height:auto;padding-block:72px;}
+  .harness-shell{position:relative;top:auto;min-height:0;display:block;padding-block:0;}
+  .harness-copy h2{max-width:13ch;}.harness-copy>.lede{max-width:62ch;}
+  .hsteps{display:grid;grid-template-columns:repeat(4,1fr);max-width:none;margin:22px 0 26px;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .hsteps li{border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .hstep{grid-template-columns:22px 1fr;padding:11px 10px;}.hstep .hlayer{display:none}.hstep[aria-selected="true"]{transform:none;background:var(--accent-soft);}
+  .hstep::after{display:none}.harness-console{height:610px;min-height:0;}
+}
+@media(max-width:680px){
+  .harness-tour{padding-block:58px;}.hsteps{grid-template-columns:repeat(2,1fr);}
+  .harness-console{height:640px;border-radius:14px;}.hscene{padding:22px 18px;}
+  .scene-head{display:block;margin-bottom:18px;}.scene-head p{text-align:left;margin-top:9px;max-width:45ch;}
+  .scene-grid{grid-template-columns:1fr;}.microcard.wide{grid-column:auto}.branch{grid-template-columns:1fr;}.branch-arrow{transform:rotate(90deg);height:20px;}
+  .decode-flow{grid-template-columns:1fr;gap:8px}.decode-arrow{transform:rotate(90deg);}.cube-mini{max-width:190px;margin:0 auto;}
+  .ci-row{grid-template-columns:96px 1fr 48px;gap:9px}.scene-count{font-size:34px;}
+}
 
 /* ---------- Overview funnel ---------- */
 .stagerow{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:56px;}
@@ -211,12 +378,13 @@ nav{
 
 /* ---------- Bars (collection) ---------- */
 .split{display:grid;grid-template-columns:0.82fr 1.18fr;gap:56px;align-items:start;}
+.split>*{min-width:0;}
 @media(max-width:900px){.split{grid-template-columns:1fr;gap:36px;}}
 .barlist{display:flex;flex-direction:column;gap:14px;}
 .bar{display:grid;grid-template-columns:150px 1fr 64px;align-items:center;gap:14px;}
 .bar .name{font-size:13.5px;color:var(--text-2);}
 .bar .track{height:26px;background:var(--bg-3);border-radius:7px;overflow:hidden;}
-.bar .fill{height:100%;width:0;border-radius:7px;
+.bar .fill{display:block;height:100%;width:0;border-radius:7px;
   background:linear-gradient(90deg,rgba(233,180,76,0.55),var(--accent));transition:width 1.1s var(--ease);}
 .bar .v{font-family:"Geist Mono",monospace;font-size:13px;text-align:right;color:var(--text);}
 @media(max-width:520px){.bar{grid-template-columns:110px 1fr 48px;gap:10px;}.bar .name{font-size:12px;}}
@@ -228,6 +396,14 @@ nav{
 .chip{font-family:"Geist Mono",monospace;font-size:11.5px;padding:6px 11px;border-radius:999px;
   border:1px solid var(--line-2);color:var(--text-2);background:var(--bg-2);}
 .chip.rej{color:var(--reject);border-color:rgba(192,102,111,0.35);}
+.dedupe-flow{display:flex;align-items:baseline;gap:12px;}
+.dedupe-stat{display:inline-flex;align-items:baseline;gap:8px;min-width:0;}
+.dedupe-stat .value{font-size:1.9rem;}
+@media(max-width:520px){
+  .dedupe-flow{display:grid;grid-template-columns:1fr;gap:2px;}
+  .dedupe-stat{justify-content:space-between;}
+  .dedupe-arrow{display:none;}
+}
 
 /* ---------- Canonicalization cube ---------- */
 .cubebox{border:1px solid var(--line);border-radius:var(--r-card);background:
@@ -241,6 +417,12 @@ nav{
   border:1px solid var(--line-2);}
 .ramplab{display:flex;justify-content:space-between;width:100%;font-family:"Geist Mono",monospace;
   font-size:10px;color:var(--text-3);letter-spacing:0.1em;}
+.specgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.spec-value{font-family:"Geist Mono",monospace;font-size:1.3rem;margin-top:4px;}
+@media(max-width:520px){
+  .specgrid{grid-template-columns:1.08fr 0.92fr;gap:16px 12px;}
+  .spec-value{font-size:1.15rem;}
+}
 
 /* ---------- Quality gate outcomes ---------- */
 .gates{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px;}
@@ -262,12 +444,17 @@ nav{
 
 /* ---------- Splits segmented bar ---------- */
 .segbar{display:flex;height:56px;border-radius:12px;overflow:hidden;border:1px solid var(--line-2);}
-.segbar .seg{height:100%;display:flex;align-items:center;justify-content:center;
+.segbar .s{height:100%;display:flex;align-items:center;justify-content:center;
   font-family:"Geist Mono",monospace;font-size:12px;color:var(--on-accent);
   width:0;transition:width 1.2s var(--ease);white-space:nowrap;overflow:hidden;}
 .seglegend{display:flex;flex-wrap:wrap;gap:22px;margin-top:22px;}
 .seglegend .item{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text-2);}
 .seglegend .sw{width:12px;height:12px;border-radius:3px;}
+@media(max-width:520px){
+  .segbar .s{font-size:0;}
+  .segbar .s:first-child{font-size:12px;}
+  .active-legend .item:last-child{flex-basis:100%;}
+}
 .badge-pass{display:inline-flex;align-items:center;gap:8px;font-family:"Geist Mono",monospace;
   font-size:12px;padding:8px 14px;border-radius:999px;color:var(--gold);
   border:1px solid rgba(233,180,76,0.4);background:var(--accent-soft);}
@@ -383,12 +570,19 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
   html{scroll-behavior:auto;}
   .reveal{opacity:1;transform:none;transition:none;}
   .cubegrid span,.tokgrid i{transform:scale(1);transition:none;}
+  .harness-tour{min-height:auto;padding-block:72px;}
+  .harness-shell{position:relative;top:auto;min-height:0;}
+  .mini-tokens i,.cube-mini i{transform:scale(1);}
+  .hgate{opacity:1;transform:none;}
+  .ci-track i{transform:translate(-50%,-50%) scale(1);}
+  .terminal .cursor{opacity:1;}
   *{animation-duration:0.001ms !important;transition-duration:0.001ms !important;}
 }
 </style>
 </head>
 <body>
 
+<a class="skip-link" href="#main-content">Skip to the walkthrough</a>
 <div class="grain" aria-hidden="true"></div>
 <div class="progress" id="progress" aria-hidden="true"></div>
 
@@ -399,10 +593,10 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
     LUT dataset <small>/ methodology</small>
   </a>
   <div class="navlinks">
-    <a href="#overview">Overview</a>
-    <a href="#collection">Collection</a>
-    <a href="#gates">Filtering</a>
-    <a href="#instructions">Instructions</a>
+    <a href="#harness">Eval tour</a>
+    <a href="#overview">Dataset</a>
+    <a href="#gates">Quality gates</a>
+    <a href="#instructions">Boundaries</a>
     <a href="#delivery">Delivery</a>
     <a href="#glossary">Glossary</a>
   </div>
@@ -412,15 +606,15 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
 <header class="hero wrap" id="top">
   <div class="hero-grid">
     <div>
-      <span class="eyebrow">Dataset methodology</span>
-      <h1>The dataset behind a model that <span class="hl">grades color</span>.</h1>
-      <p class="lede">We collect, clean, and certify thousands of real color transforms into one training corpus. Here is every step, with real numbers.</p>
+      <span class="eyebrow">Prompt-to-LUT &middot; dataset + evaluation</span>
+      <h1>One color model. Every decision, <span class="hl">measured</span>.</h1>
+      <p class="lede">Follow one frozen row through generation, strict parsing, LUT decoding, deterministic color checks, confidence intervals, and a final ship decision&mdash;then see how its dataset is built.</p>
       <div class="hero-cta">
-        <a class="btn btn-primary" href="#overview">
-          Walk the pipeline
+        <a class="btn btn-primary" href="#harness">
+          Run the eval tour
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
-        <a class="btn btn-ghost" href="#glossary">Read the glossary</a>
+        <a class="btn btn-ghost" href="#overview">Trace the dataset</a>
       </div>
     </div>
 
@@ -462,6 +656,180 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
     </div>
   </div>
 </div>
+
+<!-- EVAL HARNESS: SCROLL-SCRUBBED END-TO-END RUN -->
+<main class="harness-tour" id="harness" tabindex="-1">
+  <div class="harness-shell wrap" id="main-content">
+    <div class="harness-copy">
+      <div class="sec-flag"><span class="ln"></span><span class="eyebrow">Live harness walkthrough</span></div>
+      <h2>From frozen row to ship decision.</h2>
+      <p class="lede">The same row, contract, and thresholds follow every checkpoint. Scroll to scrub the run, select a stage, or replay it end to end. Values shown in the run are illustrative; the contracts and artifacts match the implementation.</p>
+      <div class="harness-controls">
+        <button class="hplay" id="harnessPlay" type="button" aria-pressed="false"><span class="playmark" aria-hidden="true"></span><span id="harnessPlayLabel">Replay full run</span></button>
+        <span class="scroll-hint">scroll to scrub &darr;</span>
+      </div>
+      <ol class="hsteps" role="tablist" aria-label="Eval harness stages">
+        <li><button class="hstep" id="hstep-0" role="tab" aria-selected="true" aria-controls="hscene-0" data-hstep="0"><span class="hn">00</span><b>Bind inputs</b><span class="hlayer">CONFIG</span></button></li>
+        <li><button class="hstep" id="hstep-1" role="tab" aria-selected="false" aria-controls="hscene-1" data-hstep="1"><span class="hn">01</span><b>Generate twice</b><span class="hlayer">MODES</span></button></li>
+        <li><button class="hstep" id="hstep-2" role="tab" aria-selected="false" aria-controls="hscene-2" data-hstep="2"><span class="hn">02</span><b>Enforce contract</b><span class="hlayer">L0&ndash;L1</span></button></li>
+        <li><button class="hstep" id="hstep-3" role="tab" aria-selected="false" aria-controls="hscene-3" data-hstep="3"><span class="hn">03</span><b>Decode the LUT</b><span class="hlayer">L2&ndash;L3</span></button></li>
+        <li><button class="hstep" id="hstep-4" role="tab" aria-selected="false" aria-controls="hscene-4" data-hstep="4"><span class="hn">04</span><b>Measure color</b><span class="hlayer">L4&ndash;L7</span></button></li>
+        <li><button class="hstep" id="hstep-5" role="tab" aria-selected="false" aria-controls="hscene-5" data-hstep="5"><span class="hn">05</span><b>Record judgment</b><span class="hlayer">L8</span></button></li>
+        <li><button class="hstep" id="hstep-6" role="tab" aria-selected="false" aria-controls="hscene-6" data-hstep="6"><span class="hn">06</span><b>Prove the delta</b><span class="hlayer">STATS</span></button></li>
+        <li><button class="hstep" id="hstep-7" role="tab" aria-selected="false" aria-controls="hscene-7" data-hstep="7"><span class="hn">07</span><b>Write the record</b><span class="hlayer">REPORT</span></button></li>
+      </ol>
+    </div>
+
+    <div class="harness-console" aria-label="Animated evaluation run">
+      <div class="hconsole-top">
+        <div class="hconsole-id"><span class="runlights" aria-hidden="true"><i></i><i></i><i></i></span><span>illustrative_run / candidate_042</span></div>
+        <span class="hconsole-status" id="harnessStatus" aria-live="polite">binding inputs</span>
+      </div>
+      <div class="hrun-meter" aria-hidden="true"><span id="harnessMeter"></span></div>
+      <div class="hscene-view">
+        <article class="hscene active" id="hscene-0" role="tabpanel" aria-labelledby="hstep-0" aria-hidden="false" data-scene="0">
+          <div class="scene-head">
+            <div><div class="scene-k">00 &middot; immutable inputs</div><h3>Bind the contract</h3></div>
+            <p>A run starts from frozen rows, a pinned checkpoint, two decode modes, and recorded seeds. No threshold moves after seeing an output.</p>
+          </div>
+          <div class="scene-grid">
+            <div class="microcard gold">
+              <div class="micro-k">Frozen eval row</div>
+              <div class="micro-v">eval_seen_000184</div>
+              <div class="hchips"><span class="hchip ok">headline</span><span class="hchip">gold</span><span class="hchip">exact_target</span></div>
+              <div class="micro-note">&ldquo;Make the image warmer with softer contrast.&rdquo;</div>
+            </div>
+            <div class="microcard">
+              <div class="micro-k">Run binding</div>
+              <div class="micro-v">checkpoint_candidate_042</div>
+              <div class="hchips"><span class="hchip">seeds 11 / 29 / 47</span><span class="hchip">config v1</span></div>
+              <div class="micro-note">Versions, hashes, and slice policy travel with the result.</div>
+            </div>
+            <div class="terminal wide"><span class="prompt">$</span> python -m eval.run_eval <span class="dim">\</span><br>&nbsp;&nbsp;--rows frozen_eval.jsonl --modes free_generation,runtime_constrained <span class="dim">\</span><br>&nbsp;&nbsp;--seeds 11,29,47 --run-id candidate_042 <span class="cursor" aria-hidden="true"></span></div>
+          </div>
+          <span class="scene-count" aria-hidden="true">00</span>
+        </article>
+
+        <article class="hscene" id="hscene-1" role="tabpanel" aria-labelledby="hstep-1" aria-hidden="true" data-scene="1">
+          <div class="scene-head">
+            <div><div class="scene-k">01 &middot; model invocation</div><h3>Generate in both modes</h3></div>
+            <p>Free generation tests what the model learned. Runtime constrained generation applies the product grammar mask.</p>
+          </div>
+          <div class="mode-lane">
+            <div class="mode-head"><span>free_generation_eval</span><em>learned syntax</em></div>
+            <div class="tokenstream js-tokenstream" aria-label="Generated LUT token sequence"></div>
+            <div class="micro-note">Greedy decode &middot; no grammar mask &middot; valid-token rate is measured here</div>
+          </div>
+          <div class="mode-lane live">
+            <div class="mode-head"><span>runtime_constrained_eval</span><em>product path</em></div>
+            <div class="tokenstream js-tokenstream" aria-label="Grammar-constrained LUT token sequence"></div>
+            <div class="micro-note">Only <span class="mono">&lt;unsupported&gt;</span> or BOS + 64 code ids + EOS can be emitted</div>
+          </div>
+          <span class="scene-count" aria-hidden="true">01</span>
+        </article>
+
+        <article class="hscene" id="hscene-2" role="tabpanel" aria-labelledby="hstep-2" aria-hidden="true" data-scene="2">
+          <div class="scene-head">
+            <div><div class="scene-k">02 &middot; deterministic contract</div><h3>Split at the boundary</h3></div>
+            <p>The support label never steers generation. It only scores the output after the model commits.</p>
+          </div>
+          <div class="branch">
+            <div class="branch-card pass">
+              <div class="micro-k">Supported row</div>
+              <div class="branch-output">&lt;lut_bos&gt; &lt;lut_042&gt; &hellip; &times;64 &lt;lut_eos&gt;</div>
+              <div class="passline"><i>&#10003;</i><span>L0 non-refusal</span></div>
+              <div class="passline"><i>&#10003;</i><span>L1 exact grammar</span></div>
+            </div>
+            <div class="branch-arrow" aria-hidden="true">&harr;</div>
+            <div class="branch-card refuse">
+              <div class="micro-k">Unsupported row</div>
+              <div class="branch-output">&lt;unsupported&gt;</div>
+              <div class="passline"><i>&#10003;</i><span>Exact refusal only</span></div>
+              <div class="passline"><i>&#10003;</i><span>No prose or silent identity LUT</span></div>
+            </div>
+          </div>
+          <div class="terminal" style="margin-top:12px;"><span class="dim">parser</span> &nbsp;kind=lut_tokens &nbsp;token_count=64 &nbsp;<span class="prompt">syntax_pass=true</span></div>
+          <span class="scene-count" aria-hidden="true">02</span>
+        </article>
+
+        <article class="hscene" id="hscene-3" role="tabpanel" aria-labelledby="hstep-3" aria-hidden="true" data-scene="3">
+          <div class="scene-head">
+            <div><div class="scene-k">03 &middot; canonical decode</div><h3>Turn 64 ids into color</h3></div>
+            <p>The frozen codebook expands tokens into a finite 17&times;17&times;17 residual LUT, then exports a pinned <span class="mono">.cube</span>.</p>
+          </div>
+          <div class="decode-flow">
+            <div><div class="mini-tokens" id="harnessTokens" aria-hidden="true"></div><div class="micro-note">64 code ids &middot; vocabulary 256</div></div>
+            <div class="decode-arrow">VQ decode<br>&rarr;</div>
+            <div><div class="cube-mini" id="harnessCube" aria-hidden="true"></div><div class="micro-note">4,913 nodes &middot; sRGB D65 &middot; trilinear</div></div>
+          </div>
+          <div class="hchips" style="justify-content:center;margin-top:18px;"><span class="hchip ok">L2 decode pass</span><span class="hchip ok">L3 tokenizer gate pass</span><span class="hchip">hashes match</span></div>
+          <span class="scene-count" aria-hidden="true">03</span>
+        </article>
+
+        <article class="hscene" id="hscene-4" role="tabpanel" aria-labelledby="hstep-4" aria-hidden="true" data-scene="4">
+          <div class="scene-head">
+            <div><div class="scene-k">04 &middot; deterministic color stack</div><h3>Measure the promise</h3></div>
+            <p>A pretty image is not enough. Every explicit instruction attribute and every safety boundary must pass.</p>
+          </div>
+          <div class="gate-stack">
+            <div class="hgate" style="--i:0"><span class="layer">L4</span><b>Direction</b><span class="metric">b* +2.3 <span class="tick">&#10003;</span></span></div>
+            <div class="hgate" style="--i:1"><span class="layer">L5</span><b>Target fidelity</b><span class="metric">&Delta;E00 1.84 <span class="tick">&#10003;</span></span></div>
+            <div class="hgate" style="--i:2"><span class="layer">L6</span><b>LUT safety + skin locus</b><span class="metric">clip 0.12% <span class="tick">&#10003;</span></span></div>
+            <div class="hgate" style="--i:3"><span class="layer">L7</span><b>Style recipe</b><span class="metric">4 / 4 windows <span class="tick">&#10003;</span></span></div>
+          </div>
+          <div class="terminal" style="margin-top:12px;"><span class="prompt">supported_pass =</span> boundary &and; syntax &and; decode &and; direction &and; fidelity &and; safety &and; style</div>
+          <span class="scene-count" aria-hidden="true">04</span>
+        </article>
+
+        <article class="hscene" id="hscene-5" role="tabpanel" aria-labelledby="hstep-5" aria-hidden="true" data-scene="5">
+          <div class="scene-head">
+            <div><div class="scene-k">05 &middot; advisory layer</div><h3>Record, never overrule</h3></div>
+            <p>The judge can describe quality and oddities. It cannot turn a deterministic failure into a pass.</p>
+          </div>
+          <div class="judge-lock">L8<br>4.6 / 5</div>
+          <p class="judge-rule"><b>Deterministic checks remain authoritative.</b><br>The LLM/VLM judge score is archived beside L0&ndash;L7 for diagnosis and qualitative review.</p>
+          <div class="hchips" style="justify-content:center;margin-top:22px;"><span class="hchip">advisory</span><span class="hchip">non-gating</span><span class="hchip ok">recorded</span></div>
+          <span class="scene-count" aria-hidden="true">05</span>
+        </article>
+
+        <article class="hscene" id="hscene-6" role="tabpanel" aria-labelledby="hstep-6" aria-hidden="true" data-scene="6">
+          <div class="scene-head">
+            <div><div class="scene-k">06 &middot; aggregate + compare</div><h3>Prove the improvement</h3></div>
+            <p>Seeds, sample floors, paired rows, and confidence bounds decide whether a visible gain is real enough to ship.</p>
+          </div>
+          <div class="microcard wide">
+            <div class="micro-k">Illustrative headline pass rate &middot; 95% confidence intervals</div>
+            <div class="ci-row"><span class="ci-name">det. renderer</span><span class="ci-track" style="--lo:28%;--mid:36%;--hi:45%;"><i style="--i:0"></i></span><span class="ci-val">36.2%</span></div>
+            <div class="ci-row"><span class="ci-name">base model</span><span class="ci-track" style="--lo:38%;--mid:47%;--hi:55%;"><i style="--i:1"></i></span><span class="ci-val">46.8%</span></div>
+            <div class="ci-row"><span class="ci-name">candidate_042</span><span class="ci-track" style="--lo:57%;--mid:65%;--hi:73%;"><i style="--i:2"></i></span><span class="ci-val">64.7%</span></div>
+          </div>
+          <div class="hchips"><span class="hchip ok">paired bootstrap lower bound +12.1pp</span><span class="hchip">min N met</span><span class="hchip">3 seeds</span><span class="hchip">Holm corrected</span></div>
+          <span class="scene-count" aria-hidden="true">06</span>
+        </article>
+
+        <article class="hscene" id="hscene-7" role="tabpanel" aria-labelledby="hstep-7" aria-hidden="true" data-scene="7">
+          <div class="scene-head">
+            <div><div class="scene-k">07 &middot; auditable output</div><h3>Write the full record</h3></div>
+            <p>Every row, parse, failure, metric, version, and decision lands in one replayable run directory.</p>
+          </div>
+          <div class="scene-grid">
+            <div class="microcard">
+              <div class="artifact-tree"><span class="folder">eval_runs/candidate_042/</span><span class="file">overall_results.csv</span><span class="file">gate_results.csv</span><span class="file">baseline_delta.csv</span><span class="file">metrics_by_row.parquet</span><span class="file">failure_manifest.jsonl</span></div>
+            </div>
+            <div class="microcard steel">
+              <div class="micro-k">Decision record</div>
+              <div class="micro-v">all required gates evaluable</div>
+              <div class="micro-note">Checkpoint, tokenizer, config, parser, FSM, decoder, and color-pipeline versions are pinned.</div>
+              <div class="hchips"><span class="hchip ok">replayable</span><span class="hchip ok">auditable</span></div>
+            </div>
+          </div>
+          <div class="ship-decision"><strong>Candidate clears the illustrative gate</strong><span>SHIP &middot; PASS</span></div>
+          <span class="scene-count" aria-hidden="true">07</span>
+        </article>
+      </div>
+    </div>
+  </div>
+</main>
 
 <!-- OVERVIEW -->
 <section class="sec wrap" id="overview">
@@ -520,12 +888,10 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
         <div class="note">A single machine-readable inventory names every source, its family, and how it was accessed. Each raw item lands in a provenance registry, one line per candidate.</div>
         <div style="margin-top:22px;">
           <div class="faint mono" style="font-size:11px;letter-spacing:0.14em;margin-bottom:10px;">SCRAPED-WEB DEDUPLICATION</div>
-          <div style="display:flex;align-items:baseline;gap:12px;">
-            <span class="mono" style="font-size:1.9rem;"><span data-count="3321">0</span></span>
-            <span class="faint mono">candidates</span>
-            <span class="faint mono">&#8594;</span>
-            <span class="mono" style="font-size:1.9rem;color:var(--accent);"><span data-count="2866">0</span></span>
-            <span class="faint mono">distinct</span>
+          <div class="dedupe-flow">
+            <span class="dedupe-stat"><span class="value mono"><span data-count="3321">0</span></span><span class="faint mono">candidates</span></span>
+            <span class="dedupe-arrow faint mono">&#8594;</span>
+            <span class="dedupe-stat"><span class="value mono" style="color:var(--accent);"><span data-count="2866">0</span></span><span class="faint mono">distinct</span></span>
           </div>
           <p class="faint" style="font-size:12.5px;margin-top:8px;">Content-hash matching drops exact duplicates before anything reaches the gates.</p>
         </div>
@@ -577,11 +943,11 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
     </div>
     <div class="reveal d1">
       <div class="card">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">GRID</div><div class="mono" style="font-size:1.3rem;margin-top:4px;">17&#179; = 4,913</div><div class="faint" style="font-size:12px;">nodes per LUT</div></div>
-          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">COLOR SPACE</div><div class="mono" style="font-size:1.3rem;margin-top:4px;">sRGB, D65</div><div class="faint" style="font-size:12px;">display referred</div></div>
-          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">INTERPOLATION</div><div class="mono" style="font-size:1.3rem;margin-top:4px;">trilinear</div><div class="faint" style="font-size:12px;">between nodes</div></div>
-          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">FORMAT</div><div class="mono" style="font-size:1.3rem;margin-top:4px;">.cube</div><div class="faint" style="font-size:12px;">canonical output</div></div>
+        <div class="specgrid">
+          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">GRID</div><div class="spec-value">17&#179; = 4,913</div><div class="faint" style="font-size:12px;">nodes per LUT</div></div>
+          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">COLOR SPACE</div><div class="spec-value">sRGB, D65</div><div class="faint" style="font-size:12px;">display referred</div></div>
+          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">INTERPOLATION</div><div class="spec-value">trilinear</div><div class="faint" style="font-size:12px;">between nodes</div></div>
+          <div><div class="faint mono" style="font-size:11px;letter-spacing:0.12em;">FORMAT</div><div class="spec-value">.cube</div><div class="faint" style="font-size:12px;">canonical output</div></div>
         </div>
       </div>
       <div class="note" style="margin-top:22px;">LUTs authored in wider spaces are color-managed into the canonical domain. Anything whose source color space cannot be resolved is recorded and rejected, never guessed.</div>
@@ -729,7 +1095,7 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
       <div class="s" style="background:var(--accent);" data-w="91.03"></div>
       <div class="s" style="background:var(--diag);" data-w="8.97"></div>
     </div>
-    <div class="seglegend" style="margin-top:14px;">
+    <div class="seglegend active-legend" style="margin-top:14px;">
       <div class="item"><span class="sw" style="background:var(--accent);"></span>Supported &middot; 2,761 rows</div>
       <div class="item"><span class="sw" style="background:var(--diag);"></span>Unsupported &middot; 272 rows (8.97%)</div>
       <div class="item"><span class="mono" style="color:var(--text);">3,033 total</span></div>
@@ -997,6 +1363,115 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
   // Mini token strip in the supported lane
   var mt=document.getElementById("minitok");
   if(mt){ for(var m=0;m<12;m++){ var q=document.createElement("span"); mt.appendChild(q); } }
+
+  /* ---- End-to-end eval harness tour ---- */
+  document.querySelectorAll(".js-tokenstream").forEach(function(stream){
+    for(var hs=0;hs<24;hs++){
+      var tsi=document.createElement("i");
+      tsi.style.setProperty("--i",hs);
+      stream.appendChild(tsi);
+    }
+  });
+  var harnessTokens=document.getElementById("harnessTokens");
+  if(harnessTokens){
+    for(var ht=0;ht<64;ht++){
+      var hti=document.createElement("i");
+      hti.style.setProperty("--i",ht);
+      harnessTokens.appendChild(hti);
+    }
+  }
+  var harnessCube=document.getElementById("harnessCube");
+  if(harnessCube){
+    for(var hc=0;hc<49;hc++){
+      var hci=document.createElement("i");
+      hci.style.setProperty("--i",hc);
+      harnessCube.appendChild(hci);
+    }
+  }
+
+  var harnessTour=document.getElementById("harness");
+  var harnessShell=document.querySelector(".harness-shell");
+  var harnessSteps=Array.prototype.slice.call(document.querySelectorAll(".hstep"));
+  var harnessScenes=Array.prototype.slice.call(document.querySelectorAll(".hscene"));
+  var harnessMeter=document.getElementById("harnessMeter");
+  var harnessStatus=document.getElementById("harnessStatus");
+  var harnessPlay=document.getElementById("harnessPlay");
+  var harnessPlayLabel=document.getElementById("harnessPlayLabel");
+  var harnessLabels=["binding inputs","generating outputs","checking boundary","decoding lut","running l4–l7","recording l8","computing intervals","writing reports"];
+  var harnessIndex=0, harnessTimer=null, harnessPlaying=false, harnessPlayed=false, harnessRaf=false;
+
+  function setHarnessStage(next){
+    if(!harnessSteps.length) return;
+    next=Math.max(0,Math.min(harnessSteps.length-1,next));
+    harnessIndex=next;
+    harnessSteps.forEach(function(step,i){ step.setAttribute("aria-selected",i===next?"true":"false"); });
+    harnessScenes.forEach(function(scene,i){
+      scene.classList.toggle("active",i===next);
+      scene.setAttribute("aria-hidden",i===next?"false":"true");
+    });
+    if(harnessMeter) harnessMeter.style.width=((next+1)/harnessSteps.length*100)+"%";
+    if(harnessStatus) harnessStatus.textContent=harnessLabels[next];
+  }
+  function stopHarnessPlayback(){
+    if(harnessTimer){ window.clearInterval(harnessTimer); harnessTimer=null; }
+    harnessPlaying=false;
+    if(harnessPlay) harnessPlay.setAttribute("aria-pressed","false");
+    if(harnessPlayLabel) harnessPlayLabel.textContent="Replay full run";
+  }
+  function playHarness(){
+    stopHarnessPlayback();
+    harnessPlaying=true; harnessPlayed=true;
+    if(harnessPlay) harnessPlay.setAttribute("aria-pressed","true");
+    if(harnessPlayLabel) harnessPlayLabel.textContent="Pause run";
+    setHarnessStage(0);
+    harnessTimer=window.setInterval(function(){
+      if(harnessIndex>=harnessSteps.length-1){ stopHarnessPlayback(); return; }
+      setHarnessStage(harnessIndex+1);
+    },1850);
+  }
+  if(harnessPlay){
+    harnessPlay.addEventListener("click",function(){ harnessPlaying?stopHarnessPlayback():playHarness(); });
+  }
+  harnessSteps.forEach(function(step,i){
+    step.addEventListener("click",function(){ stopHarnessPlayback(); setHarnessStage(i); });
+    step.addEventListener("keydown",function(e){
+      if(e.key!=="ArrowDown" && e.key!=="ArrowRight" && e.key!=="ArrowUp" && e.key!=="ArrowLeft" && e.key!=="Home" && e.key!=="End") return;
+      e.preventDefault(); stopHarnessPlayback();
+      var ni=i;
+      if(e.key==="ArrowDown" || e.key==="ArrowRight") ni=(i+1)%harnessSteps.length;
+      if(e.key==="ArrowUp" || e.key==="ArrowLeft") ni=(i-1+harnessSteps.length)%harnessSteps.length;
+      if(e.key==="Home") ni=0;
+      if(e.key==="End") ni=harnessSteps.length-1;
+      setHarnessStage(ni); harnessSteps[ni].focus();
+    });
+  });
+  function syncHarnessToScroll(){
+    harnessRaf=false;
+    if(!harnessTour || harnessPlaying || window.innerWidth<=1050) return;
+    var rect=harnessTour.getBoundingClientRect();
+    if(rect.top>=window.innerHeight || rect.bottom<=0) return;
+    var travel=Math.max(1,harnessTour.offsetHeight-window.innerHeight);
+    var hp=Math.max(0,Math.min(1,-rect.top/travel));
+    setHarnessStage(Math.round(hp*(harnessSteps.length-1)));
+  }
+  if(harnessTour){
+    window.addEventListener("scroll",function(){
+      if(!harnessRaf){ harnessRaf=true; window.requestAnimationFrame(syncHarnessToScroll); }
+    },{passive:true});
+    ["wheel","touchstart"].forEach(function(evt){
+      harnessTour.addEventListener(evt,function(){ if(harnessPlaying) stopHarnessPlayback(); },{passive:true});
+    });
+    if(!reduce && harnessShell){
+      var harnessObserver=new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if(entry.isIntersecting && entry.intersectionRatio>.55 && !harnessPlayed){ playHarness(); }
+          if(!entry.isIntersecting && harnessPlaying){ stopHarnessPlayback(); }
+        });
+      },{threshold:[0,.55,.8]});
+      harnessObserver.observe(harnessShell);
+    }
+  }
+  setHarnessStage(0);
 
   /* ---- Before/after grade viewer ---- */
   var viewer=document.getElementById("viewer");
