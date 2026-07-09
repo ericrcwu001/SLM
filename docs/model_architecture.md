@@ -607,7 +607,9 @@ Assumptions:
 - Image resolution should be capped for training.
 - Heavy scraping, RAW conversion, and LUT fitting should be done as resumable
   preprocessing jobs, not inside one fragile notebook session.
-- All artifacts should checkpoint to Google Drive or Hugging Face Hub.
+- All artifacts should checkpoint to Google Drive or Hugging Face Hub, moved with
+  `slm_stage` (see `training_plan_colab.md` "Colab Data Staging (slm_stage)") so
+  training reads from the local SSD (`/content`) rather than the Drive FUSE mount.
 
 Memory fallback order:
 
@@ -618,6 +620,16 @@ Memory fallback order:
 5. reduce LoRA target modules;
 6. shorten max sequence length;
 7. run SFT without rollout optimization.
+
+Runtime optimization (distinct from memory fallback):
+
+The fallback order above trades speed for fit when a run is memory-bound. When it is
+not, apply the throughput/credit levers in `training_plan_colab.md` "Runtime And Credit
+Optimization" instead. The two lists point opposite ways on one knob: capping image
+resolution serves both memory and runtime, but `gradient_checkpointing` is kept on under
+memory pressure (fallback item resembling batch/accumulation trades) and dropped only
+when headroom exists (runtime). Keep epochs at 2; epoch reduction is not a sanctioned
+lever.
 
 ## Workbench Extension
 

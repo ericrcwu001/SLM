@@ -1,0 +1,51 @@
+# data_pipeline/configs/pipeline_default.yaml
+#
+# Default config for the acquisition-first data-gen pipeline (master-plan Stages 2-9 + 11).
+# Bounded + resumable by default; FreshLUTs uncapped per user permission. `slm_acquire --full`
+# lifts the sampled caps.
+
+pipeline_version: datagen_v0
+
+# config pointers (repo-relative)
+source_inventory: configs/source_inventory.yaml
+leakage_thresholds: configs/leakage_thresholds.yaml
+model_clients: configs/model_clients.yaml      # absent until Stage 0 (teacher/judge) is pinned
+
+seeds:
+  split: 1234
+  selection: 1234
+
+# Stage 2 acquisition: per-source enable + bounded caps.
+acquisition:
+  procedural_fillers_v1: {enabled: true, max_items: null}
+  gmic_rawtherapee_haldclut: {enabled: true, max_items: 300, secondary_max_items: 60}
+  ppr10k_expert_abc: {enabled: true, max_items: 150}
+  fivek_expert_abcde: {enabled: true, max_items: 150}
+  freshluts_public: {enabled: true, max_items: null}     # download everything (permission granted)
+  public_lut_packs_misc: {enabled: false, max_items: 0}  # add concrete pack URLs to enable
+
+# procedural generator magnitudes (coverage variety)
+procedural:
+  magnitudes: [0.6, 1.0, 1.4]
+
+# Stage 6 split reservation ratios
+splits:
+  ratios: {train: 0.80, eval: 0.10, diagnostic: 0.07, qualitative: 0.03}
+
+# Stage 9 selection
+selection:
+  active_target_size: 12000
+  enforce_scale: false          # relaxed for smoke/demo pools; true for a real 12k build
+  source_caps:                  # ADR 0015 hard caps (fraction of active supported set)
+    ppr10k_derived: 0.25
+    fivek_derived: 0.25
+    fresh_luts: 0.25
+    gmic_rawtherapee: 0.30
+    smaller_public_packs: 0.20
+    controlled_procedural: 0.10
+
+# Stage 9 eval-set targets (master-plan / eval-harness; not enforced on small pools)
+eval_sets:
+  headline_supported: 800
+  headline_unsupported: 200
+  qualitative: 100

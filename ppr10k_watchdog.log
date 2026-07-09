@@ -1,0 +1,2 @@
+[watchdog] attempt 1: 3525->4055 (+530) exit=0
+[watchdog] DONE wrote 4055 rows -> ppr10k_topup_rows.jsonl; complete_dirs=4055; sentinel set

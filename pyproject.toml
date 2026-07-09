@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slm-eval"
+version = "0.1.0"
+description = "Prompt-to-LUT eval harness + data-gen pipeline (Stages 1-9 spine)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "pyarrow>=12.0",
+    "pillow>=9.0",
+    "pyyaml>=6.0",
+    # data-gen acquisition (Stage 2): HTTP + HuggingFace mirrors + HTML parsing.
+    "requests>=2.31",
+    "huggingface_hub>=0.23",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+# Kaggle (FiveK .jpg mirror; pinned to the classic 1.6.x kaggle.json auth flow — the 2.x
+# line uses an interactive OAuth login unsuitable for unattended runs) + Google Drive fallback.
+data = ["gdown>=5.1", "kaggle>=1.6,<1.7"]
+# Reserved for when the color/decode layers are enabled after the VQ tokenizer freeze.
+color = ["colour-science>=0.4", "opencv-python-headless>=4.8", "scikit-image>=0.21"]
+# Prompted-frontier baseline (#8): raw .cube LUTs from a frontier model. openai for an
+# OpenAI-compatible gateway (TrueFoundry etc.); anthropic for the direct Messages API.
+# The teacher (data_pipeline.instruction_gen) and L8 judge (eval.judge_client) reuse the same
+# openai SDK via eval.openai_compat, so a live instruction-generation run also needs this extra.
+frontier = ["openai>=1.40", "anthropic>=0.69"]
+# Reserved for the training/inference path (real Qwen-VL + trained VQ tokenizer);
+# also enables optional CLIP/sentence-transformer leakage/selection embedding axes.
+ml = ["torch>=2.1", "transformers>=4.45", "safetensors>=0.4", "sentence-transformers>=2.2", "open-clip-torch>=2.20"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+prompt_to_lut = "cli.prompt_to_lut:main"
+slm_acquire = "data_pipeline.acquire.run_acquire:main"
+slm_datagen = "data_pipeline.run_pipeline:main"
+
+[tool.setuptools]
+packages = [
+    "eval", "eval.fixtures", "cli",
+    "data_pipeline", "data_pipeline.acquire", "data_pipeline.sources", "data_pipeline.configs",
+    "tokenizer",
+]
+
+[tool.setuptools.package-data]
+"eval" = ["configs/*.yaml", "configs/*.json"]
+"data_pipeline" = ["configs/*.yaml", "configs/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

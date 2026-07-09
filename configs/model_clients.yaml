@@ -1,0 +1,95 @@
+# Model client + prompted-baseline config.
+#
+# Pins the frontier models used as the *prompted-frontier baseline* (#8 in
+# docs/adr/0011-baseline-comparisons.md and docs/lut_methodology_improvement_plan.md).
+# Read by eval/frontier_client.py + scripts/generate_frontier_luts.py.
+#
+# teacher_primary + judge_primary (below) are pinned: they enable instruction generation
+# (teacher) and its language/consistency judge via scripts/generate_instructions.py once
+# TFY_BASE_URL / TFY_API_KEY are set. The eval-harness L8 output judge stays not_evaluated in
+# the decode-disabled spine (no graded image; eval/run_eval.py calls score(...) with no config
+# path) — that gating is independent of whether judge_primary is pinned here.
+
+# provider:
+#   openai_compatible -> any OpenAI Chat Completions gateway (default: TrueFoundry).
+#   anthropic         -> Anthropic Messages API directly (api.anthropic.com).
+prompted_frontier:
+  provider: openai_compatible
+  # TrueFoundry LLM gateway. The OpenAI SDK appends /chat/completions to base_url.
+  base_url: https://tfy.promptlens.trilogy.com/v1
+  api_key_env: TFY_API_KEY          # sent as `Authorization: Bearer <key>`
+
+  # One baseline adapter per entry, id = prompted_frontier__<name>.
+  # reasoning effort = medium; sent as `reasoning_effort` on the openai_compatible path
+  # (only if send_effort: true) or as output_config.effort on the anthropic path.
+  # NOTE: copy slugs exactly from Maat → Profile → Models you can use. Your key exposes
+  # claude-group/… (no claude-sonnet-5; the Sonnet slug is claude-sonnet-4-6), openai-group/…,
+  # and gemini-group/…. Per-model `send_effort: false` skips reasoning_effort for routes that
+  # reject it (Gemini via the OpenAI-compat shim commonly does; GPT-5.x accepts it).
+  models:
+    - name: opus_4_8
+      model_id: claude-group/claude-opus-4-8
+      effort: medium
+    - name: sonnet_4_6
+      model_id: claude-group/claude-sonnet-4-6
+      effort: medium
+    - name: gpt_5_5
+      model_id: openai-group/gpt-5.5
+      effort: medium
+    - name: gpt_5_5_xhigh
+      model_id: openai-group/gpt-5.5
+      effort: xhigh          # probe: does higher reasoning fix truncation/refusal?
+    - name: gemini_3_1_pro
+      model_id: gemini-group/gemini-3.1-pro
+      send_effort: false          # Gemini route may 400 on reasoning_effort; skip it
+
+  # Output contract: the model emits a canonical 17^3 .cube LUT OR the literal
+  # token <unsupported>. Strict parse (eval/cube_parser.py, expected_size=17).
+  output_mode: raw_cube
+  grid_size: 17
+  # Eval fixtures are 32x32; upscale (nearest, integer factor) to >= this short edge so
+  # provider image validators accept them without altering the colors being graded.
+  min_image_edge: 256
+
+  # A 17^3 .cube body is 17**3 = 4913 float-triple rows; near the 128K output cap.
+  # Streaming is mandatory at this size. If the gateway caps output tokens far lower,
+  # generations will truncate (finish_reason=length) and score as invalid — that is a
+  # real, measured result, not a bug.
+  max_tokens: 120000
+
+  # openai_compatible: send `reasoning_effort` per model. Set false if the gateway 400s
+  # on the param (not all routes map it to Claude thinking).
+  send_effort: true
+  # anthropic provider only: adaptive thinking on the native Messages API.
+  thinking: adaptive
+
+  prompt_version: frontier_raw_cube_v2   # v2: refusal reserved for true boundary cases only
+
+# --- Stage 0: teacher + judge (ADR 0004; data_collection_plan.md "Instruction
+# Generation"). Same TrueFoundry gateway as prompted_frontier above, referenced by
+# env-var NAME: endpoint_env=TFY_BASE_URL (= the base_url above), api_key_env=TFY_API_KEY.
+# Validated by data_pipeline/instruction_gen.py (teacher) and eval/judge_client.py (judge).
+# Secrets live only in the environment (.env), never in this file.
+teacher_primary:
+  provider: openai_compatible
+  model_id: claude-group/claude-sonnet-4-6   # high-volume instruction gen; vision-capable
+  endpoint_env: TFY_BASE_URL
+  api_key_env: TFY_API_KEY
+  prompt_version: teacher_prompt_v1
+  batch_id: teacher_batch_v1_20260708
+  credential_profile: default
+  effort: high                # reasoning effort; sent as reasoning_effort via extra_body
+  send_effort: true           # set false if a route 400s on reasoning_effort
+  request_defaults: { max_tokens: 1024, temperature: 0.7 }
+
+judge_primary:
+  provider: openai_compatible
+  model_id: claude-group/claude-opus-4-8     # low-volume L8 scoring; max reliability
+  endpoint_env: TFY_BASE_URL
+  api_key_env: TFY_API_KEY
+  prompt_version: judge_prompt_v1
+  batch_id: judge_batch_v1_20260708
+  credential_profile: default
+  effort: high                # reasoning effort; sent as reasoning_effort via extra_body
+  send_effort: true           # set false if a route 400s on reasoning_effort
+  request_defaults: { max_tokens: 512, temperature: 0.0 }   # deterministic scoring

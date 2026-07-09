@@ -119,6 +119,41 @@ sources:
       collection; do not scrape blind. TODO(verify) enumerate.
     handling_ref: data_collection_plan.md "Public LUT Sources"
 
+  - source_pack_id: on1_lut_packs
+    priority: 5
+    family: smaller_public_packs
+    dataset_name: ON1 free LUT pack (ON1_All_LUTs)
+    url_or_dataset_id: null   # user-provided local pack (ON1 free giveaway bundle)
+    url_status: verified   # files supplied locally by the user
+    access_method: manual
+    expected_layout: |
+      luts/raw/on1/<category_slug>/<preset>.cube
+    approx_item_count: 90   # 9 style categories x 10 .cube LUTs
+    notes: >-
+      Local ON1 pack at $SLM_ON1_DIR (default ~/Downloads/ON1_All_LUTs). 9 named style
+      categories (cinematic, moody, portrait, black_and_white, landscape, nature, color_boost,
+      lifestyle, lutify.me) -> category style/scene tags. 80/90 authored in AdobeRGB(1998)
+      (declared_domain=adobe_rgb, color-managed to canonical sRGB); rest sRGB.
+    handling_ref: data_collection_plan.md "Public LUT Sources"
+
+  - source_pack_id: scraped_web
+    priority: 5
+    family: scraped_web
+    dataset_name: Scraped free-LUT web downloads (discovery swarm)
+    url_or_dataset_id: null   # many domains; provenance per-row records source_url=web:<domain>
+    url_status: verified   # files already on disk under luts/raw/web + shutterstock_log_luts
+    access_method: manual
+    expected_layout: |
+      luts/raw/web/<domain>/<pack>/<lut>.cube|.png
+      luts/raw/shutterstock_log_luts/<pack>/<lut>.cube
+    approx_item_count: 3200   # ~2018 .cube + ~1220 hald .png before content-hash dedup
+    notes: >-
+      Ingestion of the web-scraping workflows' downloads across many free-LUT sites (iwltbap,
+      smallhd, fujifilm-x, forum.blackmagicdesign, freepresets, filtergrade, giggster, tdcat, ...).
+      .cube + HaldCLUT .png only (.3dl/.look skipped). Content-hash dedup against the existing corpus
+      and within the scrape. Colour domain assumed sRGB; genuine log/video LUTs are gate-rejected.
+    handling_ref: data_collection_plan.md "Public LUT Sources"
+
   - source_pack_id: procedural_fillers_v1
     priority: 6
     family: controlled_procedural

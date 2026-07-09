@@ -1,0 +1,62 @@
+{
+  "artifact_root": "/Users/ericwu/Developer/SLM",
+  "stages": {
+    "2_acquire": {
+      "raw_rows": 4194
+    },
+    "4_5_derive_filter": {
+      "candidates": 4194,
+      "derived": 4177,
+      "canonicalized": 4177,
+      "gold": 45,
+      "diagnostic_only": 507,
+      "rejected": 3642
+    },
+    "6_splits_leakage": {
+      "split_id": "split_cb4daf0bc55db843",
+      "leakage_status": "pass",
+      "unit_count": 341
+    },
+    "9_active_eval": {
+      "active_selected": 433,
+      "acceptance_overall": "fail",
+      "eval": {
+        "eval_set_version": "eval_set_pending_freeze",
+        "sizes_target": {
+          "headline_supported": 800,
+          "headline_unsupported": 200,
+          "qualitative": 100
+        },
+        "slice_counts": {
+          "usage_weighted_headline_supported": 1,
+          "usage_weighted_headline_unsupported": 0,
+          "diagnostic": 108,
+          "qualitative": 10
+        },
+        "headline_eligible_count": 1,
+        "diagnostic_only": false,
+        "notes": []
+      }
+    },
+    "11_warmup": {
+      "warmup_set_version": "warmup_set_pending_freeze",
+      "pair_count": 866,
+      "reserved_excluded": 0,
+      "per_family": {
+        "controlled_procedural": 76,
+        "gmic_rawtherapee": 146,
+        "ppr10k_derived": 238,
+        "fivek_derived": 406
+      },
+      "target_range": [
+        30000,
+        100000
+      ],
+      "target_met": false,
+      "token_status": "pending_tokenizer",
+      "notes": [
+        "866 pairs (target 30000-100000); expand the train LUT/image pool to reach warmup scale. Tokens pending frozen VQ tokenizer."
+      ]
+    }
+  }
+}

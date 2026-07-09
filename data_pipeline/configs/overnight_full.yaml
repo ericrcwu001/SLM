@@ -1,0 +1,40 @@
+# data_pipeline/configs/overnight_full.yaml
+#
+# Overnight "full" run: LUT sources taken fully (FreshLUTs entire catalog, all HaldCLUT +
+# G'MIC, all procedural); image-pair sources bounded for pair-fit compute + disk safety
+# (PPR10K 3000, FiveK 800 — FiveK also hard-capped internally + deletes its 28.5 GB zip).
+# Run WITHOUT --full so these configured caps hold.
+
+pipeline_version: datagen_v0
+source_inventory: configs/source_inventory.yaml
+leakage_thresholds: configs/leakage_thresholds.yaml
+model_clients: configs/model_clients.yaml
+seeds: {split: 1234, selection: 1234}
+
+acquisition:
+  procedural_fillers_v1: {enabled: true, max_items: null}
+  gmic_rawtherapee_haldclut: {enabled: true, max_items: null, secondary_max_items: null}
+  ppr10k_expert_abc: {enabled: true, max_items: 4055}    # entire MMArt-PPR10k subset
+  fivek_expert_abcde: {enabled: true, max_items: 800}
+  freshluts_public: {enabled: true, max_items: null}     # entire catalog (permission granted)
+  on1_lut_packs: {enabled: true, max_items: null}        # local ON1 pack (~90 .cube, AdobeRGB-managed)
+  scraped_web: {enabled: true, max_items: null}          # discovery-swarm downloads (dedup on ingest)
+  public_lut_packs_misc: {enabled: false, max_items: 0}
+
+procedural: {magnitudes: [0.6, 1.0, 1.4]}
+
+splits: {ratios: {train: 0.80, eval: 0.10, diagnostic: 0.07, qualitative: 0.03}}
+
+selection:
+  active_target_size: 12000
+  enforce_scale: false          # pool likely < 12k; report under-target honestly, don't hard-fail
+  source_caps:
+    ppr10k_derived: 0.25
+    fivek_derived: 0.25
+    fresh_luts: 0.25
+    gmic_rawtherapee: 0.30
+    smaller_public_packs: 0.20
+    scraped_web: 0.30
+    controlled_procedural: 0.10
+
+eval_sets: {headline_supported: 800, headline_unsupported: 200, qualitative: 100}

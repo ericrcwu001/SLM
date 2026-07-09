@@ -1,0 +1,60 @@
+# eval/configs/eval_default.yaml
+#
+# Default eval-harness config (Stage 1 spine, decoder disabled).
+# Pointers reference the existing frozen-later config templates; the harness reads them
+# but this build does not depend on their freeze (smoke is non-gating).
+
+eval_config_version: eval_v0_spine
+
+# Decode / generation modes to run (spec "Constrained Decoding").
+modes:
+  - free_generation
+  - runtime_constrained
+
+# Seeds. do_sample=false + num_beams=1 make outputs near-deterministic; multiple seeds
+# exercise the seed-summary path (spec "Statistics" seed protocol).
+seeds: [1234, 1235, 1236]
+
+decoding:
+  do_sample: false
+  num_beams: 1
+  max_new_tokens: 67          # <lut_bos> + 64 codes + <lut_eos> + trailing EOS
+  grammar_mask_in_constrained: true
+
+# The lut_decoder and every color-scoring layer (L2-L8) are disabled until the VQ
+# tokenizer is frozen; run_eval records them as not_evaluated: decoder_disabled.
+decoder:
+  enabled: false
+
+# Pinned decision (cross-doc audit E2 / doc "Statistics"): the valid-token-rate
+# denominator is ALL rows in the slice; a "valid" output is a valid 64-code LUT
+# sequence OR exact <unsupported>.
+valid_token_rate_denominator: all_rows
+
+# Config pointers (frozen at their own stages; templates today).
+calibration_manifest: eval/configs/calibration_manifest.json
+gating_slice_registry: eval/configs/gating_slice_registry.yaml
+renderer_baseline: configs/renderer_baseline.yaml
+model_clients: configs/model_clients.yaml   # absent until Stage 0; judge/renderer gated
+
+# Baselines exercised now (decoder-free). LUT-semantic constant, deterministic renderer,
+# Qwen-VL, prompted-frontier, and checkpoints are gated and raise until available.
+baselines:
+  decoder_free:
+    - null_always_unsupported
+    - null_always_support_fixed_tokens
+    - oracle_boundary_diagnostic          # diagnostic; excluded from fair headline
+    - constant_token_sequence
+    - mock_replay                         # added when --mock-outputs is provided
+  gated:
+    - constant_lut                        # RequiresDecoder
+    - deterministic_renderer              # RequiresFrozenConfig (renderer_baseline.yaml)
+    - qwen_vl                             # RequiresModel
+    - prompted_frontier                   # RequiresModel
+    - checkpoint                          # RequiresModel
+
+statistics:
+  bootstrap_B: 10000
+  confidence: 0.95
+  multiplicity_method: holm_bonferroni
+  family_alpha: 0.05

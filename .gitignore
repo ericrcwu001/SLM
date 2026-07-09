@@ -5,3 +5,41 @@
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+
+# Generated eval artifacts / fixtures
+eval_runs/
+data/eval/images/
+data/eval/smoke_rows.jsonl
+data/eval/mock_outputs.jsonl
+
+# Overnight run log
+overnight.log
+
+# Data-gen pipeline artifacts (acquired + derived; large, regenerable)
+luts/
+data/raw_registry/
+data/splits/
+data/active_sft/
+data/warmup/
+data/run_summary.json
+freshluts.log
+parallel.log
+data/raw_registry/freshluts_rows.jsonl
+data/raw_registry/.freshluts_done
+OVERNIGHT_STATUS.md
+MORNING_FINDINGS.md
+pipeline_full.log
+ppr10k_topup.log
+data/raw_registry/.pipeline_done
+data/raw_registry/.pipeline_failed
+data/raw_registry/.ppr10k_topup_done
+data/raw_registry/ppr10k_topup_rows.jsonl

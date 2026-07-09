@@ -103,7 +103,9 @@ Use a stable artifact root:
 /content/drive/MyDrive/prompt_to_lut/
 ```
 
-or a mounted Hugging Face dataset/model repo.
+or a mounted Hugging Face dataset/model repo. This durable root is the source and
+sink for `slm_stage` (see "Colab Data Staging (slm_stage)"): training does not read
+this root directly during a run, it reads the fast local copy staged from it.
 
 Required folders:
 
@@ -133,6 +135,124 @@ cli_exports/
 ```
 
 All long stages must be resumable.
+
+## Colab Data Staging (slm_stage)
+
+Colab runtimes have two storage layers: an ephemeral local SSD (`/content`, wiped
+when the session ends) and a slow Google Drive FUSE mount where every file open is a
+network round-trip. The v1 corpus is ~6.6 GB of ~8,000 loose full-range JPGs under
+`luts/raw/` — the worst case for Drive's small-file random access. Reading training
+images straight off the Drive mount, or re-running `make acquire` (multi-source scrape
+plus the authenticated FreshLUTs crawl) every session, is slow, fragile, and burns
+wall-clock and compute units while the GPU idles.
+
+`slm_stage` is a specified (not yet built) module that moves the corpus between the
+durable root and the local SSD once per session. It follows the existing acquire/datagen
+conventions: a `data_pipeline.staging.run_staging:main` entry point registered in
+`[project.scripts]`, a `data_pipeline.staging` package, Makefile targets, and a
+`configs/staging_default.yaml`.
+
+Subcommands:
+
+```text
+pack   corpus dirs under the artifact root -> bounded .tar shards in the durable root
+stage  durable-root shards -> local SSD (/content), verified, disk-aware, resumable
+push   local checkpoints/outputs -> durable root, for survival across session teardown
+```
+
+`pack`:
+
+- source dirs default to `luts/raw/`, `luts/canonical_residual/`, and the `data/`
+  manifests; exclude download cruft (`*.lock`, `*.metadata`, `*.part`);
+- write structure-preserving `.tar` shards of bounded size (~2 GB each) to the durable
+  root — large sequential files transfer well over Drive, unlike thousands of small ones;
+- emit `stage_manifest.json` recording each shard's member count, byte size, and sha256;
+- idempotent: skip shards whose input content set is unchanged.
+
+`stage`:
+
+- read `stage_manifest.json` from the durable root;
+- per shard, verify sha256, copy to `local_root` (default `/content/slm`) only if
+  missing or invalid, then extract preserving directory structure;
+- disk-aware: pre-check free space (`shutil.disk_usage`) against a headroom threshold
+  and skip gracefully if insufficient;
+- resumable: skip shards already extracted;
+- after staging, `local_root` is a drop-in `SLM_ARTIFACT_ROOT`.
+
+`push`:
+
+- sync output dirs (default `models/**`, `tokenizer/**`, `eval_runs/**`, or an explicit
+  `--path`) from `local_root` back to the durable root with sha manifests;
+- rate-limited/bounded; run periodically so checkpoints survive when the VM is recycled.
+
+`configs/staging_default.yaml` fields:
+
+```text
+staging_version
+durable_root                 # e.g. /content/drive/MyDrive/prompt_to_lut or an HF repo ref
+local_root                   # default /content/slm
+pack:  { include, exclude, shard_max_bytes, compression }
+stage: { min_free_bytes, verify: sha256 }
+push:  { include, rate_limit_s }
+```
+
+Reuse (wire existing utilities rather than rewrite):
+
+- `data_pipeline/acquire/downloaders.py:sha256_file` for streaming hashes;
+- the disk-aware bulk-extract + resume pattern in `data_pipeline/acquire/fivek_kaggle.py`
+  (`shutil.disk_usage`, `_MIN_FREE_BYTES`, atomic `.part`->replace, resume-by-count);
+- `data_pipeline/paths.py` `artifact_paths` / `ArtifactPaths` to resolve the durable and
+  local trees (staging just repoints the single `SLM_ARTIFACT_ROOT` knob at `local_root`);
+- `AcquireLimits` / `RateLimiter` from `data_pipeline/acquire/base.py` to bound `push`;
+- a typed `StagingError` alongside the `data_pipeline/errors.py` conventions.
+
+Note `downloaders.extract_zip` flattens into a single dest dir and therefore cannot
+preserve the nested `ppr10k/global/<id>/...` layout; use a `tarfile`-based
+structure-preserving packer/extractor instead.
+
+Per-session Colab workflow:
+
+```text
+1. mount Google Drive
+2. slm_stage stage           # durable root -> /content/slm (once per session)
+3. export SLM_ARTIFACT_ROOT=/content/slm
+4. run warmup / SFT / eval reading from the local root
+5. slm_stage push            # periodically, to persist checkpoints to Drive
+```
+
+## Runtime And Credit Optimization
+
+These levers reduce Colab wall-clock and compute-unit spend on the GPU training stages
+(warmup Stage 4B, SFT Stage 5). They assume the run already fits in memory. When a run
+is memory-bound, the `model_architecture.md` "Memory fallback order" takes precedence
+and `gradient_checkpointing` stays on.
+
+Levers (epochs stay at 2 — do not reduce epochs):
+
+1. Cap image resolution / `max_pixels`. Dominant lever: image (vision) tokens set the
+   per-step cost, and the text (instruction + 66 output tokens) is small by comparison.
+   This is also memory-fallback item 1, so it does double duty.
+2. Raise per-device batch size. Enabled by the memory freed in (1); improves A100
+   utilization at a fixed effective batch (fewer gradient-accumulation micro-steps).
+3. Conditionally disable `gradient_checkpointing`. Only when headroom exists after (1);
+   this removes the recompute-forward tax. It competes with (2) for the freed memory, so
+   balance the two rather than maxing both.
+4. Local packed data path via `slm_stage`. Read shards from `/content`, not the Drive
+   FUSE mount (see "Colab Data Staging (slm_stage)"). This is the I/O lever and it gates
+   the others: without it, Drive I/O starves the GPU no matter how fast compute gets.
+5. Minor: fewer LoRA target modules and/or a shorter `max_seq_len` once images are capped.
+
+Expected impact (planning estimates on A100, 2 epochs, ~12k SFT rows; actuals depend on
+image-token count and which GPU is assigned):
+
+```text
+default (loose Drive reads, batch 1-2, checkpointing on):  ~2.7 h / ~35 CU per SFT run
+levers 1-3,5 + local packed data path (lever 4):           ~1 h   / ~12 CU per SFT run
+levers 1-3,5 but still reading loose files off Drive:      ~1.5-3 h, GPU idles on I/O
+```
+
+Do not treat these numbers as guarantees; A100 availability is not assured and L4/T4 are
+credit-comparable per job because cost is FLOPs-bound.
 
 ## Stage 0: Eval Before Training
 
@@ -448,6 +568,10 @@ tokenizer_version
 warmup_set_version
 ```
 
+The Colab throughput levers apply here as in Stage 5; see "Runtime And Credit
+Optimization" (cap `max image pixels`, raise per-device batch, and read warmup pairs and
+images from the staged `local_root`, not the Drive mount).
+
 Goals:
 
 - establish the LUT-token prior;
@@ -508,6 +632,12 @@ max_grad_norm: 1.0
 gradient_checkpointing: true
 loss_masking: assistant target only
 ```
+
+See "Runtime And Credit Optimization" for the Colab throughput/credit levers that apply
+to this stage: cap `max_pixels`, raise `per_device_batch_size`, and read training data
+from the staged `local_root` (see "Colab Data Staging (slm_stage)"). Epochs stay at 2.
+The `gradient_checkpointing: true` above is the memory-safe default; disable it only per
+that section when memory headroom exists after capping resolution.
 
 Freezing the multimodal projector is a capability downgrade because the vision
 encoder is already frozen. A claim-bearing image-conditioned run must train the

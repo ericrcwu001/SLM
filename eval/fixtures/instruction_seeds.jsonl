@@ -1,0 +1,3 @@
+{"id": "seed_warm_muted", "gold_tags": ["warmer", "muted"], "concise": "Make it warmer and more muted.", "natural": "Give it a warm, gentle, muted look.", "measured_behavior": {"temperature_delta_b": 4.0, "chroma_delta": -3.0}}
+{"id": "seed_bright_contrast", "gold_tags": ["brighter", "more_contrast"], "concise": "Brighten it and add contrast.", "natural": "Make it punchier and brighter.", "measured_behavior": {"mean_l_delta": 5.0, "contrast_l_spread_delta": 4.0}}
+{"id": "seed_cinematic", "gold_tags": ["cinematic", "warmer"], "concise": "Give it a warm cinematic grade.", "natural": "A warm, filmic, cinematic mood.", "measured_behavior": {"temperature_delta_b": 3.0, "chroma_delta": -2.0, "contrast_l_spread_delta": 3.0}}

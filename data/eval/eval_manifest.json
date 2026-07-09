@@ -1,0 +1,17 @@
+{
+  "eval_set_version": "eval_set_pending_freeze",
+  "sizes_target": {
+    "headline_supported": 800,
+    "headline_unsupported": 200,
+    "qualitative": 100
+  },
+  "slice_counts": {
+    "usage_weighted_headline_supported": 5,
+    "usage_weighted_headline_unsupported": 0,
+    "diagnostic": 659,
+    "qualitative": 130
+  },
+  "headline_eligible_count": 5,
+  "diagnostic_only": false,
+  "notes": []
+}

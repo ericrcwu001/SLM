@@ -1,0 +1,1 @@
+{"row_id": "eval_sup_000001", "model": "gpt_5_5", "model_id": "openai-group/gpt-5.5", "text": "<unsupported>", "provenance": {"provider": "openai_compatible", "base_url": "https://tfy.promptlens.trilogy.com/v1", "model_id": "openai-group/gpt-5.5", "effort": "medium", "prompt_version": "frontier_raw_cube_v1", "finish_reason": "stop", "output_tokens": 2596, "api_refusal": false}}
