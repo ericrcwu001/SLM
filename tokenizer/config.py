@@ -90,15 +90,28 @@ class TokenizerConfig:
     # w_recon is raised ~1.5 orders so reconstruction/PSNR and ΔE reach their gates
     # together; w_neutral is cut because L_neutral is now a small target-relative term
     # (was the dominant gradient when it pushed neutral chroma toward absolute zero).
-    # These are a re-tuned starting point, not a converged sweep.
-    w_recon: float = 25.0              # LUT-grid reconstruction (MSE on residual) — drives PSNR
-    w_deltaE: float = 0.10             # perceptual CIEDE2000 mean over all grid nodes
-    w_tail: float = 0.05               # tail-aware: mean of the worst `tail_frac` node ΔE per LUT
+    # v2.1 (bilevel-loop tuned, run tok_hp_v1): w_recon 25->35 and w_deltaE 0.10->0.25 were the
+    # loop's winning move (proxy meanΔE 2.51->2.36); w_tail 0.05->0.18 + tail_frac 0.05->0.10 was
+    # the lowest-proxy observation (t=5, 2.28) and directly strengthens the p95/p99 tail gate.
+    # Tuned against a 1200-step MLX proxy of the Stage-1 gate on the frozen split; other weights
+    # left at the audited v2 starting point.
+    # v2.3 (run 3): the 40k tail-weighted run cleared p99/max/scraped_web-mean but was left with
+    # two marginal worst-LUT fails — p5-PSNR 29.29 (need >=30) and scraped_web p95 5.20 (need <=5.0).
+    # v2.4 (run 4): run 3's heavier reweight (w_recon 50, w_tail 0.30, tail_frac 0.15) REGRESSED both
+    # binding metrics (p5-PSNR 29.29->29.10, scraped_web p95 5.20->5.28) — loss reweighting has
+    # saturated, and p5-PSNR vs scraped_web-p95 are anti-correlated across checkpoints (a Pareto
+    # tension: no single checkpoint clears both). So revert to run 2's better-balanced weights
+    # (w_recon 35, w_tail 0.25, tail_frac 0.12) and switch levers to the documented first-line tail
+    # remedy — neutral-preserving scale-jitter augmentation (ADR-0017), enabled at the CLI via
+    # --augment --scale-jitter 0.05 (a mechanism orthogonal to reweighting).
+    w_recon: float = 35.0              # LUT-grid reconstruction (MSE on residual) — drives PSNR
+    w_deltaE: float = 0.25             # perceptual CIEDE2000 mean over all grid nodes
+    w_tail: float = 0.25               # tail-aware: mean of the worst `tail_frac` node ΔE per LUT
     w_smooth: float = 0.01             # 3D Laplacian smoothness on the reconstructed residual
     w_clip: float = 1.0                # penalty for absolute LUT values outside [0,1]
     w_neutral: float = 0.05            # neutral-axis (r=g=b) target-relative chroma penalty
     w_commit: float = 1.0              # multiplier on the VQ commitment/codebook loss
-    tail_frac: float = 0.05            # fraction of worst nodes per LUT used by the tail term
+    tail_frac: float = 0.12            # fraction of worst nodes per LUT used by the tail term
 
     # -- optimization (training_plan_colab.md Stage 1 starting values) --
     lr: float = 3.0e-4

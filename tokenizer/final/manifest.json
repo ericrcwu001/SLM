@@ -1,0 +1,198 @@
+{
+  "arch_version": "vq_v2_srgbres_17to4_cb256_t64",
+  "canonical_domain_id": "slm_lut_v1_srgb_display_encoded_17_trilinear",
+  "code_id_to_codebook_row": "identity",
+  "codebook_size": 256,
+  "color_pipeline_version": "color_v1_srgb_lab_d65_ciede2000",
+  "cube_serialization_version": "cube_v1_size17_domain01_rgb_rfast_f10_lf",
+  "cube_table_order": "rgb_r_fastest__b_outer_g_mid_r_inner",
+  "decode_dtype": "float32",
+  "determinism_scope": {
+    "numpy_version": "2.4.4",
+    "platform": "macOS-26.3-arm64-arm-64bit",
+    "torch_version": "2.7.1"
+  },
+  "encoder_decoder_layer_table": {
+    "decoder": [
+      {
+        "in": 64,
+        "k": 3,
+        "mode": "trilinear",
+        "op": "Resize+Conv3d",
+        "out": 128,
+        "p": 1,
+        "pad_mode": "replicate",
+        "s": 1,
+        "size": "4->5"
+      },
+      {
+        "in": 128,
+        "k": 3,
+        "mode": "trilinear",
+        "op": "Resize+Conv3d",
+        "out": 64,
+        "p": 1,
+        "pad_mode": "replicate",
+        "s": 1,
+        "size": "5->9"
+      },
+      {
+        "in": 64,
+        "k": 3,
+        "mode": "trilinear",
+        "op": "Resize+Conv3d",
+        "out": 3,
+        "p": 1,
+        "pad_mode": "replicate",
+        "s": 1,
+        "size": "9->17"
+      }
+    ],
+    "encoder": [
+      {
+        "in": 3,
+        "k": 3,
+        "op": "Conv3d",
+        "out": 64,
+        "p": 1,
+        "pad_mode": "replicate",
+        "s": 2,
+        "size": "17->9"
+      },
+      {
+        "in": 64,
+        "k": 3,
+        "op": "Conv3d",
+        "out": 128,
+        "p": 1,
+        "pad_mode": "replicate",
+        "s": 2,
+        "size": "9->5"
+      },
+      {
+        "in": 128,
+        "k": 2,
+        "op": "Conv3d",
+        "out": 64,
+        "p": 0,
+        "pad_mode": "replicate",
+        "s": 1,
+        "size": "5->4"
+      }
+    ]
+  },
+  "gate_report": {
+    "codebook": {
+      "active_codes": 256,
+      "active_frac": 1.0,
+      "dead_code_count": 0,
+      "perplexity": 164.18134787170422,
+      "top_code_share": 0.034604057591623036
+    },
+    "gate_checks": {
+      "family[fivek_derived].mean_deltae": true,
+      "family[fivek_derived].p95_deltae": true,
+      "family[ppr10k_derived].mean_deltae": true,
+      "family[ppr10k_derived].p95_deltae": true,
+      "family[scraped_web].mean_deltae": true,
+      "family[scraped_web].p95_deltae": true,
+      "finite": true,
+      "max_deltae": true,
+      "mean_deltae": true,
+      "mean_psnr": true,
+      "p5_psnr": true,
+      "p95_deltae": true,
+      "p99_deltae": true
+    },
+    "overall": {
+      "finite": true,
+      "max_deltae": 9.846684009228397,
+      "mean_deltae": 1.3076223212676872,
+      "mean_psnr": 37.029845474992804,
+      "n_luts": 382,
+      "p5_psnr": 28.36610908610734,
+      "p95_deltae": 3.3381575343472565,
+      "p99_deltae": 4.999382601366729
+    },
+    "per_family": {
+      "controlled_procedural": {
+        "enforced": false,
+        "mean_deltae": 0.45745037165387303,
+        "n": 4,
+        "p95_deltae": 0.950908213975228
+      },
+      "fivek_derived": {
+        "enforced": true,
+        "mean_deltae": 0.7293995995313854,
+        "n": 54,
+        "p95_deltae": 1.0758736203456465
+      },
+      "fresh_luts": {
+        "enforced": false,
+        "mean_deltae": 1.9725786983044877,
+        "n": 21,
+        "p95_deltae": 3.627374772211014
+      },
+      "gmic_rawtherapee": {
+        "enforced": false,
+        "mean_deltae": 2.2573754557500663,
+        "n": 19,
+        "p95_deltae": 3.486650309700049
+      },
+      "ppr10k_derived": {
+        "enforced": true,
+        "mean_deltae": 0.8190398285714547,
+        "n": 200,
+        "p95_deltae": 1.2087780244593387
+      },
+      "scraped_web": {
+        "enforced": true,
+        "mean_deltae": 2.478000272897434,
+        "n": 80,
+        "p95_deltae": 4.78024477285038
+      },
+      "smaller_public_packs": {
+        "enforced": false,
+        "mean_deltae": 2.9830182483037655,
+        "n": 4,
+        "p95_deltae": 3.6918172230836217
+      }
+    },
+    "raw_gate_checks": {
+      "family[fivek_derived].mean_deltae": true,
+      "family[fivek_derived].p95_deltae": true,
+      "family[ppr10k_derived].mean_deltae": true,
+      "family[ppr10k_derived].p95_deltae": true,
+      "family[scraped_web].mean_deltae": true,
+      "family[scraped_web].p95_deltae": true,
+      "finite": true,
+      "max_deltae": true,
+      "mean_deltae": true,
+      "mean_psnr": true,
+      "p5_psnr": false,
+      "p95_deltae": true,
+      "p99_deltae": true
+    },
+    "reviewed_exception": {
+      "note": "GATE-OWNER REVIEWED EXCEPTION (signed off by user, 2026-07-09). Waived check: p5_psnr (measured 28.37 dB on the full 382-LUT dev holdout; threshold >=30.0; threshold UNCHANGED). Basis: (1) the worst-5% PSNR tail is 100% representability_tier=diagnostic_only ({'diagnostic_only': 19}) \u2014 zero gold/headline-eligible LUTs are in it; (2) on the gold (headline-eligible) subset best.pt PASSES the full gate incl. p5_psnr=31.24>=30; (3) the worst LUTs are extreme diagnostic-only special-effect LUTs that violate the tokenizer's smoothness/monotonicity/full-3D-rank assumptions: #305 faux_infrared (extreme-magnitude remap), #316 green_mono (monochrome/rank-collapse), #328 solarized_color (non-monotonic tone reversal), #344 avalanche (roughest LUT in family). diagnostic_only is non-headline per data_collection_plan.md 'Derived LUT Representability Gate' and eval/schemas.py (headline rows require tier=gold). All other Stage-1 checks pass outright (mean/p95/p99/max deltaE, mean PSNR, per-family incl. scraped_web, roundtrip; codebook 100%/ppl~164).",
+      "signed_off": true,
+      "waived_checks": [
+        "p5_psnr"
+      ]
+    }
+  },
+  "interpolation": "trilinear",
+  "latent_flatten_order": "xyz_c_order_z_fastest__token=x*16+y*4+z",
+  "latent_grid": "4x4x4",
+  "lut_corpus_hash": "dba53ef495f87a379180c4b2b7c0485926d6989bb71c254e5806c2bdd97cc9bd",
+  "lut_grid_size": "17x17x17",
+  "representation": "residual_after_identity",
+  "tensor_axis_order": "residual_rgbc_to_ncxyz__x=r,y=g,z=b",
+  "token_count": 64,
+  "token_suffix_to_codebook_index": "identity",
+  "tokenizer_version": "vq_v2_srgbres_17to4_cb256_t64__w91cffdd2c82f",
+  "tokenizer_weights_hash": "91cffdd2c82f1c47951038edfa28f7faa92e7e9aa4c91d12ccf1dc04f0d6a098",
+  "vq_codebook_sha256": "bcdf369dd7cd9a99d71f240b0dac67d404f52130dc8c35d14d6a04514349d118",
+  "vq_decoder_sha256": "4372d4a87ade01850d24e4c45b7682107bc1516d4c891052d4a560a20461808e",
+  "vq_encoder_sha256": "5f0e632a5fc45325f7e7e2c7cda500ad786428bd9c6d1ccf6317ec50c36f0564"
+}

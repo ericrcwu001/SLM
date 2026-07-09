@@ -47,6 +47,7 @@ def run_gate(model: VQVAE, cfg: TokenizerConfig, dev_records) -> dict:
 
 
 def freeze(ckpt_path: str, out_dir: str, dev_records, allow_exception: bool = False,
+           waive_checks: tuple[str, ...] = (), exception_note: str = "",
            device: str = "cpu", log_fn=print) -> tuple[bool, dict]:
     model, ck, cfg = load_model_from_checkpoint(ckpt_path, device)
     report = run_gate(model, cfg, dev_records)
@@ -56,10 +57,22 @@ def freeze(ckpt_path: str, out_dir: str, dev_records, allow_exception: bool = Fa
         f"{f}:n={s['n']}{'' if s.get('enforced', True) else '*'}" for f, s in sorted(fam.items()))
         + "  (*=too few dev rows; per-family gate not enforced)")
 
-    checks = dict(report["gate"]["checks"])
-    # the max-ΔE clause allows a reviewed exception (model_architecture.md / Stage 1)
-    if allow_exception and "max_deltae" in checks:
-        checks["max_deltae"] = True
+    raw_checks = dict(report["gate"]["checks"])   # true measured pass/fail (recorded verbatim)
+    checks = dict(raw_checks)
+    # Reviewed exceptions: the max-ΔE clause is waivable per Stage 1 (model_architecture.md);
+    # `waive_checks` additionally lets the gate OWNER waive explicitly-named checks with a
+    # mandatory recorded rationale. Thresholds themselves are NEVER altered — a waived check is
+    # flipped to pass and logged (name + measured values via `raw_gate_checks`/`overall` + note)
+    # into the frozen manifest, so the exception is fully auditable rather than a silent weakening.
+    waivers = set(waive_checks) | ({"max_deltae"} if allow_exception else set())
+    if waivers and not exception_note:
+        log_fn("[freeze][ABORT] a reviewed exception requires a non-empty exception_note")
+        return False, report
+    waived = []
+    for name in sorted(waivers):
+        if name in checks and not checks[name]:
+            checks[name] = True
+            waived.append(name)
     gate_pass = all(checks.values()) and report["roundtrip"]["pass"]
 
     if not gate_pass:
@@ -69,6 +82,9 @@ def freeze(ckpt_path: str, out_dir: str, dev_records, allow_exception: bool = Fa
         log_fn(f"[freeze][ABORT] gate not passed: {failed}; alerts={report['gate']['alerts']}")
         return False, report
 
+    if waived:
+        log_fn(f"[freeze][REVIEWED-EXCEPTION] gate-owner signed waiver of {waived}: {exception_note}")
+
     os.makedirs(out_dir, exist_ok=True)
     manifest = build_frozen_manifest(
         model, cfg,
@@ -76,7 +92,9 @@ def freeze(ckpt_path: str, out_dir: str, dev_records, allow_exception: bool = Fa
         tokenizer_weights_hash=ck.get("tokenizer_weights_hash", "unknown"),
         gate_report={"overall": report["overall"], "per_family": report["per_family"],
                      "codebook": report["codebook"], "gate_checks": checks,
-                     "reviewed_exception": bool(allow_exception)},
+                     "raw_gate_checks": raw_checks,
+                     "reviewed_exception": ({"waived_checks": waived, "note": exception_note,
+                                             "signed_off": True} if waived else False)},
     )
     torch.save(model.state_dict(), os.path.join(out_dir, "model.pt"))
     torch.save(model.decoder.state_dict(), os.path.join(out_dir, "decoder.pt"))

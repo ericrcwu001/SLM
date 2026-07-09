@@ -1,0 +1,42 @@
+{
+  "run_id": "tok_hp_v1",
+  "goal": "Minimize tokenizer dev-holdout mean CIEDE2000 (ΔE00) on the frozen split via a 1200-step MLX proxy of the Stage-1 gate; training knobs only, geometry/token-grammar locked.",
+  "objective": {
+    "kind": "command",
+    "command": "cd /Users/ericwu/Developer/SLM && PYTHONUNBUFFERED=1 /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 examples/score_tokenizer.py --config {config}",
+    "metric_parse": "json"
+  },
+  "direction": "min",
+  "param_space": {
+    "w_recon":     { "type": "float", "low": 5.0,    "high": 60.0 },
+    "lr":          { "type": "float", "low": 0.0001, "high": 0.0006 },
+    "w_deltaE":    { "type": "float", "low": 0.02,   "high": 0.5 },
+    "commit_beta": { "type": "float", "low": 0.1,    "high": 1.0 },
+    "w_tail":      { "type": "float", "low": 0.0,    "high": 0.3 },
+    "tail_frac":   { "type": "float", "low": 0.02,   "high": 0.15 },
+    "w_smooth":    { "type": "float", "low": 0.0,    "high": 0.05 },
+    "w_clip":      { "type": "float", "low": 0.1,    "high": 3.0 },
+    "w_neutral":   { "type": "float", "low": 0.0,    "high": 0.3 },
+    "scale_jitter":{ "type": "float", "low": 0.0,    "high": 0.1 },
+    "augment":     { "type": "bool" }
+  },
+  "baseline_config": {
+    "w_recon": 25.0,
+    "lr": 0.0003,
+    "w_deltaE": 0.10,
+    "commit_beta": 0.25,
+    "w_tail": 0.05,
+    "tail_frac": 0.05,
+    "w_smooth": 0.01,
+    "w_clip": 1.0,
+    "w_neutral": 0.05,
+    "scale_jitter": 0.0,
+    "augment": false
+  },
+  "locked": [],
+  "budgets": {
+    "T": 20, "K": 5, "M": 2, "k": 3, "B": 4,
+    "patience": 4, "time_budget_s": 1500, "epsilon": 0.10
+  },
+  "safety": { "l2": "adopt_and_log" }
+}
