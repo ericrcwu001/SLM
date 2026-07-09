@@ -47,6 +47,21 @@ _MAX_IMG_SIDE = 512  # cap image side for pair-fit (enough pixels for per-cell s
 _TINT_MEASURE_FLOOR = 1.0
 _SPLIT_TONE_FLOOR = 2.0
 
+# Behavior-only sources: their bulk scraped / pack auto-tags do NOT reliably cover the LUT's
+# measured behavior (they fail the reverse tag<->behavior coverage check, acceptance criteria
+# 7/8). We treat them like the pair-fit derived families, which carry no authored tags: the
+# instruction comes from the teacher describing the *measured* edit, not from partial tags. We
+# only drop the tags from the SFT/selection surface (gold_tags + tag embedding); the Stage-5
+# safety gate still sees the original tags for tint detection, so attrition is unaffected.
+BEHAVIOR_ONLY_FAMILIES = {"scraped_web", "smaller_public_packs"}
+
+
+def _effective_tags(row: dict) -> list:
+    """Structured tags for the SFT contract, blanked for behavior-only sources."""
+    if row.get("source_family") in BEHAVIOR_ONLY_FAMILIES:
+        return []
+    return row.get("structured_tags", []) or []
+
 
 def _load_config(path: Optional[str]) -> dict:
     default = Path(__file__).parent / "configs" / "pipeline_default.yaml"
@@ -172,6 +187,7 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
             attrition["canonicalized"] += 1
             attrition[tier if tier in ("gold", "diagnostic_only", "rejected") else "rejected"] += 1
             row["_residual_key"] = _rk
+            row["residual_key"] = _rk  # persisted (survives _row_obj underscore strip)
             enriched.append(row)
             continue
         lut = _derive_lut(row)
@@ -228,6 +244,7 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
         key = row.get("lut_id") or row.get("source_pair_id") or row.get("file_hash")
         np.save(paths.canonical_residual / f"{key}.npy", can.residual)
         row["_residual_key"] = key
+        row["residual_key"] = key  # persisted (survives _row_obj underscore strip)
         attrition[rep.tier] += 1
         enriched.append(row)
 
@@ -285,7 +302,7 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
     sel_cands = []
     for r in train_accepted:
         emb = np.concatenate([behavior_embedding(r.get("measured_behavior", {})),
-                              tag_embedding(r.get("structured_tags", []))])
+                              tag_embedding(_effective_tags(r))])
         sel_cands.append(SelectionCandidate(
             id=r["file_hash"] or r.get("_residual_key"),
             family=r.get("source_family") or "unknown",
@@ -303,7 +320,7 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
         r = by_id[sid]
         selected_rows.append({
             "id": sid, "source_family": r.get("source_family"), "source_lut_id": r.get("lut_id"),
-            "gold_tags": r.get("structured_tags", []), "measured_behavior": r.get("measured_behavior", {}),
+            "gold_tags": _effective_tags(r), "measured_behavior": r.get("measured_behavior", {}),
             "derived_lut_quality": r.get("derived_lut_quality", {}),
             "representability_tier": r.get("representability_tier"),
             "split_unit_id": id_to_unit.get(sid), "split": "train",
@@ -345,7 +362,9 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
         ig_counts = ig_manifest["counts"]
 
     acceptance = AcceptanceChecker(
-        enforce_scale=sel_cfg.get("enforce_scale", False)
+        enforce_scale=sel_cfg.get("enforce_scale", False),
+        waive_expert_cap=sel_cfg.get("waive_expert_cap", True),
+        coverage_threshold=sel_cfg.get("coverage_threshold", 7.0),
     ).check(active_rows, leakage_status=split_manifest.leakage_status,
             model_clients_available=teacher.is_available())
 
@@ -370,7 +389,8 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
             eval_cands.append(EvalCandidate(
                 id=rid, split=sp, is_supported=True,
                 representability_tier=r.get("representability_tier"),
-                procedural_filler=bool(r.get("procedural_filler"))))
+                procedural_filler=bool(r.get("procedural_filler")),
+                fit_deltaE00_mean=(r.get("derived_lut_quality", {}) or {}).get("fit_deltaE00_mean")))
     eval_manifest = build_eval_sets(eval_cands, sizes=cfg.get("eval_sets"))
     (paths.eval_sets / "eval_manifest.json").write_text(
         json.dumps(eval_manifest.summary(), indent=2), encoding="utf-8")

@@ -37,7 +37,10 @@ import numpy as np
 #      over the selection embedding would satisfy this WITHOUT feeding back into seeding. That
 #      check lives in active_dataset.py, not here.
 
-# ADR 0015 source-mix hard caps (fraction of the active supported set).
+# ADR 0015 source-mix hard caps (fraction of the active supported set). Families NOT listed here
+# are intentionally uncapped in selection and are bounded only by the global no-dominance gate
+# (<=50% of the active set, active_dataset.AcceptanceChecker). ``scraped_web`` is deliberately
+# left off this list: it is a primary diversity/scale source and a cap would cull rows we want.
 SOURCE_CAPS = {
     "ppr10k_derived": 0.25,
     "fivek_derived": 0.25,

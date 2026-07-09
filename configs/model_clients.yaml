@@ -79,7 +79,10 @@ teacher_primary:
   batch_id: teacher_batch_v1_20260708
   credential_profile: default
   effort: high                # reasoning effort; sent as reasoning_effort via extra_body
-  send_effort: true           # set false if a route 400s on reasoning_effort
+  # false: this gateway maps reasoning_effort -> Claude extended thinking, and Bedrock rejects a
+  # custom temperature while thinking is on ("temperature may only be 1 when thinking is enabled").
+  # Instruction gen is a bounded JSON transform that does not need thinking, so keep temperature 0.7.
+  send_effort: false
   request_defaults: { max_tokens: 1024, temperature: 0.7 }
 
 judge_primary:
@@ -91,5 +94,9 @@ judge_primary:
   batch_id: judge_batch_v1_20260708
   credential_profile: default
   effort: high                # reasoning effort; sent as reasoning_effort via extra_body
-  send_effort: true           # set false if a route 400s on reasoning_effort
-  request_defaults: { max_tokens: 512, temperature: 0.0 }   # deterministic scoring
+  # false: deterministic scoring needs temperature 0.0, which Bedrock forbids while thinking is on
+  # (reasoning_effort -> extended thinking on this gateway). Disable thinking to keep temp 0.0.
+  send_effort: false
+  # No temperature: claude-opus-4-8 on the anthropic-native route deprecates the param (400s if
+  # sent). Omitting it yields the model's own low-variance default, fine for a coarse language gate.
+  request_defaults: { max_tokens: 512 }

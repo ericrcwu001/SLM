@@ -51,6 +51,11 @@ def freeze(ckpt_path: str, out_dir: str, dev_records, allow_exception: bool = Fa
     model, ck, cfg = load_model_from_checkpoint(ckpt_path, device)
     report = run_gate(model, cfg, dev_records)
 
+    fam = report.get("per_family", {})
+    log_fn("[freeze][families] " + " ".join(
+        f"{f}:n={s['n']}{'' if s.get('enforced', True) else '*'}" for f, s in sorted(fam.items()))
+        + "  (*=too few dev rows; per-family gate not enforced)")
+
     checks = dict(report["gate"]["checks"])
     # the max-ΔE clause allows a reviewed exception (model_architecture.md / Stage 1)
     if allow_exception and "max_deltae" in checks:
@@ -75,6 +80,7 @@ def freeze(ckpt_path: str, out_dir: str, dev_records, allow_exception: bool = Fa
     )
     torch.save(model.state_dict(), os.path.join(out_dir, "model.pt"))
     torch.save(model.decoder.state_dict(), os.path.join(out_dir, "decoder.pt"))
+    torch.save(model.encoder.state_dict(), os.path.join(out_dir, "encoder.pt"))
     np.save(os.path.join(out_dir, "codebook.npy"), model.vq.codebook.detach().cpu().numpy())
     with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)
@@ -94,7 +100,7 @@ def main(argv=None) -> int:
     ap.add_argument("--root", default=".")
     ap.add_argument("--manifest", default=None, help="train manifest (to rebuild the tokenizer-dev holdout)")
     ap.add_argument("--out", default="tokenizer/final")
-    ap.add_argument("--dev-frac", type=float, default=0.05)
+    ap.add_argument("--dev-frac", type=float, default=0.10)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--allow-reviewed-exception", action="store_true",
                     help="waive only the max-ΔE clause (reviewed exception per Stage 1)")

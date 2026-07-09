@@ -129,7 +129,7 @@ def score_instruction(concise: str, natural: str, gold_tags, measured_behavior: 
         res = openai_compat.chat_completion(
             client, str(prof["model_id"]), messages,
             max_tokens=int(rd.get("max_tokens", 512)),
-            temperature=rd.get("temperature", 0.0),
+            temperature=rd.get("temperature"),  # None -> omit (some models deprecate/forbid it)
             reasoning_effort=openai_compat.effort_from_profile(prof))
         verdict = openai_compat.parse_json_object(res.text)
     except openai_compat.OpenAICompatError as exc:
@@ -217,7 +217,7 @@ def _run_output_judge(row, parsed_output, deterministic_results, model_clients_p
         client = openai_compat.build_client(base_url, api_key)
         res = openai_compat.chat_completion(
             client, str(prof["model_id"]), messages,
-            max_tokens=int(rd.get("max_tokens", 512)), temperature=rd.get("temperature", 0.0),
+            max_tokens=int(rd.get("max_tokens", 512)), temperature=rd.get("temperature"),  # None -> omit
             reasoning_effort=openai_compat.effort_from_profile(prof))
         verdict = openai_compat.parse_json_object(res.text)
     except openai_compat.OpenAICompatError as exc:

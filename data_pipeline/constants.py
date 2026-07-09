@@ -29,7 +29,13 @@ PROCEDURAL_GENERATOR_VERSION = "proc_v1"
 # v5: smoothness is now resample-aware (measured on the LUT's NATIVE grid, normalized to 17^3-equiv,
 # so our trilinear downsampling no longer inflates it) AND demote-don't-reject (moderate 0.10-0.30
 # caps tier at diagnostic; only >0.30 hard-rejects). clip/foldover/neutral_drift unchanged.
-QUALITY_FILTER_VERSION = "quality_v5_smooth_native_demote"
+# v6: gold bar loosened to raise gold yield (headline-eval slice was unbuildable at ~1.4% gold):
+# pair-fit mean_gold 2.0->2.5 and support_gold 0.99->0.98; smoothness clean band DIAG 0.10->0.15.
+# Accept/reject bars, structure/skin/cap disqualifiers unchanged. Bump invalidates cached tiers.
+# v7: graded structure penalty -- a single marginal spatial-structure signal (below a wider gold
+# ceiling) no longer blocks gold for pair-fits; >=2 signals or any past its ceiling still demote
+# to diagnostic. Reclaims faithful global fits with a faint local component. Bump invalidates tiers.
+QUALITY_FILTER_VERSION = "quality_v7_graded_structure"
 BEHAVIOR_VECTOR_VERSION = "behavior_v1"
 
 # Run-stamped placeholders (frozen at Stage 9 in a real run).

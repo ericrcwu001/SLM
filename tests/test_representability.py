@@ -28,8 +28,9 @@ def test_direct_warmth_gold_when_tinted():
 
 
 def test_direct_moderate_smoothness_is_diagnostic_not_rejected():
-    # demote-don't-reject: moderate smoothness caps a clean LUT at diagnostic, not rejected.
-    r = assess_direct_lut(identity_grid(17), smoothness_override=0.15)
+    # demote-don't-reject: moderate smoothness (DIAG 0.15 < s <= REJECT 0.30) caps a clean LUT
+    # at diagnostic, not rejected.
+    r = assess_direct_lut(identity_grid(17), smoothness_override=0.20)
     assert r.tier == TIER_DIAGNOSTIC
     assert "smoothness" in r.reasons
 

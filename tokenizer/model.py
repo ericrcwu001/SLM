@@ -3,9 +3,12 @@
     17x17x17x3 residual  --enc-->  4x4x4 latent  --VQ-->  64 codes (0..255)
                                                 --dec-->  17x17x17x3 residual
 
-Exact geometry (verified) — Encoder Conv3d 17->9->5->4, Decoder ConvTranspose3d
-4->5->9->17 — is pinned in :mod:`tokenizer.config`. The VQ uses EMA codebook updates
-with dead-code revival. :meth:`VQVAE.encode` / :meth:`VQVAE.decode` provide the
+Exact geometry (verified) — Encoder Conv3d 17->9->5->4, Decoder resize(trilinear)+Conv3d
+4->5->9->17 — is pinned in :mod:`tokenizer.config`. Convs use `replicate` boundary
+padding (avoids the zero-padding bias at corner/edge LUT nodes) and the decoder upsamples
+by trilinear resize then Conv3d (no stride-2 ConvTranspose, so no checkerboard artifact).
+The VQ uses EMA codebook updates with dead-code revival and a float64 nearest-code search.
+:meth:`VQVAE.encode` / :meth:`VQVAE.decode` provide the
 numpy-in/numpy-out contract that the frozen encoder (data_pipeline/tokenize_targets.py)
 and decoder (eval/lut_decoder.py) will call once Stage 8 wires them in.
 
@@ -46,11 +49,13 @@ def output_to_residual(x: torch.Tensor) -> torch.Tensor:
 
 
 class _ConvBlock(nn.Module):
-    """Conv3d (down) + GroupNorm + SiLU."""
+    """Conv3d (down) + GroupNorm + SiLU. `replicate` padding avoids zero-boundary bias."""
 
-    def __init__(self, cin: int, cout: int, k: int, s: int, p: int, groups: int, act: bool = True):
+    def __init__(self, cin: int, cout: int, k: int, s: int, p: int, groups: int,
+                 act: bool = True, padding_mode: str = "replicate"):
         super().__init__()
-        self.conv = nn.Conv3d(cin, cout, kernel_size=k, stride=s, padding=p)
+        # padding_mode is a no-op when p == 0 (e.g. the linear 5->4 bottleneck conv).
+        self.conv = nn.Conv3d(cin, cout, kernel_size=k, stride=s, padding=p, padding_mode=padding_mode)
         self.norm = nn.GroupNorm(groups, cout) if act else None
         self.act = act
 
@@ -61,17 +66,26 @@ class _ConvBlock(nn.Module):
         return x
 
 
-class _DeconvBlock(nn.Module):
-    """ConvTranspose3d (up) + optional GroupNorm + SiLU."""
+class _ResizeConvBlock(nn.Module):
+    """Trilinear resize to a fixed grid size, then Conv3d (k3,s1,p1, replicate) + norm/act.
 
-    def __init__(self, cin: int, cout: int, k: int, s: int, p: int, op: int, groups: int, act: bool = True):
+    Replaces stride-2 ConvTranspose3d: fixed-kernel upsampling has no learned kernel to
+    produce the uneven-overlap (Odena) checkerboard pattern that inflates the ΔE tail on
+    the smoothness-gated LUT grid, and `replicate` padding avoids biasing the
+    corner/edge nodes the max/p99 gates are strictest on.
+    """
+
+    def __init__(self, cin: int, cout: int, out_size: int, groups: int, act: bool = True):
         super().__init__()
-        self.deconv = nn.ConvTranspose3d(cin, cout, kernel_size=k, stride=s, padding=p, output_padding=op)
+        self.out_size = out_size
+        self.conv = nn.Conv3d(cin, cout, kernel_size=3, stride=1, padding=1, padding_mode="replicate")
         self.norm = nn.GroupNorm(groups, cout) if act else None
         self.act = act
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.deconv(x)
+        x = F.interpolate(x, size=(self.out_size, self.out_size, self.out_size),
+                          mode="trilinear", align_corners=True)
+        x = self.conv(x)
         if self.act:
             x = F.silu(self.norm(x))
         return x
@@ -93,15 +107,18 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    """4 -> 5 -> 9 -> 17 (ConvTranspose3d). Output residual [N, 3, 17,17,17] (linear)."""
+    """4 -> 5 -> 9 -> 17 via resize(trilinear)+Conv3d. Output residual [N, 3, 17,17,17] (linear).
+
+    The intermediate sizes 5 and 9 mirror the encoder's 17->9->5->4 downsampling path.
+    """
 
     def __init__(self, cfg: TokenizerConfig):
         super().__init__()
         d1, d2 = cfg.dec_channels
         g = cfg.norm_groups
-        self.b1 = _DeconvBlock(cfg.code_dim, d1, k=2, s=1, p=0, op=0, groups=g)   # 4 -> 5
-        self.b2 = _DeconvBlock(d1, d2, k=3, s=2, p=1, op=0, groups=g)             # 5 -> 9
-        self.b3 = _DeconvBlock(d2, 3, k=3, s=2, p=1, op=0, groups=g, act=False)   # 9 -> 17 (linear)
+        self.b1 = _ResizeConvBlock(cfg.code_dim, d1, out_size=5, groups=g)            # 4 -> 5
+        self.b2 = _ResizeConvBlock(d1, d2, out_size=9, groups=g)                      # 5 -> 9
+        self.b3 = _ResizeConvBlock(d2, 3, out_size=cfg.grid, groups=g, act=False)     # 9 -> 17 (linear)
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         return self.b3(self.b2(self.b1(z)))
@@ -130,17 +147,26 @@ class VectorQuantizerEMA(nn.Module):
         # [N, D, X, Y, Z] -> [N, X, Y, Z, D] -> [M, D]; C-order over (X,Y,Z) => z fastest.
         return z_e.permute(0, 2, 3, 4, 1).reshape(-1, self.D)
 
+    def _nearest(self, flat: torch.Tensor) -> torch.Tensor:
+        """Nearest codebook index for each row of ``flat`` [M, D] -> [M].
+
+        Computed in float64 for cross-hardware-stable assignment (the frozen tokenizer's
+        byte-identical-token scope). The constant ``||x||^2`` term is dropped — it does
+        not change the argmin — which also removes the catastrophic-cancellation-prone
+        subtraction in the float32 expansion. ``torch.argmin`` breaks ties to the lowest
+        index, pinning the token id when two codes are equidistant.
+        """
+        fd = flat.to(torch.float64)
+        cb = self.codebook.to(torch.float64)
+        # argmin_e ||x - e||^2  ==  argmin_e (||e||^2 - 2 x·e)
+        dist = cb.pow(2).sum(1) - 2.0 * (fd @ cb.t())              # [M, K]
+        return dist.argmin(1)
+
     def forward(self, z_e: torch.Tensor):
         N = z_e.shape[0]
         flat = self._flatten(z_e)                                  # [M, D], M = N*64
 
-        # squared L2 distances to every codebook entry
-        dist = (
-            flat.pow(2).sum(1, keepdim=True)
-            - 2.0 * flat @ self.codebook.t()
-            + self.codebook.pow(2).sum(1)
-        )                                                          # [M, K]
-        idx = dist.argmin(1)                                       # [M]
+        idx = self._nearest(flat)                                  # [M]
         onehot = F.one_hot(idx, self.K).type_as(flat)             # [M, K]
         quant = self.codebook[idx]                                 # [M, D]
 
@@ -192,12 +218,7 @@ class VectorQuantizerEMA(nn.Module):
     # -- inference helpers (no EMA / no grad) --
     def quantize_indices(self, z_e: torch.Tensor) -> torch.Tensor:
         flat = self._flatten(z_e)
-        dist = (
-            flat.pow(2).sum(1, keepdim=True)
-            - 2.0 * flat @ self.codebook.t()
-            + self.codebook.pow(2).sum(1)
-        )
-        return dist.argmin(1).view(z_e.shape[0], -1)               # [N, 64]
+        return self._nearest(flat).view(z_e.shape[0], -1)          # [N, 64]
 
     def embed_codes(self, codes: torch.Tensor, latent_grid: int) -> torch.Tensor:
         """[N, 64] code ids -> quantized latent [N, D, X, Y, Z] (inverse flatten order)."""
@@ -243,7 +264,13 @@ class VQVAE(nn.Module):
 
     @torch.no_grad()
     def decode(self, codes: Sequence[int]) -> np.ndarray:
-        """64 codebook ids (0..255) -> canonical 17^3 residual ``[r,g,b,3]`` (float64)."""
+        """64 codebook ids (0..255) -> canonical 17^3 residual ``[r,g,b,3]`` (float64).
+
+        The decoder runs in float32 (matching training/gate exactly) and only widens to
+        float64 at the numpy boundary. Byte-identical ``.cube`` export is therefore scoped
+        to one hardware class (the manifest records ``decode_dtype``); the pinned 10-decimal
+        ``.cube`` format is intentionally left unchanged (a canonical-contract value).
+        """
         self.eval()
         arr = np.asarray(list(codes), dtype=np.int64)
         if arr.shape != (self.cfg.token_count,):

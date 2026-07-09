@@ -115,10 +115,12 @@ class SplitManifest:
 
 
 def build_split_manifest(candidates: list[SplitCandidate], seed: int = 1234,
-                         ratios: Optional[dict] = None) -> SplitManifest:
+                         ratios: Optional[dict] = None,
+                         thresholds_path: Optional[str] = None) -> SplitManifest:
     ratios = ratios or DEFAULT_RATIOS
     items = [_as_item(c) for c in candidates]
-    checker = LeakageChecker.from_config(items)
+    checker = (LeakageChecker.from_config(items, thresholds_path) if thresholds_path
+               else LeakageChecker.from_config(items))
     id_to_unit = assign_split_units(candidates, checker=checker)
 
     # procedural fillers are train-only -> force their whole unit to train

@@ -96,13 +96,17 @@ def aggregate_reconstruction(
         fam = np.array(families)
         for f in sorted(set(families)):
             mask = fam == f
-            if int(mask.sum()) < thr.min_family_rows:
-                continue
+            n = int(mask.sum())
             d = per_lut_deltae[mask]
+            # Record EVERY family (with its n) rather than silently dropping small ones;
+            # `enforced` says whether it has enough rows to be a hard gate check. This
+            # keeps under-populated families visible (as gate alerts) instead of letting
+            # them pass unmeasured.
             per_family[f] = {
-                "n": int(mask.sum()),
+                "n": n,
                 "mean_deltae": float(d.mean()),
                 "p95_deltae": float(np.percentile(d, 95)),
+                "enforced": n >= thr.min_family_rows,
             }
 
     return {"overall": overall, "per_family": per_family,
@@ -145,11 +149,15 @@ def evaluate_gate(recon_agg: dict, cb_stats: dict, thr: GateThresholds = GATE) -
         "p5_psnr": o["p5_psnr"] >= thr.p5_psnr,
         "finite": o["finite"],
     }
-    for f, s in recon_agg["per_family"].items():
-        checks[f"family[{f}].mean_deltae"] = s["mean_deltae"] <= thr.per_family_mean_deltae
-        checks[f"family[{f}].p95_deltae"] = s["p95_deltae"] <= thr.per_family_p95_deltae
-
     alerts = []
+    for f, s in recon_agg["per_family"].items():
+        if s.get("enforced", s["n"] >= thr.min_family_rows):
+            checks[f"family[{f}].mean_deltae"] = s["mean_deltae"] <= thr.per_family_mean_deltae
+            checks[f"family[{f}].p95_deltae"] = s["p95_deltae"] <= thr.per_family_p95_deltae
+        else:
+            alerts.append(f"family[{f}] dev n={s['n']} < {thr.min_family_rows}: "
+                          f"per-family gate NOT enforced (enlarge holdout)")
+
     if cb_stats["active_frac"] < thr.active_code_frac_alert:
         alerts.append(f"active_codes {cb_stats['active_frac']:.1%} < {thr.active_code_frac_alert:.0%}")
     if cb_stats["perplexity"] < thr.perplexity_alert:

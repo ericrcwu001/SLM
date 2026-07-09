@@ -143,3 +143,16 @@ def test_eval_sets_headline_from_gold_nonprocedural():
     m = build_eval_sets(cands)
     assert m.headline_eligible_count == 3
     assert not m.diagnostic_only
+
+
+def test_eval_sets_headline_admits_well_fit_diagnostic():
+    # #2: headline eligibility is a fidelity bar, not the tier label. A diagnostic row with a
+    # faithful global fit (<= HEADLINE_FIT_MAX) is headline-eligible; a poorly-fit one is not.
+    good = EvalCandidate(id="d_good", split="eval", representability_tier="diagnostic_only",
+                         fit_deltaE00_mean=1.8)
+    poor = EvalCandidate(id="d_poor", split="eval", representability_tier="diagnostic_only",
+                         fit_deltaE00_mean=2.9)
+    m = build_eval_sets([good, poor])
+    assert "d_good" in m.slices["usage_weighted_headline_supported"]
+    assert "d_poor" in m.slices["diagnostic"]
+    assert m.headline_eligible_count == 1

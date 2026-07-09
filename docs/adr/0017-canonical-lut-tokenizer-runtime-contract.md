@@ -21,11 +21,14 @@ UTF-8, and no timestamps. Source images and LUTs with embedded or known
 wide-gamut profiles are converted to canonical sRGB using the pinned ICC
 conversion config before hashing, export, or evaluation.
 
-The default v1 decision is to keep single-stage VQ and metric-order the exported
-code ids after training. RVQ is a fallback only if single-stage VQ fails the
-mean, tail, per-family, and per-target gates after EMA, augmentation, dead-code
-revival, and targeted data filtering. Switching to RVQ changes the token grammar
-and requires a new ADR.
+The default v1 decision is to keep single-stage VQ. Exported code ids use the pinned
+raster latent-flatten order (`token = x*16 + y*4 + z`, z fastest), recorded verbatim in
+the manifest as `latent_flatten_order`; the earlier notion of frequency/metric-reordering
+the code ids after training is dropped as unnecessary — the raster order is deterministic
+and fully specified, and reordering would add a second permutation to pin for no
+reconstruction benefit. RVQ is a fallback only if single-stage VQ fails the mean, tail,
+per-family, and per-target gates after EMA, augmentation, dead-code revival, and targeted
+data filtering. Switching to RVQ changes the token grammar and requires a new ADR.
 
 Runtime/CLI decoding uses a token-id grammar mask/FSM. Free-generation eval
 measures learned syntax validity separately. CLI and eval artifacts include a

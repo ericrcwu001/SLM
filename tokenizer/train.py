@@ -15,6 +15,7 @@ import argparse
 import glob
 import hashlib
 import json
+import math
 import os
 import time
 from dataclasses import replace
@@ -31,6 +32,21 @@ from .manifest import hash_state_dict
 from .model import VQVAE
 
 
+# --- RNG (de)serialization ----------------------------------------------------------
+# numpy's RNG state contains a raw ndarray, which torch.load(weights_only=True) (the
+# PyTorch >=2.6 default) refuses to unpickle. Store it as a tensor + scalars so the
+# checkpoint stays loadable without weights_only=False.
+def _np_rng_state_safe() -> dict:
+    name, keys, pos, has_gauss, cached = np.random.get_state()
+    return {"name": str(name), "keys": torch.from_numpy(np.asarray(keys, dtype=np.int64)),
+            "pos": int(pos), "has_gauss": int(has_gauss), "cached": float(cached)}
+
+
+def _restore_np_rng(d: dict) -> None:
+    keys = d["keys"].cpu().numpy().astype(np.uint32)
+    np.random.set_state((d["name"], keys, d["pos"], d["has_gauss"], d["cached"]))
+
+
 def lut_corpus_hash(records) -> str:
     h = hashlib.sha256()
     for k in sorted(r.residual_key for r in records):
@@ -41,7 +57,13 @@ def lut_corpus_hash(records) -> str:
 def _lr_at(step: int, cfg: TokenizerConfig) -> float:
     if cfg.warmup_steps > 0 and step < cfg.warmup_steps:
         return cfg.lr * (step + 1) / cfg.warmup_steps
-    return cfg.lr
+    if not cfg.lr_decay:
+        return cfg.lr
+    # cosine decay from lr -> lr_min over the post-warmup steps (polishes the fine tail
+    # the p99/max/PSNR gates are strictest on).
+    total = max(1, cfg.max_steps - cfg.warmup_steps)
+    prog = min(1.0, max(0.0, (step - cfg.warmup_steps) / total))
+    return cfg.lr_min + 0.5 * (cfg.lr - cfg.lr_min) * (1.0 + math.cos(math.pi * prog))
 
 
 def save_checkpoint(path: str, model: VQVAE, opt, step: int, cfg: TokenizerConfig,
@@ -57,6 +79,8 @@ def save_checkpoint(path: str, model: VQVAE, opt, step: int, cfg: TokenizerConfi
             "lut_corpus_hash": corpus_hash,
             "tokenizer_weights_hash": hash_state_dict(model.state_dict()),
             "torch_rng": torch.get_rng_state(),
+            "numpy_rng": _np_rng_state_safe(),
+            "cuda_rng": (torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None),
             **(extra or {}),
         },
         path,
@@ -89,23 +113,36 @@ def evaluate_dev(model: VQVAE, dev_records, cfg: TokenizerConfig) -> dict | None
 
 def train(cfg: TokenizerConfig, records, out_dir: str, device: str = "cpu",
           resume: str | None = None, dev_records=None, log_fn=print) -> str:
-    torch.manual_seed(cfg.seed)
-    np.random.seed(cfg.seed)
     dev = torch.device(device)
+
+    # Seed ONLY on a fresh start; on resume we restore the saved RNG below so the
+    # continued run follows the same trajectory (the sampler and dead-code revival both
+    # draw from the global RNG — reseeding here would fork it). Seed before model init so
+    # a fresh run's weights are reproducible.
+    resuming = bool(resume and os.path.exists(resume))
+    if not resuming:
+        torch.manual_seed(cfg.seed)
+        np.random.seed(cfg.seed)
 
     model = VQVAE(cfg).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     start_step = 0
     corpus_hash = lut_corpus_hash(records)
 
-    if resume and os.path.exists(resume):
+    if resuming:
         ck = torch.load(resume, map_location=dev)
         model.load_state_dict(ck["model_state"])
         opt.load_state_dict(ck["optimizer_state"])
         start_step = int(ck["step"])
-        log_fn(f"[resume] from {resume} @ step {start_step}")
+        if ck.get("torch_rng") is not None:
+            torch.set_rng_state(ck["torch_rng"].cpu())
+        if ck.get("numpy_rng") is not None:
+            _restore_np_rng(ck["numpy_rng"])
+        if ck.get("cuda_rng") is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all([s.cpu() for s in ck["cuda_rng"]])
+        log_fn(f"[resume] from {resume} @ step {start_step} (torch/numpy/cuda RNG restored)")
 
-    ds = data_mod.ResidualDataset(records)
+    ds = data_mod.ResidualDataset(records, augment=cfg.augment, scale_jitter=cfg.scale_jitter)
     sampler = data_mod.family_balanced_sampler(records, num_samples=cfg.batch_size)
     loader = DataLoader(ds, batch_size=cfg.batch_size, sampler=sampler, drop_last=False)
 
@@ -131,15 +168,19 @@ def train(cfg: TokenizerConfig, records, out_dir: str, device: str = "cpu",
         opt.step()
 
         if step % 50 == 0:
-            log_fn(f"step {step}/{cfg.max_steps} " + " ".join(f"{k}={comp[k]:.4f}" for k in
-                   ("loss", "recon", "deltaE", "smooth", "clip", "neutral", "commit", "perplexity")))
+            log_fn(f"step {step}/{cfg.max_steps} lr={_lr_at(step, cfg):.2e} " + " ".join(
+                f"{k}={comp[k]:.4f}" for k in
+                ("loss", "recon", "deltaE", "tail", "smooth", "clip", "neutral", "commit", "perplexity")))
 
         if cfg.eval_every and step > 0 and step % cfg.eval_every == 0:
             rep = evaluate_dev(model, dev_records, cfg)
             if rep:
                 o = rep["overall"]
+                fam_ns = " ".join(f"{f}:n={s['n']}{'' if s.get('enforced', True) else '*'}"
+                                  for f, s in sorted(rep["per_family"].items()))
                 log_fn(f"[dev@{step}] meanΔE={o['mean_deltae']:.3f} p95={o['p95_deltae']:.3f} "
-                       f"PSNR={o['mean_psnr']:.2f} pass={rep['gate']['pass']} alerts={rep['gate']['alerts']}")
+                       f"p99={o['p99_deltae']:.3f} PSNR={o['mean_psnr']:.2f} pass={rep['gate']['pass']} "
+                       f"alerts={rep['gate']['alerts']} | fam[{fam_ns}]  (*=per-family gate not enforced)")
                 if best is None or o["mean_deltae"] < best:
                     best = o["mean_deltae"]
                     save_checkpoint(os.path.join(out_dir, "best.pt"), model, opt, step, cfg, corpus_hash,
@@ -181,7 +222,12 @@ def main(argv=None) -> int:
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--lr", type=float, default=None)
-    ap.add_argument("--dev-frac", type=float, default=0.05)
+    ap.add_argument("--augment", action="store_true",
+                    help="enable neutral-preserving residual scale-jitter (train-only remedy for tail/codebook gate failures)")
+    ap.add_argument("--scale-jitter", type=float, default=None, help="augmentation magnitude (default 0.05 when --augment set)")
+    ap.add_argument("--no-lr-decay", action="store_true", help="disable cosine LR decay (constant LR after warmup)")
+    ap.add_argument("--dev-frac", type=float, default=0.10,
+                    help="tokenizer-dev holdout fraction, stratified per family (larger => per-family gate enforceable)")
     ap.add_argument("--smoke", type=int, default=0, help="if >0, use only N records + max_steps=200 (dev sanity)")
     args = ap.parse_args(argv)
 
@@ -193,6 +239,13 @@ def main(argv=None) -> int:
         over["batch_size"] = args.batch_size
     if args.lr is not None:
         over["lr"] = args.lr
+    if args.no_lr_decay:
+        over["lr_decay"] = False
+    if args.augment:
+        over["augment"] = True
+        over["scale_jitter"] = args.scale_jitter if args.scale_jitter is not None else 0.05
+    elif args.scale_jitter is not None:
+        over["scale_jitter"] = args.scale_jitter
     if over:
         cfg = replace(cfg, **over)
 

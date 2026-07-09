@@ -151,14 +151,37 @@ def _hash_frac(key: str) -> float:
     return int(h[:8], 16) / 0xFFFFFFFF
 
 
-def dev_holdout(records: list[LutRecord], frac: float = 0.05) -> tuple[list[LutRecord], list[LutRecord]]:
-    """Split train records into (train, dev) deterministically by residual_key hash.
+def dev_holdout(records: list[LutRecord], frac: float = 0.10,
+                min_dev_per_family: int = 1) -> tuple[list[LutRecord], list[LutRecord]]:
+    """Split train records into (train, dev) deterministically, STRATIFIED per family.
+
+    Each family contributes ~``frac`` of its rows to the dev holdout (chosen by lowest
+    residual_key hash, so the choice is deterministic and leakage-safe within the train
+    split), with a ``min_dev_per_family`` floor so small families still appear in the
+    gate. This makes the per-family reconstruction gate enforceable across families
+    instead of the old global-hash carve, which could leave small families with zero dev
+    rows. Never takes an entire family (>=1 row always stays in train).
 
     Both subsets are within the train split — the dev subset is the tokenizer's
     reconstruction-gate holdout, distinct from the downstream eval-reserved identities.
     """
-    dev = [r for r in records if _hash_frac(r.residual_key) < frac]
-    train = [r for r in records if _hash_frac(r.residual_key) >= frac]
+    from collections import defaultdict
+
+    by_fam: dict[str, list[LutRecord]] = defaultdict(list)
+    for r in records:
+        by_fam[r.source_family].append(r)
+
+    dev_keys: set[str] = set()
+    for recs in by_fam.values():
+        if len(recs) <= 1:
+            continue  # keep the lone row in train; cannot hold out without emptying the family
+        ranked = sorted(recs, key=lambda r: _hash_frac(r.residual_key))
+        n_dev = max(min_dev_per_family, int(round(frac * len(recs))))
+        n_dev = min(n_dev, len(recs) - 1)  # always leave >=1 in train
+        dev_keys.update(r.residual_key for r in ranked[:n_dev])
+
+    dev = [r for r in records if r.residual_key in dev_keys]
+    train = [r for r in records if r.residual_key not in dev_keys]
     return train, dev
 
 

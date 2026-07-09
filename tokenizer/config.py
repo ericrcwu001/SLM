@@ -24,7 +24,13 @@ from eval.color_pipeline import COLOR_PIPELINE_VERSION
 from eval.schemas import CANONICAL_DOMAIN_ID, CUBE_SERIALIZATION_VERSION
 
 # --- architecture identity ----------------------------------------------------------
-TOKENIZER_ARCH_VERSION = "vq_v1_srgbres_17to4_cb256_t64"
+# v2 (audit remediation): decoder upsampling switched from stride-2 ConvTranspose3d to
+# resize(trilinear)+Conv3d (kills the Odena checkerboard artifact), convs use
+# `replicate` boundary padding (fixes corner/edge ΔE bias), and the VQ nearest-code
+# search runs in float64 with lowest-index tie-break (cross-hardware token stability).
+# The 17->4->17 / cb256 / t64 token grammar is unchanged; only the decoder internals,
+# padding, and VQ arithmetic differ, so v1 checkpoints are not weight-compatible.
+TOKENIZER_ARCH_VERSION = "vq_v2_srgbres_17to4_cb256_t64"
 
 GRID = GRID_SIZE          # 17-node LUT grid
 LATENT_GRID = 4           # 4x4x4 latent
@@ -78,21 +84,40 @@ class TokenizerConfig:
     dead_code_revival: bool = True
 
     # -- loss weights (L_commit is scaled by commit_beta inside the VQ) --
-    w_recon: float = 1.0               # LUT-grid reconstruction (MSE on residual)
-    w_deltaE: float = 0.10             # perceptual CIEDE2000 on grid-node "chart" samples
+    # Rebalanced from v1 after a gradient-balance audit (see losses.py): residuals are
+    # O(0.05) so raw L_recon is tiny and its gradient was drowned by the perceptual terms,
+    # which structurally starved the PSNR>=35 gate (that gate is driven ONLY by L_recon).
+    # w_recon is raised ~1.5 orders so reconstruction/PSNR and ΔE reach their gates
+    # together; w_neutral is cut because L_neutral is now a small target-relative term
+    # (was the dominant gradient when it pushed neutral chroma toward absolute zero).
+    # These are a re-tuned starting point, not a converged sweep.
+    w_recon: float = 25.0              # LUT-grid reconstruction (MSE on residual) — drives PSNR
+    w_deltaE: float = 0.10             # perceptual CIEDE2000 mean over all grid nodes
+    w_tail: float = 0.05               # tail-aware: mean of the worst `tail_frac` node ΔE per LUT
     w_smooth: float = 0.01             # 3D Laplacian smoothness on the reconstructed residual
     w_clip: float = 1.0                # penalty for absolute LUT values outside [0,1]
-    w_neutral: float = 0.10            # neutral-axis (r=g=b) chroma-preservation penalty
+    w_neutral: float = 0.05            # neutral-axis (r=g=b) target-relative chroma penalty
     w_commit: float = 1.0              # multiplier on the VQ commitment/codebook loss
+    tail_frac: float = 0.05            # fraction of worst nodes per LUT used by the tail term
 
     # -- optimization (training_plan_colab.md Stage 1 starting values) --
     lr: float = 3.0e-4
+    lr_min: float = 3.0e-5             # cosine-decay floor (0.1*lr); reached at max_steps
+    lr_decay: bool = True              # warmup -> cosine decay to lr_min (polishes the tail)
     weight_decay: float = 1.0e-4
     grad_clip: float = 1.0
-    batch_size: int = 128
+    batch_size: int = 16              # MLX Metal 3D-conv throughput (128 ~1s/step; 16 ~0.14s);
+                                      # small batch also aids VQ codebook usage. Raise on CUDA/Colab.
     max_steps: int = 20000
     warmup_steps: int = 500
     seed: int = 0
+
+    # -- train-only data augmentation (neutral-preserving residual scale jitter) --
+    # Off by default; the documented first-line remedy when codebook usage or tail ΔE
+    # fail the gate (model_architecture.md Stage 1, ADR-0017). Applied only to the
+    # training ResidualDataset — the dev-holdout gate never augments.
+    augment: bool = False
+    scale_jitter: float = 0.0          # e.g. 0.05 => residual *= 1 +/- U(0,0.05)
 
     # -- checkpointing --
     ckpt_every: int = 1000

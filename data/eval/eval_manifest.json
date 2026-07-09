@@ -6,12 +6,12 @@
     "qualitative": 100
   },
   "slice_counts": {
-    "usage_weighted_headline_supported": 5,
+    "usage_weighted_headline_supported": 382,
     "usage_weighted_headline_unsupported": 0,
-    "diagnostic": 659,
+    "diagnostic": 282,
     "qualitative": 130
   },
-  "headline_eligible_count": 5,
+  "headline_eligible_count": 382,
   "diagnostic_only": false,
   "notes": []
 }

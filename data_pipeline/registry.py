@@ -36,6 +36,7 @@ class ProvenanceRow:
     canonical_input_image_hash: Optional[str] = None
     input_phash: Optional[str] = None
     input_embedding_id: Optional[str] = None
+    residual_key: Optional[str] = None  # canonical_residual/<residual_key>.npy filename stem
     image_split_unit_id: Optional[str] = None
     original_image_id: Optional[str] = None
     source_photo_id: Optional[str] = None

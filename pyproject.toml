@@ -35,18 +35,23 @@ frontier = ["openai>=1.40", "anthropic>=0.69"]
 # Reserved for the training/inference path (real Qwen-VL + trained VQ tokenizer);
 # also enables optional CLIP/sentence-transformer leakage/selection embedding axes.
 ml = ["torch>=2.1", "transformers>=4.45", "safetensors>=0.4", "sentence-transformers>=2.2", "open-clip-torch>=2.20"]
+# Apple-Silicon local GPU training accelerator for the VQ tokenizer (tokenizer/mlx). MLX
+# trains the mirror model on Metal; convert.py maps weights back to the torch VQVAE, which
+# stays the authoritative/portable path. Metal is float32-only (see tokenizer/mlx notes).
+mlx = ["mlx>=0.32"]
 dev = ["pytest>=7.4"]
 
 [project.scripts]
 prompt_to_lut = "cli.prompt_to_lut:main"
 slm_acquire = "data_pipeline.acquire.run_acquire:main"
 slm_datagen = "data_pipeline.run_pipeline:main"
+slm_freeze_split = "data_pipeline.freeze_split:main"
 
 [tool.setuptools]
 packages = [
     "eval", "eval.fixtures", "cli",
     "data_pipeline", "data_pipeline.acquire", "data_pipeline.sources", "data_pipeline.configs",
-    "tokenizer",
+    "tokenizer", "tokenizer.mlx",
 ]
 
 [tool.setuptools.package-data]

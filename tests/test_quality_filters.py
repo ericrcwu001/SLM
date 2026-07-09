@@ -28,8 +28,8 @@ def test_clipping_lut_fails_safety():
 
 
 def test_moderate_smoothness_caps_not_rejects():
-    # 0.10 < s <= 0.30 -> diagnostic cap (safety still passes), not a hard reject.
-    q = assess_quality(identity_grid(17), smoothness_override=0.15)
+    # 0.15 < s <= 0.30 -> diagnostic cap (safety still passes), not a hard reject.
+    q = assess_quality(identity_grid(17), smoothness_override=0.20)
     assert q.safety_pass is True
     assert "smoothness" in q.cap_reasons
     assert "smoothness_extreme" not in q.safety_reasons

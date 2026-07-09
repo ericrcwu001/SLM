@@ -8,6 +8,7 @@ of these requires a new manifest and regenerated targets (Canonical LUT Contract
 from __future__ import annotations
 
 import hashlib
+import platform
 
 import numpy as np
 import torch
@@ -36,14 +37,16 @@ def encoder_decoder_layer_table(cfg: TokenizerConfig) -> dict:
     d1, d2 = cfg.dec_channels
     return {
         "encoder": [
-            {"op": "Conv3d", "in": 3, "out": c1, "k": 3, "s": 2, "p": 1, "size": "17->9"},
-            {"op": "Conv3d", "in": c1, "out": c2, "k": 3, "s": 2, "p": 1, "size": "9->5"},
-            {"op": "Conv3d", "in": c2, "out": cfg.code_dim, "k": 2, "s": 1, "p": 0, "size": "5->4"},
+            {"op": "Conv3d", "in": 3, "out": c1, "k": 3, "s": 2, "p": 1, "pad_mode": "replicate", "size": "17->9"},
+            {"op": "Conv3d", "in": c1, "out": c2, "k": 3, "s": 2, "p": 1, "pad_mode": "replicate", "size": "9->5"},
+            {"op": "Conv3d", "in": c2, "out": cfg.code_dim, "k": 2, "s": 1, "p": 0, "pad_mode": "replicate", "size": "5->4"},
         ],
+        # v2 decoder: trilinear resize (align_corners=True) to the target grid then a
+        # k3,s1,p1 Conv3d with replicate padding — replaces stride-2 ConvTranspose3d.
         "decoder": [
-            {"op": "ConvTranspose3d", "in": cfg.code_dim, "out": d1, "k": 2, "s": 1, "p": 0, "op_pad": 0, "size": "4->5"},
-            {"op": "ConvTranspose3d", "in": d1, "out": d2, "k": 3, "s": 2, "p": 1, "op_pad": 0, "size": "5->9"},
-            {"op": "ConvTranspose3d", "in": d2, "out": 3, "k": 3, "s": 2, "p": 1, "op_pad": 0, "size": "9->17"},
+            {"op": "Resize+Conv3d", "mode": "trilinear", "in": cfg.code_dim, "out": d1, "k": 3, "s": 1, "p": 1, "pad_mode": "replicate", "size": "4->5"},
+            {"op": "Resize+Conv3d", "mode": "trilinear", "in": d1, "out": d2, "k": 3, "s": 1, "p": 1, "pad_mode": "replicate", "size": "5->9"},
+            {"op": "Resize+Conv3d", "mode": "trilinear", "in": d2, "out": 3, "k": 3, "s": 1, "p": 1, "pad_mode": "replicate", "size": "9->17"},
         ],
     }
 
@@ -59,6 +62,9 @@ def build_frozen_manifest(
     """Assemble the full frozen manifest dict (model_architecture.md field list)."""
     vq_codebook_sha256 = hash_tensor(model.vq.codebook)
     vq_decoder_sha256 = hash_state_dict(model.decoder.state_dict())
+    # The encoder materializes SFT target tokens (tokenize_targets), so bind its integrity
+    # explicitly rather than only transitively via the whole-model weights hash.
+    vq_encoder_sha256 = hash_state_dict(model.encoder.state_dict())
     tokenizer_version = f"{cfg.arch_version}__w{tokenizer_weights_hash[:12]}"
 
     return {
@@ -81,12 +87,21 @@ def build_frozen_manifest(
         # weights / hashes
         "vq_codebook_sha256": vq_codebook_sha256,
         "vq_decoder_sha256": vq_decoder_sha256,
+        "vq_encoder_sha256": vq_encoder_sha256,
         "tokenizer_weights_hash": tokenizer_weights_hash,
         "lut_corpus_hash": lut_corpus_hash,
         # layer table + pipeline versions
         "encoder_decoder_layer_table": encoder_decoder_layer_table(cfg),
         "color_pipeline_version": cfg.color_pipeline_version,
         "cube_serialization_version": cfg.cube_serialization_version,
+        # determinism envelope the hashes are only valid under; decode runs float32 so
+        # byte-identical .cube export is scoped to one hardware/library class.
+        "decode_dtype": "float32",
+        "determinism_scope": {
+            "torch_version": torch.__version__,
+            "numpy_version": np.__version__,
+            "platform": platform.platform(),
+        },
         # gate provenance (informational; the pass decision lives in the freeze step)
         "gate_report": gate_report or {},
     }

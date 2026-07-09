@@ -1,12 +1,16 @@
 """VQ-tokenizer training loss (model_architecture.md / training_plan_colab.md Stage 1).
 
-Six terms, weighted by :class:`tokenizer.config.TokenizerConfig`:
+Seven terms, weighted by :class:`tokenizer.config.TokenizerConfig`:
 
-  L_recon   MSE on the reconstructed residual grid
-  L_deltaE  CIEDE2000 (differentiable torch port) on the absolute LUT nodes
+  L_recon   MSE on the reconstructed residual grid (drives PSNR; up-weighted after audit)
+  L_deltaE  CIEDE2000 (differentiable torch port), mean over the absolute LUT nodes
+  L_tail    mean of the worst ``tail_frac`` per-node ΔE per LUT (targets the p95/p99 tail
+            that the uniform mean ignores but the acceptance gate thresholds)
   L_smooth  3D second-difference (Laplacian) smoothness on the reconstructed residual
   L_clip    penalty for absolute LUT values outside [0,1] (pre-clamp)
-  L_neutral chroma penalty on the neutral diagonal (r=g=b should stay neutral)
+  L_neutral TARGET-RELATIVE neutral-diagonal chroma penalty: |chroma(recon)-chroma(target)|
+            on r=g=b (was: recon chroma toward absolute zero, which wrongly fought the
+            ~82% of LUTs that legitimately tint neutrals and dominated the gradient)
   L_commit  VQ commitment loss (already scaled by commit_beta inside the quantizer)
 
 All terms operate on conv tensors ``[N,3,17,17,17]`` (channel-first). Absolute LUT =
@@ -71,7 +75,14 @@ def total_loss(
     target_abs = (_to_channel_last(target_conv) + identity_chlast).clamp(0.0, 1.0)
 
     # -- L_deltaE (CIEDE2000 over every LUT node = the "chart") --
-    l_deltae = tc.deltae2000_srgb(recon_abs, target_abs).mean()
+    node_de = tc.deltae2000_srgb(recon_abs, target_abs)      # [N,17,17,17]
+    l_deltae = node_de.mean()
+
+    # -- L_tail (mean of the worst tail_frac node ΔE per LUT; targets p95/p99/max) --
+    n_nodes = node_de.shape[1] * node_de.shape[2] * node_de.shape[3]
+    k = max(1, int(cfg.tail_frac * n_nodes))
+    worst = node_de.reshape(node_de.shape[0], -1).topk(k, dim=1).values   # [N, k]
+    l_tail = worst.mean()
 
     # -- L_smooth --
     l_smooth = smoothness(recon)
@@ -82,13 +93,17 @@ def total_loss(
     under = F.relu(-recon_abs_raw)
     l_clip = (over.pow(2) + under.pow(2)).mean()
 
-    # -- L_neutral (chroma on the r=g=b diagonal should stay ~0) --
+    # -- L_neutral (target-relative: match the target's neutral-diagonal chroma) --
+    # Penalizing recon chroma toward absolute 0 optimizes the wrong quantity — most
+    # graded LUTs legitimately tint neutrals — so we penalize the *deviation from the
+    # target's* diagonal chroma, which is 0 at perfect reconstruction.
     n = cfg.grid
     diag = torch.arange(n, device=device)
-    neutral_abs = recon_abs[:, diag, diag, diag, :]   # [N, n, 3]
-    lab = tc.srgb_to_lab_d65(neutral_abs)
-    chroma = torch.sqrt(lab[..., 1] ** 2 + lab[..., 2] ** 2 + 1e-12)
-    l_neutral = chroma.mean()
+    lab_recon = tc.srgb_to_lab_d65(recon_abs[:, diag, diag, diag, :])   # [N, n, 3]
+    lab_tgt = tc.srgb_to_lab_d65(target_abs[:, diag, diag, diag, :])
+    chroma_recon = torch.sqrt(lab_recon[..., 1] ** 2 + lab_recon[..., 2] ** 2 + 1e-12)
+    chroma_tgt = torch.sqrt(lab_tgt[..., 1] ** 2 + lab_tgt[..., 2] ** 2 + 1e-12)
+    l_neutral = (chroma_recon - chroma_tgt).abs().mean()
 
     # -- L_commit (already beta-scaled inside the VQ) --
     l_commit = out["commit_loss"]
@@ -96,6 +111,7 @@ def total_loss(
     loss = (
         cfg.w_recon * l_recon
         + cfg.w_deltaE * l_deltae
+        + cfg.w_tail * l_tail
         + cfg.w_smooth * l_smooth
         + cfg.w_clip * l_clip
         + cfg.w_neutral * l_neutral
@@ -106,6 +122,7 @@ def total_loss(
         "loss": float(loss.detach()),
         "recon": float(l_recon.detach()),
         "deltaE": float(l_deltae.detach()),
+        "tail": float(l_tail.detach()),
         "smooth": float(l_smooth.detach()),
         "clip": float(l_clip.detach()),
         "neutral": float(l_neutral.detach()),

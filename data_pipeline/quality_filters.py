@@ -29,11 +29,13 @@ SAFETY_THRESHOLDS = {
 }
 
 # Smoothness is two-tier + demote-don't-reject (measured resample-aware on the native grid):
-#  * <= DIAG: clean.
+#  * <= DIAG: clean (gold-eligible).
 #  * DIAG < s <= REJECT: caps the tier at diagnostic (a stylized/creative LUT with sharper tonal
 #    transitions is still usable), but does NOT hard-reject.
 #  * > REJECT: hard reject (genuine node-to-node jitter / a broken LUT; observed jitter reached ~1.7).
-SMOOTHNESS_DIAG_MAX = 0.10
+# DIAG widened 0.10 -> 0.15 (quality_v6): admits mildly-textured film/creative LUTs to gold
+# instead of capping them at diagnostic. Reject bar unchanged, so real jitter still rejects.
+SMOOTHNESS_DIAG_MAX = 0.15
 SMOOTHNESS_REJECT_MAX = 0.30
 SKIN_THRESHOLDS = {
     "clip_rate": 0.0,

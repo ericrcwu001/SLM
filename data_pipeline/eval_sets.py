@@ -1,7 +1,8 @@
 """Stage 9 frozen eval-set structure (eval_harness_implementation.md "Eval Splits").
 
-Builds the eval-slice manifest from split-reserved rows: usage-weighted headline (gold,
-non-procedural), plus diagnostic and qualitative. Procedural rows are headline-ineligible
+Builds the eval-slice manifest from split-reserved rows: usage-weighted headline (faithful
+global fits -- gold, or diagnostic with mean fit <= HEADLINE_FIT_MAX -- non-procedural), plus
+diagnostic and qualitative. Procedural rows are headline-ineligible
 (ADR 0016) and land in the diagnostic slice. On a procedural-only pool the headline slice is
 empty and the manifest records it as diagnostic-only. Sizes are targets from config; not
 enforced on a small smoke pool.
@@ -17,6 +18,13 @@ from .constants import EVAL_SET_VERSION_PLACEHOLDER
 # master-plan / eval-harness targets (floors in data_collection_plan are lower).
 DEFAULT_EVAL_SIZES = {"headline_supported": 800, "headline_unsupported": 200, "qualitative": 100}
 
+# Headline eligibility is a *fidelity* bar, not a tier label: a row is headline-worthy if it is a
+# faithful global fit, whether or not it reached gold. gold rows qualify automatically; diagnostic
+# rows demoted for a reason orthogonal to global fidelity (mild structure / moderate smoothness)
+# qualify too when their held-out mean fit is at or under this bar (= pair-fit mean_gold). Direct
+# LUTs have mean 0.0 (global by construction) and so clear it. Keeps genuinely poor fits out.
+HEADLINE_FIT_MAX = 2.5
+
 
 @dataclass
 class EvalCandidate:
@@ -26,6 +34,7 @@ class EvalCandidate:
     representability_tier: Optional[str] = None
     procedural_filler: bool = False
     unsupported_category: Optional[str] = None
+    fit_deltaE00_mean: Optional[float] = None
 
 
 @dataclass
@@ -60,7 +69,11 @@ def build_eval_sets(candidates: list[EvalCandidate], sizes: Optional[dict] = Non
     for c in candidates:
         if c.split not in ("eval", "diagnostic", "qualitative"):
             continue
-        headline_ok = (not c.procedural_filler) and (c.representability_tier == "gold")
+        headline_ok = (not c.procedural_filler) and (
+            c.representability_tier == "gold"
+            or (c.representability_tier == "diagnostic_only"
+                and c.fit_deltaE00_mean is not None
+                and c.fit_deltaE00_mean <= HEADLINE_FIT_MAX))
         if c.split == "qualitative":
             slices["qualitative"].append(c.id)
         elif c.split == "diagnostic" or not headline_ok:

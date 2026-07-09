@@ -43,3 +43,10 @@ data/raw_registry/.pipeline_done
 data/raw_registry/.pipeline_failed
 data/raw_registry/.ppr10k_topup_done
 data/raw_registry/ppr10k_topup_rows.jsonl
+
+# Model / tokenizer training artifacts (large binaries, regenerable).
+# NOTE: tokenizer/final/ also holds the small frozen manifest (identity contract);
+# force-add it with `git add -f tokenizer/final/manifest.json` if you want it tracked.
+tokenizer/checkpoints/
+tokenizer/final/
+models/
