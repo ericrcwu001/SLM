@@ -39,3 +39,12 @@ class TeacherGenerationError(PipelineError):
 
 class RequiresManualOptIn(PipelineError):
     """A source needs a one-time manual step (credentials / concrete URLs) before it runs."""
+
+
+class SFTError(PipelineError):
+    """QLoRA SFT stage failed: vocab-resize preflight, data, or training error.
+
+    Preconditions that are simply not available (frozen tokenizer, `sft` extra / QLoRA deps)
+    raise the existing ``RequiresTokenizer`` / ``RequiresModel`` guards so the run records a
+    honest pending state instead of a fabricated result; ``SFTError`` is for a stage that ran
+    but failed (e.g. a preflight assertion)."""

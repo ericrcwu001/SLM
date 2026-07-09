@@ -50,6 +50,8 @@ CODEBOOK_SIZE = 256
 
 # Status markers for gated materialization (honest, never fabricated).
 TOKEN_STATUS_PENDING = "pending_tokenizer"
+# Terminal state once the frozen tokenizer has actually encoded the row's residual -> 64 ids.
+TOKEN_STATUS_MATERIALIZED = "materialized"
 INSTRUCTION_STATUS_PENDING = "pending_teacher"
 # Terminal states once the teacher has actually run over a row.
 INSTRUCTION_STATUS_GENERATED = "teacher_generated"   # instruction written + validated
@@ -75,6 +77,7 @@ __all__ = [
     "TOKEN_COUNT",
     "CODEBOOK_SIZE",
     "TOKEN_STATUS_PENDING",
+    "TOKEN_STATUS_MATERIALIZED",
     "INSTRUCTION_STATUS_PENDING",
     "INSTRUCTION_STATUS_GENERATED",
     "INSTRUCTION_STATUS_REJECTED",

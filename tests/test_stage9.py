@@ -15,11 +15,37 @@ from data_pipeline.tokenize_targets import encode_residual_to_codes, is_availabl
 from eval.cube_io import absolute_to_residual, identity_grid
 
 
-# --- gated interfaces ---
-def test_tokenizer_gated():
-    assert is_available() is False
+# --- tokenizer interface (wired at Stage 8) ---
+def test_tokenizer_enabled_encode():
+    # The encoder is wired (delegates to the frozen VQVAE). Exercising it needs the frozen
+    # weights, which are gitignored and only present after freeze/staging — skip cleanly when
+    # they are absent (fresh clone / CI). When present, encode must yield 64 valid code ids.
+    assert is_available() is True
+    pytest.importorskip("torch")
+    from tokenizer.frozen import frozen_final_dir, load_frozen_vqvae
+
+    if not (frozen_final_dir() / "model.pt").is_file():
+        pytest.skip("frozen tokenizer weights not staged (run tokenizer.freeze / slm_stage first)")
+    codes = encode_residual_to_codes(np.zeros((17, 17, 17, 3), dtype=np.float64))
+    assert len(codes) == 64
+    assert all(isinstance(c, int) and 0 <= c < 256 for c in codes)
+    # load_frozen_vqvae asserts loaded-weight hashes == manifest; confirm identity too.
+    _model, manifest = load_frozen_vqvae()
+    assert manifest["arch_version"] == "vq_v2_srgbres_17to4_cb256_t64"
+
+
+def test_tokenizer_missing_weights_raises_requires_tokenizer(tmp_path, monkeypatch):
+    # With the encoder enabled but no staged weights, callers must still see RequiresTokenizer
+    # (degrade to pending), never a fabricated result.
+    pytest.importorskip("torch")
+    import tokenizer.frozen as frozen
+
+    frozen.load_frozen_vqvae.cache_clear()
+    monkeypatch.setenv("SLM_ARTIFACT_ROOT", str(tmp_path))  # empty -> no tokenizer/final/model.pt
+    monkeypatch.chdir(tmp_path)                             # repo-relative fallback also empty
     with pytest.raises(RequiresTokenizer):
-        encode_residual_to_codes(np.zeros((17, 17, 17, 3)))
+        encode_residual_to_codes(np.zeros((17, 17, 17, 3), dtype=np.float64))
+    frozen.load_frozen_vqvae.cache_clear()
 
 
 def test_teacher_gated_without_config(tmp_path):

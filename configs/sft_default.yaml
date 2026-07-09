@@ -1,0 +1,45 @@
+# QLoRA SFT config — overrides sft.config.SFTConfig defaults (training_plan_colab.md "Stage 5").
+# Loaded by a module-local _load_config in sft/vocab_resize.py and sft/train.py (staging pattern).
+# Only keys present here override the pinned SFTConfig defaults; omit a key to keep its default.
+
+base_model_id: Qwen/Qwen2.5-VL-3B-Instruct
+
+# LoRA
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+
+# QLoRA quantization
+load_in_4bit: true
+bnb_4bit_quant_type: nf4
+bnb_4bit_use_double_quant: true
+bnb_4bit_compute_dtype: bfloat16     # A100 supports bf16; falls back to float16 elsewhere
+
+# module policy
+freeze_vision_encoder: true
+projector_policy: lora               # lora | full | frozen(exploratory only)
+train_new_token_rows: true
+
+# optimization (epochs fixed at 2)
+epochs: 2
+per_device_batch_size: 1             # raise on the 40GB A100 once max_pixels is capped
+gradient_accumulation_steps: 32      # per_device * accum must equal effective_batch_size
+effective_batch_size: 32
+learning_rate_lora: 0.0002
+warmup_ratio: 0.03
+scheduler: cosine
+max_grad_norm: 1.0
+gradient_checkpointing: true
+seed: 0
+
+# Colab throughput / credit levers ("Runtime And Credit Optimization")
+max_pixels: 200704                   # 256*28*28 — dominant lever (caps vision tokens)
+min_pixels: 3136                     # 4*28*28
+max_seq_len: 1024
+
+# data / io
+active_rows_path: data/active_sft/active_rows.jsonl
+out_dir: models/sft_adapters
+
+# smoke overfit sizes (the FIRST run: 50 then 200)
+smoke_sizes: [50, 200]

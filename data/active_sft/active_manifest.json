@@ -1,0 +1,141 @@
+{
+  "acceptance": {
+    "criteria": {
+      "canonical_domain": {
+        "detail": "0 supported rows off-domain",
+        "status": "pass"
+      },
+      "expert_source_capped": {
+        "detail": "ppr10k+fivek fraction=0.49 vs cap 0.50",
+        "status": "pass",
+        "waived": false
+      },
+      "generic_input_support": {
+        "detail": "all 2761 supported rows have a paired input image",
+        "status": "pass"
+      },
+      "manifests_present": {
+        "detail": "model_clients.yaml=present; active_set_version=active_set_pending_freeze",
+        "status": "pass"
+      },
+      "no_dominance": {
+        "detail": "max_family_fraction=0.32",
+        "family_counts": {
+          "controlled_procedural": 39,
+          "fivek_derived": 538,
+          "fresh_luts": 197,
+          "gmic_rawtherapee": 191,
+          "ppr10k_derived": 956,
+          "scraped_web": 799,
+          "smaller_public_packs": 41,
+          "unsupported_teacher": 272
+        },
+        "status": "pass"
+      },
+      "no_leakage": {
+        "detail": "leakage_status=pass",
+        "status": "pass"
+      },
+      "provenance_and_behavior": {
+        "detail": "0 supported rows missing measured_behavior",
+        "status": "pass"
+      },
+      "representability_and_recon": {
+        "detail": "all 2761 supported rows: representability tier + 64 materialized tokens",
+        "status": "pass"
+      },
+      "scale": {
+        "detail": "n=3033 (scale gate relaxed for demo pool)",
+        "status": "pass"
+      },
+      "tags_backed_by_checks": {
+        "detail": "0 tag/behavior mismatches",
+        "examples": [],
+        "status": "pass"
+      },
+      "unmentioned_behavior_handled": {
+        "detail": "reverse tag<->behavior coverage",
+        "status": "pass"
+      },
+      "unsupported_coverage": {
+        "detail": "272 unsupported rows, 16 categories, mixed present",
+        "status": "pass"
+      }
+    },
+    "overall": "pass"
+  },
+  "active_set_version": "active_set_pending_freeze",
+  "counts": {
+    "supported": 2761,
+    "total": 3033,
+    "unsupported": 272,
+    "unsupported_fraction": 0.0897
+  },
+  "image_pairing": {
+    "generic_assigned": 1267,
+    "paths_normalized": 1494,
+    "pool_free_after": 2387,
+    "seed": 20260709
+  },
+  "materialization": {
+    "admission_gate_pass": true,
+    "materialized_rows": 2761,
+    "recon_overall": {
+      "max_deltae": 9.8467,
+      "mean_deltae": 1.3003,
+      "mean_psnr": 36.6728,
+      "p95_deltae": 2.8024
+    },
+    "tokenizer_version": "vq_v2_srgbres_17to4_cb256_t64__w91cffdd2c82f",
+    "unresolved_rows": 0
+  },
+  "regenerated_from": "active_rows.jsonl (post instruction-gen + unsupported append + dedupe)",
+  "regeneration_notes": [
+    "Regenerated OUTSIDE the pipeline from final rows; not a fresh selection.",
+    "per_bucket/effective_size/target_met omitted: selector bucket state is not persisted per-row.",
+    "leakage_report + tokenizer reconstruction remain pending; re-run at the Stage 9 freeze."
+  ],
+  "supported_allowed_override": {
+    "count": 4,
+    "dropped_tags": {
+      "darker": 2,
+      "more_contrast": 1
+    }
+  },
+  "supported_empty_gold_tags": 5,
+  "supported_instruction_status": {
+    "teacher_generated": 2761
+  },
+  "supported_per_family": {
+    "controlled_procedural": 39,
+    "fivek_derived": 538,
+    "fresh_luts": 197,
+    "gmic_rawtherapee": 191,
+    "ppr10k_derived": 956,
+    "scraped_web": 799,
+    "smaller_public_packs": 41
+  },
+  "unsupported_breakdown": {
+    "by_category": {
+      "content_generation": 18,
+      "content_removal": 18,
+      "content_replacement": 18,
+      "geometry": 18,
+      "inpainting": 13,
+      "local_region_edit": 13,
+      "mixed_partial_supported_plus_content_generation": 33,
+      "mixed_partial_supported_plus_local_edit": 12,
+      "mixed_partial_supported_plus_relighting": 17,
+      "mixed_partial_supported_plus_semantic_recolor": 13,
+      "mixed_partial_supported_plus_texture": 17,
+      "reference_style_transfer": 12,
+      "relighting": 18,
+      "selective_preservation": 18,
+      "semantic_object_recolor": 16,
+      "texture_detail": 18
+    },
+    "eval_reserved_rows_file": "data/active_sft/unsupported_eval_rows.jsonl",
+    "mixed": 92,
+    "train_rows": 272
+  }
+}

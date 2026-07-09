@@ -3,7 +3,8 @@ ARTIFACT_ROOT ?= .
 DURABLE_ROOT ?=
 LOCAL_ROOT ?= /content/slm
 
-.PHONY: help install fixtures test smoke cli-demo acquire data data-offline pack stage push clean clean-data
+.PHONY: help install fixtures test smoke cli-demo acquire data data-offline pack stage push clean clean-data \
+	materialize-tokens pair-images vocab-resize sft-smoke
 
 help:
 	@echo "Targets:"
@@ -20,6 +21,10 @@ help:
 	@echo "  push          slm_stage: local checkpoints/outputs -> DURABLE_ROOT"
 	@echo "  clean         remove eval_runs + generated eval fixtures"
 	@echo "  clean-data    remove acquired/derived data-gen artifacts (luts/, data/*)"
+	@echo "  materialize-tokens  encode canonical residuals -> 64 target_tokens (frozen tokenizer)"
+	@echo "  pair-images   attach leakage-safe generic input images to LUT-only supported rows"
+	@echo "  vocab-resize  Stage 3: add 259 LUT tokens to Qwen2.5-VL + embedding preflight"
+	@echo "  sft-smoke     Stage 5: 50/200-row QLoRA overfit smoke run (needs sft extra + GPU)"
 
 install:
 	$(PY) -m pip install -e ".[dev,data]"
@@ -69,6 +74,18 @@ stage:
 push:
 	$(PY) -m data_pipeline.staging.run_staging push \
 		--config configs/staging_default.yaml --durable-root $(DURABLE_ROOT) --local-root $(LOCAL_ROOT)
+
+materialize-tokens:
+	$(PY) -m scripts.materialize_target_tokens
+
+pair-images:
+	$(PY) -m scripts.pair_generic_images
+
+vocab-resize:
+	$(PY) -m sft.vocab_resize --config configs/sft_default.yaml --out models/base_resized
+
+sft-smoke:
+	$(PY) -m sft.train --config configs/sft_default.yaml --resized-model models/base_resized --smoke-size 50
 
 clean:
 	rm -rf eval_runs

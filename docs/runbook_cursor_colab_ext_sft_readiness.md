@@ -1,3 +1,8 @@
+<!-- IMPLEMENTATION NOTE (2026-07-09): Step-7 plan approved & underway; see /Users/ericwu/.claude/plans/greedy-stargazing-wall.md.
+     A1 scope reduced: only data_pipeline/tokenize_targets.py (encoder) is enabled; eval/lut_decoder.py stays
+     DISABLED (enabling cascades into the eval L2-L7 + CLI stack and breaks decoder_disabled tests; not needed
+     for SFT-target materialization, which verifies via tokenizer/metrics.py:reconstruct). Decoder enabling is
+     deferred to the eval-wiring / Stage-6 phase. -->
 # Runbook — Colab A100 SFT-Readiness via the **Cursor / VS Code Colab extension**
 
 > **Purpose.** Reach *SFT-readiness* for the LUT-SLM (prompt→LUT color grading) project on a hosted

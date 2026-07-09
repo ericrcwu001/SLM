@@ -15,8 +15,10 @@ from typing import Optional
 from .constants import (
     ACTIVE_SET_VERSION_PLACEHOLDER,
     CANONICAL_DOMAIN_ID,
+    CODEBOOK_SIZE,
     INSTRUCTION_STATUS_AUTHORED,
     INSTRUCTION_STATUS_PENDING,
+    TOKEN_COUNT,
     TOKEN_STATUS_PENDING,
 )
 from .instruction_gen import validate_tags_against_behavior
@@ -163,12 +165,29 @@ class AcceptanceChecker:
         crit["canonical_domain"] = {"status": PASS if not bad_dom else FAIL,
                                     "detail": f"{len(bad_dom)} supported rows off-domain"}
 
-        # 6 representability + tokenizer recon status -> recon is PENDING (no tokenizer)
-        missing_tier = [r.id for r in rows if r.is_supported and not r.representability_tier]
-        crit["representability_and_recon"] = {
-            "status": PENDING,
-            "detail": f"representability present ({n - len(missing_tier)}/{n}); "
-                      f"tokenizer reconstruction {TOKEN_STATUS_PENDING}"}
+        # 6 representability tier present + tokenizer targets materialized through the frozen
+        # tokenizer. PENDING until every supported row carries 64 valid ids + a real
+        # tokenizer_version (never fabricated); the per-target ΔE admission gate is enforced by
+        # the materialization step (scripts/materialize_target_tokens.py), not recomputable here.
+        sup6 = [r for r in rows if r.is_supported]
+        missing_tier = [r.id for r in sup6 if not r.representability_tier]
+
+        def _materialized(r: SftRow) -> bool:
+            tt = r.target_tokens
+            return (isinstance(tt, list) and len(tt) == TOKEN_COUNT
+                    and all(isinstance(x, int) and 0 <= x < CODEBOOK_SIZE for x in tt)
+                    and r.tokenizer_version not in (None, "", TOKEN_STATUS_PENDING))
+
+        unmat = [r.id for r in sup6 if not _materialized(r)]
+        if missing_tier or unmat:
+            crit["representability_and_recon"] = {
+                "status": PENDING,
+                "detail": f"representability {len(sup6) - len(missing_tier)}/{len(sup6)}; "
+                          f"tokens materialized {len(sup6) - len(unmat)}/{len(sup6)}"}
+        else:
+            crit["representability_and_recon"] = {
+                "status": PASS,
+                "detail": f"all {len(sup6)} supported rows: representability tier + 64 materialized tokens"}
 
         # 7 explicit tags backed by deterministic behavior
         tag_issues: list[str] = []
@@ -226,9 +245,17 @@ class AcceptanceChecker:
         crit["expert_source_capped"] = {
             "status": status_11, "detail": detail_11, "waived": bool(over and self.waive_expert_cap)}
 
-        # 12 generic input support -> needs paired generic images (pending for LUT-only rows)
-        crit["generic_input_support"] = {
-            "status": PENDING, "detail": "generic paired-image support check needs image pairs"}
+        # 12 generic input support -> every supported row has a paired input image
+        sup_rows = [r for r in rows if r.is_supported]
+        sup_no_img = [r.id for r in sup_rows if not r.image_path]
+        if sup_no_img:
+            crit["generic_input_support"] = {
+                "status": PENDING,
+                "detail": f"{len(sup_no_img)}/{len(sup_rows)} supported rows lack image_path"}
+        else:
+            crit["generic_input_support"] = {
+                "status": PASS,
+                "detail": f"all {len(sup_rows)} supported rows have a paired input image"}
 
         statuses = [c["status"] for c in crit.values()]
         if FAIL in statuses:

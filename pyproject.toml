@@ -35,6 +35,10 @@ frontier = ["openai>=1.40", "anthropic>=0.69"]
 # Reserved for the training/inference path (real Qwen-VL + trained VQ tokenizer);
 # also enables optional CLIP/sentence-transformer leakage/selection embedding axes.
 ml = ["torch>=2.1", "transformers>=4.45", "safetensors>=0.4", "sentence-transformers>=2.2", "open-clip-torch>=2.20"]
+# QLoRA SFT stage (Stage 5): the training/finetuning deps NOT in `ml`. Versions are floors; the
+# Colab image ships very recent transformers/torch, so pin a mutually-compatible set at install
+# time if peft/trl/bitsandbytes lag transformers (see docs/runbook_cursor_colab_ext_sft_readiness.md).
+sft = ["peft>=0.11", "trl>=0.9", "bitsandbytes>=0.43", "accelerate>=0.30", "datasets>=2.19", "qwen-vl-utils>=0.0.8"]
 # Apple-Silicon local GPU training accelerator for the VQ tokenizer (tokenizer/mlx). MLX
 # trains the mirror model on Metal; convert.py maps weights back to the torch VQVAE, which
 # stays the authoritative/portable path. Metal is float32-only (see tokenizer/mlx notes).
@@ -47,6 +51,8 @@ slm_acquire = "data_pipeline.acquire.run_acquire:main"
 slm_datagen = "data_pipeline.run_pipeline:main"
 slm_freeze_split = "data_pipeline.freeze_split:main"
 slm_stage = "data_pipeline.staging.run_staging:main"
+slm_vocab_resize = "sft.vocab_resize:main"
+slm_sft = "sft.train:main"
 
 [tool.setuptools]
 packages = [
@@ -54,6 +60,7 @@ packages = [
     "data_pipeline", "data_pipeline.acquire", "data_pipeline.sources", "data_pipeline.configs",
     "data_pipeline.staging",
     "tokenizer", "tokenizer.mlx",
+    "sft",
 ]
 
 [tool.setuptools.package-data]
