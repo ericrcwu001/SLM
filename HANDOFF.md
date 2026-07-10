@@ -229,6 +229,26 @@ needs no write token.
 conditioner as the free-text instruction → the semantic-IR seam is not lossy → proceed to P5/P6).
 FAIL ⇒ the two-stage move is off; stop and report.
 
-Result: _pending Colab paste._
+**Result (Colab T4, 2026-07-10) — recommendation=FAIL (marginal / within-CI):**
+- `METRIC_baseline` (instruction) = **0.361979**, CI [0.3368, 0.3871]
+- `METRIC_oracle` (attribute_spec_text) = **0.350781**, CI [0.3262, 0.3754]
+- delta = **−0.0112**; scored_rows=120, scored_units=97; 0 skipped/partial.
+- Per-family: oracle tracks baseline within ~1–1.5pp everywhere (ppr10k 0.419→0.406,
+  scraped_web 0.302→0.298, fivek 0.378→0.354); no family collapses.
+
+**Interpretation.** The literal gate FAILS (oracle < baseline), BUT:
+1. **Not significant** — the CIs overlap heavily; the oracle point (0.3508) sits inside the
+   baseline CI and vice-versa; Δ=−1.1pp ≪ the ~±2.5pp CI half-widths.
+2. **Confounded** — the current adapter was trained ONLY on `instruction`, so
+   `attribute_spec_text` is an out-of-distribution input for it; this biases the test AGAINST
+   the oracle. A marginal within-CI fail here is weak evidence for a "lossy seam"; the true test
+   needs a spec-aware generator.
+3. **Side-finding (P1 validated):** the honest one-stage baseline is **0.362** on the unit-aware
+   holdout vs the old **0.414** on the leaked row-id holdout — the ~5pp drop is exactly the
+   leakage inflation P1 predicted. 0.362 is the `eval_in_distribution_regression` baseline for P6.
+
+**Decision:** per the STOP contract, P5/P6 are NOT built. Awaiting the human's call on the
+confounded/near-tie result (see the options presented in chat). A confound-free decoder-free seam
+analysis (spec→codes injectivity / upper bound) is the recommended tiebreaker.
 
 ---
