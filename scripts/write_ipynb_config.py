@@ -48,7 +48,7 @@ def _is_target(cell: dict, tag: str) -> bool:
 def _cell_source(params: dict) -> list[str]:
     payload = json.dumps(params, indent=2)
     body = (
-        f"{MARKER}  (auto-written by bilevel-colab-loop; do not hand-edit)\n"
+        f"{MARKER}  (auto-written by the improve loop; do not hand-edit)\n"
         "import json, pathlib\n"
         f"_CANDIDATE = {payload!r}\n"
         f'pathlib.Path("{VM_CANDIDATE_PATH}").write_text(_CANDIDATE)\n'
