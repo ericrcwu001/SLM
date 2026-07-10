@@ -16,7 +16,7 @@ import pytest
 from sft import bilevel_bridge as bb
 from sft.holdout import DEFAULT_HOLDOUT_FRAC, is_holdout
 
-_SKILL = Path(__file__).resolve().parent.parent / ".agents/skills/bilevel-colab-loop/scripts"
+_SKILL = Path(__file__).resolve().parent.parent / "scripts"
 
 
 def test_holdout_deterministic_and_fraction():

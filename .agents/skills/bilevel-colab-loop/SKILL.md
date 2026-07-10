@@ -52,12 +52,12 @@ Workflow — not executable here).
 3. **Propose ONE candidate** (respect `param_space`, `frozen`, `guidance`; be diverse vs the trace —
    vary the dominant knob `learning_rate_lora` and LoRA capacity). Write
    `RUNDIR/proposal.json` = `{"params": {…}, "hypothesis": "…"}`.
-   a. `python .agents/skills/bilevel-colab-loop/scripts/write_ipynb_config.py --notebook NB --params-file RUNDIR/proposal.json`
+   a. `python scripts/write_ipynb_config.py --notebook NB --params-file RUNDIR/proposal.json`
    b. Record NB mtime. **Computer Use → "Run All"** in the Cursor Colab extension (config cell writes
       `/content/SLM/candidate.json`; the eval cell runs
       `python -m sft.bilevel_bridge --mode colab --config candidate.json --smoke-size <N> --run-id bl`).
    c. Wait until the eval cell finishes and NB is saved (autosave, or Save). 
-   d. `python .agents/skills/bilevel-colab-loop/scripts/read_ipynb_metric.py --notebook NB --min-mtime <recorded>`.
+   d. `python scripts/read_ipynb_metric.py --notebook NB --min-mtime <recorded>`.
 4. **Record:**
    - `status=ok` → `python ENGINE/scripts/run_iteration.py --run-dir RUNDIR --proposal RUNDIR/proposal.json --pre-shaped --metric <metric>`.
    - `status!=ok` (no_metric/failed/stale) → mark the proposal blocked and record it as dropped:
