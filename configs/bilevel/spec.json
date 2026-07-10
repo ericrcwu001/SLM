@@ -1,0 +1,42 @@
+{
+  "run_id": "sft_stage7_tokacc",
+  "goal": "Maximize held-out teacher-forced LUT-code token accuracy of the QLoRA SFT adapter by tuning LoRA capacity, LR, warmup, and the vision-token budget. Decoder-free proxy for LUT fidelity (frozen VQ decoder stays disabled; frozen tokenizer immutable). Metric is injected externally (Codex reads it off the local .ipynb after a Colab run), so objective.kind='recipe' — the recipe judges are never invoked; the loop is driven by the plain engine scripts.",
+  "objective": {
+    "kind": "recipe",
+    "recipe_file": "configs/bilevel/recipe.md",
+    "metric_parse": "json"
+  },
+  "direction": "max",
+  "param_space": {
+    "lora_r":             { "type": "int",   "low": 8,       "high": 32 },
+    "lora_alpha":         { "type": "int",   "low": 16,      "high": 64 },
+    "lora_dropout":       { "type": "float", "low": 0.0,     "high": 0.1 },
+    "learning_rate_lora": { "type": "float", "low": 0.00005, "high": 0.0005 },
+    "warmup_ratio":       { "type": "float", "low": 0.0,     "high": 0.1 },
+    "max_grad_norm":      { "type": "float", "low": 0.3,     "high": 2.0 },
+    "weight_decay":       { "type": "float", "low": 0.0,     "high": 0.1 },
+    "max_pixels":         { "type": "cat",   "choices": [50176, 100352, 200704, 401408] }
+  },
+  "baseline_config": {
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "learning_rate_lora": 0.0002,
+    "warmup_ratio": 0.03,
+    "max_grad_norm": 1.0,
+    "weight_decay": 0.0,
+    "max_pixels": 200704
+  },
+  "locked": [],
+  "budgets": {
+    "T": 14,
+    "K": 5,
+    "M": 2,
+    "k": 3,
+    "B": 1,
+    "patience": 12,
+    "time_budget_s": 3600,
+    "epsilon": 0.01
+  },
+  "safety": { "l2": "approve" }
+}

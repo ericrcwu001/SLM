@@ -7,8 +7,18 @@ loss masking, cosine schedule with warmup. The FIRST run is the 50/200-row overf
 (``--smoke-size``), single-seed and labeled exploratory.
 
 Heavy deps (transformers/peft/bitsandbytes/accelerate/qwen-vl-utils) are the ``sft`` extra and are
-imported lazily. Image paths in the dataset are RELATIVE and resolve against ``$SLM_ARTIFACT_ROOT``
-(the staged corpus root on Colab), falling back to cwd.
+imported lazily. Example construction + row loading live in :mod:`sft.example` (shared with the
+token-accuracy scorer). Image paths resolve against ``$SLM_ARTIFACT_ROOT`` (the staged corpus root
+on Colab), falling back to cwd.
+
+Held-out rows (:mod:`sft.holdout`) are EXCLUDED from training so :mod:`sft.score_tokens` can score
+generalization on them. The random seed is taken from the ``BILEVEL_SEED`` env var when set (so the
+bilevel engine's ``repeats`` are genuinely independent draws), else ``cfg.seed``; the training row
+order is shuffled with that seed.
+
+Machine-readable output: a single ``{"sft_summary": {...}}`` JSON line is printed before the final
+``[sft][OK]``; a run that trains ZERO rows/steps prints ``[sft][ABORT]`` and returns non-zero
+(never a misleading ``[sft][OK]`` on an untrained adapter — the silent-success trap).
 
 ⚠ First-draft trainer — validate on the Colab A100 (transformers/Qwen-VL API + memory) before the
 full run. Runs nothing on import.
@@ -25,12 +35,14 @@ import dataclasses
 import json
 import math
 import os
+import random
 from pathlib import Path
 
 import yaml
 
 from data_pipeline.errors import RequiresTokenizer, SFTError
 from sft.config import DEFAULT_CONFIG, SFTConfig
+from sft.example import artifact_root, build_supervised_example, load_rows, supported_rows
 from sft.manifest import build_adapter_manifest, write_manifest
 
 _DEFAULT_CFG_PATH = Path("configs/sft_default.yaml")
@@ -44,19 +56,22 @@ def _load_config(path: str | None) -> SFTConfig:
     return SFTConfig(**kw)
 
 
-def _artifact_root() -> Path:
-    return Path(os.environ.get("SLM_ARTIFACT_ROOT", os.getcwd()))
-
-
-def _resolve_image(path: str) -> str:
-    return path if os.path.isabs(path) else str(_artifact_root() / path)
+def _effective_seed(cfg: SFTConfig) -> int:
+    """Seed from BILEVEL_SEED (bilevel repeats) when set, else cfg.seed. Distinct seeds -> distinct
+    new-token init, dropout masks, and data order, so the engine's variance gate is not defeated."""
+    env = os.environ.get("BILEVEL_SEED")
+    if env is not None:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    return cfg.seed
 
 
 def _load_rows(active_rows_path: str, smoke_size: int | None):
-    """Load supported (materialized) + unsupported rows; take a balanced smoke subset."""
-    rows = [json.loads(l) for l in Path(active_rows_path).read_text(encoding="utf-8").splitlines() if l.strip()]
-    sup = [r for r in rows if r.get("is_supported") and isinstance(r.get("target_tokens"), list)
-           and len(r["target_tokens"]) == 64 and r.get("image_path") and r.get("instruction")]
+    """Load supported (materialized, holdout-EXCLUDED) + unsupported rows; take a balanced smoke subset."""
+    rows = load_rows(active_rows_path)
+    sup = supported_rows(rows, holdout=False)  # exclude the scored holdout slice from training
     unsup = [r for r in rows if not r.get("is_supported") and r.get("image_path") and r.get("instruction")]
     if not sup:
         raise SFTError("no materialized supported rows (run scripts.materialize_target_tokens first)")
@@ -81,7 +96,8 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
     except Exception:  # noqa: BLE001
         from transformers import AutoModelForVision2Seq as _ModelCls  # type: ignore
 
-    torch.manual_seed(cfg.seed)
+    seed = _effective_seed(cfg)
+    torch.manual_seed(seed)
     compute_dtype = torch.bfloat16 if cfg.bnb_4bit_compute_dtype == "bfloat16" else torch.float16
 
     processor = AutoProcessor.from_pretrained(resized_model, trust_remote_code=True,
@@ -104,28 +120,10 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
     model.print_trainable_parameters()
 
     rows = _load_rows(cfg.active_rows_path, smoke_size)
+    random.Random(seed).shuffle(rows)  # seeded order so BILEVEL_SEED repeats differ
+    print(f"[sft] RUN_BEGIN run_id={run_id} rows={len(rows)} smoke_size={smoke_size} "
+          f"seed={seed} artifact_root={artifact_root()}")
     print(f"[sft] training rows={len(rows)} (smoke_size={smoke_size})")
-
-    def _example(row):
-        """Build (inputs, labels) with the assistant target masked-in, prompt masked-out."""
-        from qwen_vl_utils import process_vision_info
-        user = {"role": "user", "content": [
-            {"type": "image", "image": _resolve_image(row["image_path"])},
-            {"type": "text", "text": row["instruction"]}]}
-        target = row["assistant_target"] if row.get("is_supported") else "<unsupported>"
-        assistant = {"role": "assistant", "content": [{"type": "text", "text": target}]}
-        prompt_text = processor.apply_chat_template([user], tokenize=False, add_generation_prompt=True)
-        full_text = processor.apply_chat_template([user, assistant], tokenize=False, add_generation_prompt=False)
-        image_inputs, video_inputs = process_vision_info([user])
-        full = processor(text=[full_text], images=image_inputs, videos=video_inputs,
-                         padding=True, return_tensors="pt", max_length=cfg.max_seq_len, truncation=True)
-        prompt = processor(text=[prompt_text], images=image_inputs, videos=video_inputs,
-                           return_tensors="pt")
-        labels = full["input_ids"].clone()
-        n_prompt = prompt["input_ids"].shape[1]
-        labels[:, :n_prompt] = -100                      # assistant-only loss
-        full["labels"] = labels
-        return {k: v.to(model.device) for k, v in full.items()}
 
     trainable = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(trainable, lr=cfg.learning_rate_lora, weight_decay=cfg.weight_decay)
@@ -143,17 +141,23 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
     model.train()
     step = micro = 0
     running = 0.0
+    loss_sum = 0.0        # cumulative mean-loss numerator over every micro-step (for the summary line)
+    n_seen = 0            # micro-steps that actually produced a loss (rows trained)
+    skipped = 0           # rows dropped by _example (bad image path / truncation)
     for epoch in range(cfg.epochs):
         for row in rows:
             try:
-                batch = _example(row)
+                batch = build_supervised_example(processor, row, cfg, device=model.device)
             except Exception as exc:  # noqa: BLE001 — skip a bad row rather than kill the run
+                skipped += 1
                 print(f"[sft][skip] {row.get('id')}: {type(exc).__name__}: {exc}")
                 continue
             loss = model(**batch).loss / cfg.gradient_accumulation_steps
             loss.backward()
             running += float(loss) * cfg.gradient_accumulation_steps
+            loss_sum += float(loss) * cfg.gradient_accumulation_steps
             micro += 1
+            n_seen += 1
             if micro % cfg.gradient_accumulation_steps == 0:
                 for g in opt.param_groups:
                     g["lr"] = _lr(step)
@@ -169,6 +173,17 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
         if max_steps and step >= max_steps:
             break
 
+    mean_loss = (loss_sum / n_seen) if n_seen else None
+    # Fail loud on a no-op: 0 optimizer steps / 0 rows trained means every image was skipped
+    # (wrong SLM_ARTIFACT_ROOT / case trap) or the subset was empty. Never write an [sft][OK]
+    # adapter that was not actually trained (the silent-success trap).
+    if step == 0 or n_seen == 0:
+        print(json.dumps({"sft_summary": {"run_id": run_id, "steps": step, "rows_trained": n_seen,
+                                          "skipped": skipped, "mean_loss": mean_loss}}))
+        print(f"[sft][ABORT] 0 rows trained (steps={step} rows_trained={n_seen} skipped={skipped}) — "
+              f"check SLM_ARTIFACT_ROOT ({artifact_root()}) / image paths")
+        return 1
+
     ckpt = Path(out_dir) / f"{run_id}_smoke{smoke_size or 'full'}"
     model.save_pretrained(ckpt)
     tok.save_pretrained(ckpt)
@@ -177,13 +192,21 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
     from tokenizer.manifest import hash_state_dict
     trainable_sd = {n: p for n, p in model.named_parameters() if p.requires_grad}
     adapter_sha = hash_state_dict({n: p.detach().float().cpu() for n, p in trainable_sd.items()})
-    tok_manifest = _read_json(_artifact_root() / "tokenizer" / "final" / "manifest.json")
+    tok_manifest = _read_json(artifact_root() / "tokenizer" / "final" / "manifest.json")
     vr_manifest = _read_json(Path(resized_model) / "vocab_resize_manifest.json")
     manifest = build_adapter_manifest(
         run_id=run_id, adapter_step=step, adapter_sha256=adapter_sha, cfg=cfg.to_dict(),
         tokenizer_manifest=tok_manifest, vocab_resize_manifest=vr_manifest,
-        train_report={"rows": len(rows), "steps": step, "smoke_size": smoke_size, "epochs": cfg.epochs})
+        train_report={"rows": len(rows), "steps": step, "rows_trained": n_seen, "skipped": skipped,
+                      "mean_loss": mean_loss, "smoke_size": smoke_size, "epochs": cfg.epochs,
+                      "seed": seed})
     write_manifest(ckpt / "adapter_manifest.json", manifest)
+
+    # Single machine-readable summary line (parsed by sft.bilevel_bridge to guard steps>0 and read
+    # the training loss); printed on its own line before the human-facing [sft][OK].
+    print(json.dumps({"sft_summary": {"run_id": run_id, "steps": step, "rows_trained": n_seen,
+                                      "skipped": skipped, "mean_loss": mean_loss,
+                                      "adapter": str(ckpt), "adapter_sha256": adapter_sha}}))
     print(f"[sft][OK] adapter -> {ckpt}  steps={step} adapter_sha256={adapter_sha[:16]}…")
     return 0
 
