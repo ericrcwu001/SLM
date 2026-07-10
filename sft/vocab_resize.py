@@ -72,6 +72,11 @@ def _write_artifacts(out_dir: str, model, processor, tok, manifest: dict) -> Pat
     model.save_pretrained(out)
     processor.save_pretrained(out)   # writes preprocessor_config.json + chat template (the missing files)
     tok.save_pretrained(out)         # authoritative resized tokenizer (overwrites the processor's copy)
+    # Defensive: some transformers versions don't emit preprocessor_config.json from
+    # processor.save_pretrained; write it explicitly from the image processor so train.py's
+    # AutoProcessor.from_pretrained(out) can never fail on a missing image-processor config.
+    if not (out / "preprocessor_config.json").is_file() and getattr(processor, "image_processor", None) is not None:
+        processor.image_processor.save_pretrained(out)
     write_manifest(out / "vocab_resize_manifest.json", manifest)
     return out
 
