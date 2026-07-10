@@ -144,7 +144,12 @@ def summarize_scores(records: list[dict], *, B: int = _CI_BOOTSTRAP_B, seed: int
     }
 
 
-def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int) -> dict:
+def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int,
+          *, input_field: str = "instruction", prep_row=None) -> dict:
+    """Score an adapter's held-out token accuracy. ``input_field`` selects the generator input
+    (``instruction`` one-stage, or ``attribute_spec_text`` two-stage); ``prep_row`` is an optional
+    callable applied to each row before example construction (used by the oracle gate to stamp
+    ``attribute_spec_text`` from ground-truth ``measured_behavior``)."""
     try:
         import torch
         from transformers import AutoProcessor, BitsAndBytesConfig
@@ -183,8 +188,11 @@ def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int) -> dict:
     records: list[dict] = []
     skipped = partial = 0
     for row in rows:
+        if prep_row is not None:
+            prep_row(row)
         try:
-            batch = build_supervised_example(processor, row, cfg, device=model.device)
+            batch = build_supervised_example(processor, row, cfg, device=model.device,
+                                             input_field=input_field)
         except Exception as exc:  # noqa: BLE001 — skip a bad/missing-image/truncated row
             skipped += 1
             print(f"[score][skip] {row.get('id')}: {type(exc).__name__}: {exc}")

@@ -88,20 +88,29 @@ def surviving_code_positions(tokenizer, input_ids, n_prompt: int) -> int:
     return sum(1 for t in span if t in code_ids)
 
 
-def build_supervised_example(processor, row: dict, cfg, *, device=None) -> dict:
+def build_supervised_example(processor, row: dict, cfg, *, device=None,
+                             input_field: str = "instruction") -> dict:
     """Build one ``(inputs, labels)`` example: assistant target un-masked, prompt masked to ``-100``.
 
     Mirrors the trainer's supervised construction so teacher-forced scoring aligns with training.
+    ``input_field`` selects the text the generator is conditioned on — ``"instruction"`` (one-stage,
+    the default) or ``"attribute_spec_text"`` (the two-stage generator input; ADR 0021). The oracle
+    gate (P4) scores the current adapter under both to test the semantic-IR seam; P6 flips the
+    default to ``attribute_spec_text``.
+
     Raises :class:`SFTError` on a degenerate mask (``n_prompt >= full_len`` after end-truncation,
     which would mask the whole sequence → NaN loss) so callers skip the row rather than corrupt.
     """
     from qwen_vl_utils import process_vision_info
 
+    text = row.get(input_field)
+    if not text:
+        raise SFTError(f"row {row.get('id')}: empty input field {input_field!r}")
     user = {
         "role": "user",
         "content": [
             {"type": "image", "image": resolve_image(row["image_path"])},
-            {"type": "text", "text": row["instruction"]},
+            {"type": "text", "text": text},
         ],
     }
     target = row["assistant_target"] if row.get("is_supported") else "<unsupported>"

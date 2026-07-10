@@ -171,3 +171,59 @@ oracle gate.
 Commit: see `feat/two-stage` history (P3).
 
 ---
+
+## P4 — AttributeSpec + captioner + ORACLE GATE (ADR 0021, 0026) ⏸ waiting on Colab
+
+**Goal.** Freeze the interpreter↔generator interface in code (deterministic, round-trippable
+`attribute_spec_text`), build the captioner that produces the interpreter's training data, and prove
+the **hard go/no-go**: a ground-truth spec must drive the current generator ≥ the one-stage metric.
+
+**Changes (LOCAL, done)**
+- `data_pipeline/attribute_spec.py` — NEW `AttributeSpec` (behavior_v2 axes + route + confidence +
+  out_of_gamut/refuse_reason + source_text) with a deterministic, round-trippable serializer/parser
+  (`serialize`/`parse`; `parse(serialize(spec)) == spec`), `from_measured_behavior` (the ground-truth
+  path), `measured_behavior_to_text`, and the `is_backed` backing gate (ADR 0021 §6). Bipolar tags
+  encode direction with a positive magnitude (`muted=+4.8`); hues are integer degrees; canonical key
+  order + fixed float precision.
+- `sft/example.py` — `build_supervised_example` gained `input_field="instruction"` (backward-compat);
+  `"attribute_spec_text"` selects the two-stage input. `sft/score_tokens.py` `score()` gained
+  `input_field` + a `prep_row` hook.
+- `sft/oracle_gate.py` — NEW: scores the CURRENT adapter on the P1 unit-aware holdout TWICE
+  (instruction=baseline vs ground-truth attribute_spec_text=oracle), reusing the P1 unit-clustered
+  CIs; prints `METRIC_baseline=`, `METRIC_oracle=`, `{"oracle_gate": …}` and PASS ⇔ oracle ≥ baseline.
+- `notebooks/oracle_gate_run.ipynb` — NEW self-provisioning A100 notebook (checks out `feat/two-stage`,
+  stages corpus, reuses `base_resized`, downloads the current adapter, runs the gate).
+- `data_pipeline/captioning.py` + `scripts/generate_captions.py` — NEW teacher captioner: many
+  diverse captions/LUT (literal/metaphor/mood/concept/slang) → the LUT's `attribute_spec_text`
+  (grounded target), resumable, `--dry-run`; writes `caption_rows.jsonl` (the P5 interpreter corpus,
+  a NEW versioned artifact).
+- Tests: `test_attribute_spec.py` (11), `test_oracle_gate.py` (4), `test_captioning.py` (6).
+  `python3 -m pytest -q` → **357 passed** (+21).
+
+**Captioning deferred (not blocking the gate).** `TFY_BASE_URL` is unset locally, so per the plan's
+"else hand off" clause the captioner cannot run here; and captions only feed P5, which the oracle gate
+gates. The captioner is built + dry-run-validated; the full run is the first post-gate step (run
+locally once `TFY_BASE_URL` is set, or hand off). Building it before the go/no-go would risk wasted
+teacher spend.
+
+### 🛑 COLAB HANDOFF — ORACLE GATE (hard go/no-go; do NOT build P5/P6 until confirmed)
+
+Run `notebooks/oracle_gate_run.ipynb` on the A100 (Auto Connect → Run All). It:
+`export SLM_ARTIFACT_ROOT=/content/slm` (LOWERCASE staged corpus; code at `/content/SLM` UPPERCASE),
+stages if missing, reuses `models/base_resized`, downloads adapter
+`ericrcwu/LUT_SLM_sft_adapters/bl_a0ccbcff_smokefull` (the current one-stage full-run winner), and
+runs `python -m sft.oracle_gate --adapter models/sft_adapters/bl_a0ccbcff_smokefull --limit 0`.
+
+Secrets on the remote kernel: upload `.env` or paste `HF_TOKEN` (read scope OK) via getpass; the gate
+needs no write token.
+
+**Paste back**: the `METRIC_baseline=…` line, the `METRIC_oracle=…` line, and the
+`{"oracle_gate": …}` JSON line.
+
+**Gate**: PASS ⇔ `METRIC_oracle ≥ METRIC_baseline` (the ground-truth spec is at least as good a
+conditioner as the free-text instruction → the semantic-IR seam is not lossy → proceed to P5/P6).
+FAIL ⇒ the two-stage move is off; stop and report.
+
+Result: _pending Colab paste._
+
+---
