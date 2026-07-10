@@ -1,6 +1,6 @@
 # Teacher Prompt Quality Gates
 
-Status: Accepted.
+Status: Accepted. Amended by ADR 0022 (behavior_v2 axes + unified tag vocabulary).
 
 Teacher-generated instruction data will include both structured prompt tags and
 natural-language prompts. Deterministic color-behavior checks are authoritative

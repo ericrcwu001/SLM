@@ -1,6 +1,6 @@
 # Unsupported Prompt Boundary
 
-Status: Amended by current behavior and eval docs.
+Status: Amended by current behavior and eval docs, and by ADR 0023 (refuse/clarify boundary incl. out-of-gamut).
 
 V1 refuses prompts that require local region edits, semantic object recoloring,
 content generation/removal/replacement, geometry/detail changes, relighting,

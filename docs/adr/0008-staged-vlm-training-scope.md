@@ -1,6 +1,6 @@
 # Staged VLM Training Scope
 
-Status: Amended by ADR 0007, ADR 0015, and the current training plan.
+Status: Amended by ADR 0007, ADR 0015, ADR 0020 (two-stage interpreter + generator), and the current training plan.
 
 V1 starts by freezing the vision encoder while applying LoRA to the language
 model and adapting the multimodal projector/connector. Full language-model

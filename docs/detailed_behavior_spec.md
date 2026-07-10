@@ -39,26 +39,34 @@ mixed prompt.
 
 ## Inputs
 
-The model receives:
+The system receives:
 
 ```text
 source_image: RGB image
-instruction: natural-language prompt from the user
+user_text: natural-language prompt from the user
 ```
 
-The model does not receive:
+The interpreter (small distilled LM) maps `user_text` to an `attribute_spec_text`
+(the serialized AttributeSpec; see `docs/attribute_spec.md`, behavior_v2) plus a
+route. On the `grade` route the generator is conditioned on:
+
+```text
+source_image: RGB image
+attribute_spec_text: serialized AttributeSpec from the interpreter
+```
+
+The system does not receive, at any stage:
 
 ```text
 target graded image
 target LUT
 gold tags
-structured recipe
 explanation text
 ```
 
 Gold tags, target images, target LUTs, measured behavior vectors, and
 target-fidelity measurements are used for dataset construction, filtering,
-reward computation, and evaluation.
+reward computation, and evaluation only.
 
 ## Outputs
 
@@ -110,6 +118,11 @@ and tone changes.
 | Saturation | "more saturated", "muted", "desaturated" | chroma direction |
 | Neutral safety | "keep neutrals clean" | neutral-axis drift gate |
 | Global skin safety | "keep skin natural" | intrinsic skin-locus LUT-domain gate |
+| Global hue cast | "shift everything toward teal", "push the whole image greener" | global hue rotation (`global_hue_deg` + `global_hue_magnitude`) |
+| Per-tone-region hue | "warmer shadows", "cooler highlights", "shift the midtone hue" | per-region hue angle (`shadow_hue_deg` / `midtone_hue_deg` / `highlight_hue_deg`) |
+| Per-hue saturation | "mute the reds", "punch up the blues" | per-sector chroma (`per_hue_saturation`, 7 sectors: red/orange/yellow/green/cyan/blue/magenta) |
+| Contrast shape | "lift the toe", "roll off the shoulder" | tone-curve toe/shoulder deltas (`contrast_toe_delta` / `contrast_shoulder_delta`) |
+| Matte | "matte finish", "flatten the blacks" | matte strength (`matte_strength`) |
 
 Important boundary: "keep skin natural" is a global safety constraint, not a
 promise that the model can isolate skin semantically while changing everything
@@ -124,6 +137,10 @@ thresholds. Before final eval, the active windows are copied into
 `eval/configs/calibration_manifest.json` under version key `style_window_version`
 (a Stage 9 output; see master_plan.md). Any change to these windows requires an
 explicit spec/config diff and version bump.
+
+Note: a "recipe window" is a deterministic style-bundle threshold used for eval
+discriminability; it is distinct from the interpreter's AttributeSpec (see
+`docs/attribute_spec.md`), which is the per-prompt generator conditioning.
 
 | Style | Provisional Recipe Window |
 | --- | --- |
@@ -152,8 +169,17 @@ is declared.
 ## Ambiguous Child-Language Policy
 
 Natural language is valuable because children may describe intent before they
-know editing terms. Ambiguous terms are handled by mapping them to global color
-behavior when possible and refusing them when they require unsupported behavior.
+know editing terms. Ambiguous terms are handled with the interpreter's three
+routes: mapping them to global color behavior when possible (`grade`), asking for
+a supported direction when the color intent is under-specified (`clarify`), and
+refusing them when they require unsupported behavior (`refuse`).
+
+The `clarify` route (behavior_v2; ADR 0023) applies when the color intent is
+under-specified rather than unsupported. Prompts such as "make it better" or "fix
+the colors" name no measurable direction, so the interpreter routes them to
+`clarify` and offers supported directions (for example warmer/cooler,
+brighter/darker, more/less saturated) instead of silently grading a guessed look
+or refusing a valid request.
 
 | Prompt | Supported Interpretation | Refusal Case |
 | --- | --- | --- |
@@ -172,7 +198,10 @@ workbench should show a visible boundary message and suggest a global rewrite.
 
 ## Unsupported Prompt Space
 
-The model must refuse prompts that require:
+Refusals split into two categories on the interpreter's `refuse` route (ADR
+0023): `out_of_scope` and `out_of_gamut`.
+
+The `out_of_scope` category covers prompts that require:
 
 - Local region edits.
 - Semantic object recoloring.
@@ -203,18 +232,40 @@ make it warmer and remove the background
 give it a cinematic look and make the shirt red
 ```
 
-## LUT Representation Contract
+The `out_of_gamut` category is distinct from `out_of_scope`: the color intent is
+global and well-specified, but the frozen tokenizer cannot represent it. It
+covers infrared / false-color looks, pure-primary casts, and full hue-rotation.
+The boundary is the materialization admission gate: an intended grade is out of
+gamut when no LUT can be materialized within mean DeltaE00 <= 3.0 and p95
+DeltaE00 <= 6.0.
 
-The model predicts tokens, not raw LUT floats.
+Examples that must produce `<unsupported>` as `out_of_gamut`:
 
 ```text
-source image + instruction
+make it look like infrared false-color
+turn the whole image pure red
+rotate every hue by 180 degrees
+```
+
+A parametric renderer that could satisfy some of these intents is deferred to a
+later version; in v1 they are refused as `out_of_gamut`.
+
+## LUT Representation Contract
+
+The generator predicts tokens, not raw LUT floats. The full path is two-stage:
+
+```text
+source image + user text
         ->
-Qwen2.5-VL-3B-Instruct with LUT vocabulary
+interpreter (small distilled LM)
+        ->
+AttributeSpec + route; on `grade`, attribute_spec_text
+        ->
+generator: Qwen2.5-VL-3B QLoRA with LUT vocabulary (image + attribute_spec_text)
         ->
 <lut_bos> 64 LUT code tokens <lut_eos>
         ->
-VQ tokenizer decoder
+frozen VQ tokenizer decoder
         ->
 canonical 17x17x17 residual LUT
         ->

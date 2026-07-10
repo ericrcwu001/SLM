@@ -1,11 +1,17 @@
 # Prompt-to-LUT Behavior Spec
 
-Given a source image and a supported global color-grading instruction, the model
-must output exactly 64 valid LUT code tokens enclosed by `<lut_bos>` and
-`<lut_eos>`. Those tokens must decode into one canonical 17x17x17 residual global
-LUT which, after adding identity and applying to the image, changes every
-explicit gold prompt attribute in the correct measured direction, matches the
-target grade within the target-fidelity gate, and passes LUT safety gates.
+The system receives a source image and free-form user text. A small distilled
+interpreter LM maps the user text to an AttributeSpec plus a route -- `grade`,
+`clarify`, or `refuse` (schema: `docs/attribute_spec.md`, behavior_v2). On
+`grade`, the generator (the same Qwen2.5-VL-3B QLoRA), conditioned on the
+interpreter's `attribute_spec_text` and the image, must output exactly 64 valid
+LUT code tokens enclosed by `<lut_bos>` and `<lut_eos>`. Those tokens must decode
+through the frozen VQ decoder into one canonical 17x17x17 residual global LUT
+which, after adding identity and applying to the image, changes every explicit
+gold prompt attribute in the correct measured direction, matches the target grade
+within the target-fidelity gate, and passes LUT safety gates. Otherwise the whole
+system emits exactly `<unsupported>` (route `refuse`), for either `out_of_scope`
+or `out_of_gamut` instructions. See ADRs 0020-0023.
 
 Given an unsupported instruction requiring local, semantic, generative,
 geometry/detail, relighting, reference-transfer, or impossible

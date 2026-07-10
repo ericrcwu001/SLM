@@ -1,6 +1,6 @@
 # Eval Splits And Provenance Contract
 
-Status: Accepted.
+Status: Accepted. Amended by ADR 0024 (eval-honesty contract).
 
 The provenance registry must contain the fields needed by its own split,
 selection, and eval rules. In addition to source metadata, rows must record

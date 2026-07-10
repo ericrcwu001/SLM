@@ -12,13 +12,19 @@ same model with preview, compare, undo, revise, and naming workflows.
 ## System Overview
 
 ```text
-source image + natural-language instruction
+source image + user text
         ->
-Qwen2.5-VL-3B-Instruct with added LUT vocabulary
+Interpreter (small distilled LM, default LiquidAI/LFM2.5-350M-Base)
+        ->
+AttributeSpec + route {grade, clarify, refuse}
+        ->  (route = grade)
+attribute_spec_text (+ source image)
+        ->
+Generator: Qwen2.5-VL-3B-Instruct QLoRA with added LUT vocabulary
         ->
 <lut_bos> 64 LUT code tokens <lut_eos>
         ->
-VQ LUT tokenizer decoder
+frozen VQ LUT tokenizer decoder
         ->
 canonical 17x17x17 residual LUT
         ->
@@ -29,17 +35,31 @@ canonical absolute global LUT
 .cube export + graded image + metrics + version manifest
 ```
 
-Unsupported request path:
+Unsupported request path (refusal now covers two causes, `out_of_scope` and
+`out_of_gamut`):
 
 ```text
-source image + unsupported instruction
+source image + user text
         ->
-Qwen2.5-VL-3B-Instruct with added LUT vocabulary
+Interpreter route = refuse
+   out_of_scope  (not a global color transform)      OR
+   out_of_gamut  (global look the frozen tokenizer cannot represent)
         ->
 <unsupported>
         ->
 visible refusal in CLI/workbench
 ```
+
+The system is two-stage (ADR 0020). An interpreter (small distilled LM, default
+`LiquidAI/LFM2.5-350M-Base`) maps the user text to an `AttributeSpec` (ADR 0021;
+schema source of truth `docs/attribute_spec.md`) plus a route
+`{grade, clarify, refuse}`. On `grade` the spec is serialized to
+`attribute_spec_text` and sent (with the image) to the generator. The generator is
+the SAME Qwen2.5-VL-3B QLoRA as before: only its INPUT changes (free-text
+`instruction` -> `attribute_spec_text`) while its OUTPUT contract (still 64 VQ
+codes into the frozen decoder) and locked knobs are unchanged. Refusals span both
+`out_of_scope` (not a global color transform) and `out_of_gamut` (a global look
+the frozen tokenizer cannot represent); see ADR 0023.
 
 ## Major Components
 
@@ -47,8 +67,9 @@ visible refusal in CLI/workbench
 | --- | --- |
 | LUT corpus builder | ingest, parse, derive, canonicalize, normalize, and filter LUTs |
 | VQ LUT tokenizer | compress canonical residual 17x17x17 LUTs into 64 code tokens |
+| Interpreter | small distilled LM (default `LiquidAI/LFM2.5-350M-Base`): map user text to an `AttributeSpec` plus route `{grade, clarify, refuse}` (ADR 0020/0021) |
 | Instruction corpus builder | pair images, prompts, gold tags, and LUT token targets |
-| VLM | predict token sequence or `<unsupported>` from image + instruction |
+| Generator (VLM) | predict token sequence or `<unsupported>` from `attribute_spec_text` + image (same Qwen2.5-VL-3B QLoRA; only the input changed) |
 | Decoder/runtime | constrained decoding, decode tokens, add identity, export `.cube`, apply LUT |
 | Evaluator | score syntax, boundary, color direction, target fidelity, safety, and baselines |
 | CLI | run inference and produce versioned artifacts |
@@ -71,6 +92,11 @@ Reasons:
   general frontier capability.
 
 ## Output Vocabulary
+
+The output vocabulary and grammar in this section are unchanged under the
+two-stage design (ADR 0020): the generator still emits exactly 64 LUT code tokens
+or `<unsupported>`. Only the generator INPUT changed — free-text `instruction` ->
+`attribute_spec_text` (see System Overview).
 
 Add special tokens:
 
@@ -363,6 +389,13 @@ initialize and save both consistently.
 
 The instruction dataset consumed by SFT uses JSONL or Parquet.
 
+Under the two-stage design (ADR 0020/0021), the generator is conditioned on
+`attribute_spec_text` rather than the raw instruction. The supported row therefore
+carries `attribute_spec_text` (the generator input, serialized by the interpreter
+from the user text and validated against the row's measured behavior) and a
+`route` field, while the token-target contract is unchanged (still 64 codes). The
+AttributeSpec schema source of truth is `docs/attribute_spec.md`.
+
 Supported row:
 
 ```json
@@ -371,6 +404,8 @@ Supported row:
   "image_path": "images/train/000001.jpg",
   "image_sha256": "...",
   "instruction": "Give it a warm matte look with muted colors.",
+  "attribute_spec_text": "route=grade | warmer=+2.3 muted=+2.0 matte=+2.5 lifted_blacks=+1.0 | conf=0.82",
+  "route": "grade",
   "assistant_target": "<lut_bos> <lut_042> ... <lut_eos>",
   "target_tokens": [42, 17, 200, 5, "... 64 code ids total ...", 128],
   "is_supported": true,

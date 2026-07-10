@@ -75,6 +75,14 @@ fabricate: **token materialization** (needs the frozen VQ tokenizer → `Require
 rows carry `token_status=pending_tokenizer`) and **instruction text** (needs a pinned
 teacher in `configs/model_clients.yaml` → `RequiresTeacher`, `instruction_status=pending_teacher`).
 
+**Two-stage split (ADR 0020).** At inference the system takes (source image, user text): a separate
+**Interpreter** LM maps the user text → an **AttributeSpec** (serialized to `attribute_spec_text`;
+schema in `docs/attribute_spec.md`, design in
+`docs/adr/0020-two-stage-interpreter-generator.md`), and the **Generator** (the Qwen2.5-VL QLoRA
+model) is conditioned on that `attribute_spec_text` (+image) to emit the 64 VQ codes. Accordingly
+`instruction_gen.py` is repointed to **captioning** (many captions per LUT) rather than emitting one
+concise instruction.
+
 Sources (`configs/source_inventory.yaml`): RawTherapee HaldCLUT (direct zip), G'MIC presets,
 FiveK + PPR10K via HuggingFace mirrors, FreshLUTs (authenticated crawl — set
 `SLM_FRESHLUTS_EMAIL`/`SLM_FRESHLUTS_PASSWORD`), and a local procedural generator. Downloads
@@ -102,7 +110,7 @@ data_pipeline/
   active_dataset.py    SFT rows + 12-criterion AcceptanceChecker              (Stage 9)
   eval_sets.py         frozen eval slices                                     (Stage 9)
   tokenize_targets.py  GATED (RequiresTokenizer)
-  instruction_gen.py   GATED (RequiresTeacher) + tag<->behavior validation
+  instruction_gen.py   CAPTIONING (many captions/LUT), GATED (RequiresTeacher)
   warmup.py            train-only pair enumeration                           (Stage 11)
   run_pipeline.py      Stage 2->3->4->5->6->9->11 orchestrator
   configs/pipeline_default.yaml

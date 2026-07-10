@@ -1,6 +1,6 @@
 # Source-Balanced Instruction Sampling
 
-Status: Superseded by ADR 0015.
+Status: Superseded by ADR 0015. Related: ADR 0026 (captioning-for-diversity data policy).
 
 The older decision used a 50,000-example corpus with 30% PPR10K-derived LUTs and
 25% FiveK-derived LUTs. That source mix has been superseded.

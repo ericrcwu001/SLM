@@ -1,9 +1,16 @@
 # AGENTS.md — LUT-SLM SFT improve loop (persistent context for Codex)
 
-Prompt-to-LUT VLM: **Qwen/Qwen2.5-VL-3B-Instruct** fine-tuned with QLoRA to emit **64 VQ code
-tokens** (`<lut_000>…<lut_255>`) that a **frozen** VQVAE decodes to a color-grading LUT. The frozen
+Prompt-to-LUT is **two-stage**. An **Interpreter** (separate small distilled LM, default
+`LiquidAI/LFM2.5-350M-Base`) maps user text → an **AttributeSpec** + a route {grade, clarify,
+refuse}. The **Generator** — the SAME **Qwen/Qwen2.5-VL-3B-Instruct**, QLoRA fine-tuned — is
+conditioned on the serialized `attribute_spec_text` (+image) to emit **64 VQ code tokens**
+(`<lut_000>…<lut_255>`) that a **frozen** VQVAE decodes to a color-grading LUT. The frozen
 tokenizer, its decoder, and the corpus are **immutable / read-only**. Never enable
 `eval/lut_decoder.py`, never retrain/re-gate/re-freeze the tokenizer, never modify `data/` or `luts/`.
+
+> **Scope note:** the Interpreter is a **separate** model (default `LiquidAI/LFM2.5-350M-Base`),
+> trained **outside** this SFT improve-loop; the locked/tunable-knob rules here govern the
+> **generator** only.
 
 ## Where things live (Colab case trap — this bites)
 - **Repo clone:** `/content/SLM` (uppercase) — code, `active_rows.jsonl`, `models/base_resized`,
@@ -18,7 +25,9 @@ Held-out, teacher-forced **LUT-code token accuracy** via `python -m sft.score_to
 (direction=**max**). Decoder-free proxy for LUT fidelity — faithful-ish (exact codes → target LUT)
 but **not** perceptual ΔE (ΔE needs the disabled frozen decoder, out of bounds). Held-out slice is
 `sft.holdout.is_holdout` (excluded from training). One `METRIC=<float>` sentinel line is the
-contract; the last one wins.
+contract; the last one wins. The generator now trains/scores on `attribute_spec_text` inputs (the
+serialized AttributeSpec) instead of the concise `instruction`; the token-accuracy mechanics above
+are otherwise **unchanged**.
 
 ## Running one eval (on the A100)
 `python -m sft.bilevel_bridge --mode colab --config /content/SLM/candidate.json --smoke-size <N>

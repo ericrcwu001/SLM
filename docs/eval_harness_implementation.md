@@ -26,7 +26,7 @@ One supported eval row is:
   "instruction": "Make the image warmer with softer contrast.",
   "is_supported": true,
   "support_label": "supported",
-  "gold_tags": ["warmer", "softer_contrast"],
+  "gold_tags": ["warmer", "less_contrast"],
   "style_bundle": null,
   "style_primary": null,
   "target_lut_path": "luts/eval/000001.npy",
@@ -79,7 +79,7 @@ Unsupported and mixed rows use:
   "support_label": "unsupported",
   "unsupported_category": "mixed_partial_supported_plus_content_generation",
   "unsupported_components": ["content_removal"],
-  "supported_components": ["warmer", "softer_contrast"],
+  "supported_components": ["warmer", "less_contrast"],
   "mixed_prompt": true,
   "boundary_pair_id": "mixed_boundary_001",
   "boundary_pair_role": "unsupported_mixed",
@@ -271,28 +271,42 @@ The same interpolation method must be used in target generation, scoring,
 
 ## Direction Checks
 
-| Tag | Metric | Expected Direction |
+Tags map to canonical `behavior_v2` axes from the unified tag vocabulary, which is
+the single source of truth (`docs/attribute_spec.md` §10; ADR 0022). This table
+MUST match that mapping. The divergent aliases `more_magenta`/`more_green`
+(-> `tint_magenta`/`tint_green`), `higher_contrast`/`softer_contrast`
+(-> `more_contrast`/`less_contrast`), and `desaturated` (-> `muted`) are retired.
+
+| Tag | Axis (`behavior_v2`) | Expected Direction |
 | --- | --- | --- |
-| `warmer` | mean Lab b* | increase |
-| `cooler` | mean Lab b* | decrease |
-| `more_magenta` | mean Lab a* | increase |
-| `more_green` | mean Lab a* | decrease |
-| `brighter` | mean L* | increase |
-| `darker` | mean L* | decrease |
-| `higher_contrast` | p95(L*) - p5(L*) | increase |
-| `softer_contrast` | p95(L*) - p5(L*) | decrease |
-| `lifted_blacks` | p5(L*) | increase |
-| `crushed_blacks` | p5(L*) | decrease |
-| `softer_highlights` | high-mask L* compression and clip gate | decrease or roll off |
-| `brighter_highlights` | high-mask L* | increase |
-| `warmer_highlights` | high-mask b*/hue quadrant | orange/yellow shift |
-| `cooler_highlights` | high-mask b*/hue quadrant | blue/cyan shift |
-| `lifted_shadows` | low-mask L* | increase |
-| `darker_shadows` | low-mask L* | decrease |
-| `cooler_shadows` | low-mask b*/hue quadrant | decrease or teal/cyan shift |
-| `warmer_shadows` | low-mask b*/hue quadrant | increase or warm shift |
-| `more_saturated` | chroma | increase |
-| `muted` or `desaturated` | chroma | decrease |
+| `warmer` | `temperature_delta_b` (mean Lab b*) | increase |
+| `cooler` | `temperature_delta_b` (mean Lab b*) | decrease |
+| `tint_magenta` | `tint_delta_a` (mean Lab a*) | increase |
+| `tint_green` | `tint_delta_a` (mean Lab a*) | decrease |
+| `brighter` | `mean_l_delta` (mean L*) | increase |
+| `darker` | `mean_l_delta` (mean L*) | decrease |
+| `more_contrast` | `contrast_l_spread_delta` (p95(L*) - p5(L*)) | increase |
+| `less_contrast` | `contrast_l_spread_delta` (p95(L*) - p5(L*)) | decrease |
+| `more_saturated` | `chroma_delta` (chroma) | increase |
+| `muted` | `chroma_delta` (chroma) | decrease |
+| `lifted_blacks` | `black_point_l_delta` (p5(L*)) | increase |
+| `crushed_blacks` | `black_point_l_delta` (p5(L*)) | decrease |
+| `lifted_shadows` | `shadow_l_delta` (low-mask L*) | increase |
+| `brighter_highlights` | `highlight_l_delta` (high-mask L*) | increase |
+| `softer_highlights` | `highlight_l_delta` (high-mask L* + clip gate) | decrease or roll off |
+| `cooler_shadows` | `shadow_hue_deg` (low-mask region hue) | shift toward blue/cyan (teal) |
+| `warmer_shadows` | `shadow_hue_deg` (low-mask region hue) | shift toward orange/warm |
+| `cooler_highlights` | `highlight_hue_deg` (high-mask region hue) | shift toward blue/cyan |
+| `warmer_highlights` | `highlight_hue_deg` (high-mask region hue) | shift toward orange/yellow |
+| `hue_cast_{red,orange,yellow,green,cyan,blue,magenta}` | `global_hue_deg` + `global_hue_magnitude` (NEW) | `global_hue_deg` rotates toward the named sector; `global_hue_magnitude` increases |
+| `sat_{sector}_up` | `per_hue_saturation[sector]` (NEW) | increase in the named INPUT-hue sector |
+| `sat_{sector}_down` | `per_hue_saturation[sector]` (NEW) | decrease in the named INPUT-hue sector |
+
+Style bundles (`matte`, `faded`, `filmic`, `cinematic`, `teal-orange`, `sepia`,
+`bleach bypass`, `natural`) are measured composites, not single-axis directions;
+they are scored by the L7 style-recipe/discriminability gate against the
+`calibration_manifest.json` windows (`matte` additionally has a first-class
+`matte_strength` axis). See "Style Metrics".
 
 Final eval minimum detectable movement:
 
@@ -555,6 +569,60 @@ Leakage prevention:
 - No same `derived_lut_id`, `source_pair_id`, `support_map_hash`, generic paired
   input image, or split unit id may cross train/eval.
 
+## Eval-Honesty Slices And Interpreter Metrics (ADR 0024)
+
+The two-stage design (ADR 0020) adds an Interpreter that maps user text to an
+AttributeSpec plus a route, so the harness gains decoder-free honesty slices and
+interpreter-level metrics on top of the L0-L8 LUT stack. These are contractual
+under ADR 0024 (eval-honesty).
+
+Honesty invariants:
+
+- **Unit-aware holdout.** Held-out assignment keys on `split_unit_id`, never the
+  row id, so near-duplicate LUT units cannot straddle the train/holdout boundary.
+  Expect and accept a headline drop that quantifies prior per-row-split inflation.
+- **Score all held-out rows.** Drop any default `--limit`; score every held-out
+  row and report macro per-slice and per-family accuracy with group-bootstrap CIs.
+- **Exact-64 assertion.** Every scored supported row must have exactly 64 surviving
+  code positions (consistent with L1/L2; closes the partial-truncation blind spot).
+- **Frozen decoder stays disabled** for these slices (`eval/lut_decoder.py`): they
+  test the Interpreter and routing with decoder-free proxies, not the frozen VQ
+  decode path.
+
+Three-way route at the L0 boundary. The route decision is
+`grade` / `clarify` / `refuse` (ADR 0023), extending the L0 boundary beyond the
+2-way non-refusal-vs-`<unsupported>` split. `refuse` covers BOTH out-of-scope and
+out-of-gamut requests. At L0: a gold `grade` row fails if it is clarified or
+refused; a gold `refuse` row passes only on the correct refusal (`<unsupported>`);
+`clarify` is scored as its own class. `grade` still carries the full L1-L8
+supported stack; `refuse` uses the exact-`<unsupported>` rule.
+
+New decoder-free slices:
+
+| Slice | What it tests |
+| --- | --- |
+| `unseen-wording` | supported request phrased with wording absent from training |
+| `named-concept` | a named style/look concept the Interpreter should map to known axes |
+| `nonce-concept` | a made-up/nonce concept that must route to `clarify` or `refuse`, not hallucinate axes |
+| `counterfactual-ranking` | the correct AttributeSpec must rank above counterfactual edits |
+| `paraphrase-consistency` | paraphrases of one request must yield a consistent AttributeSpec/route |
+| `refuse (out-of-scope + out-of-gamut)` | both refusal families must route to `refuse` |
+| `in-distribution regression` | held-in supported distribution does not regress |
+
+These slices are declared in `eval/configs/gating_slice_registry.yaml` alongside
+the existing binding registry entries.
+
+Interpreter metrics (reported next to the LUT-stack metrics):
+
+```text
+interpreter_attribute_f1   # requested-vs-measured axis F1 against the gold AttributeSpec
+route_accuracy             # 3-way grade/clarify/refuse accuracy
+over_refusal_rate          # gold grade routed to clarify/refuse / all gold grade
+```
+
+These interpreter-facing metrics complement but do not replace the L0-L8
+supported/unsupported pass criteria; the frozen decoder remains disabled here.
+
 ## Baselines
 
 Evaluate the same frozen rows against:
@@ -579,6 +647,17 @@ Evaluate the same frozen rows against:
 15. SFT checkpoint.
 16. RS/DPO checkpoint if trained.
 17. GRPO checkpoint if trained.
+
+> **"Recipe mode" is a baseline term, distinct from the production AttributeSpec
+> path (ADR 0020, 0021).** The "recipe mode" baselines (9 and 10) — a model or
+> parser emitting a compact JSON *recipe* that a deterministic renderer converts to
+> a LUT — are a BASELINE construct only. They are NOT the production two-stage path:
+> there the Interpreter emits an **AttributeSpec** (serialized to
+> `attribute_spec_text`), NOT a "recipe", which conditions the Generator, whose 64
+> VQ codes go through the frozen decoder. Keep "recipe mode" reserved for these
+> deterministic-renderer baselines so the baseline question (does fine-tuning beat
+> prompt+renderer?) stays separate from the production interpreter path. Schema
+> source of truth: `docs/attribute_spec.md`.
 
 The project model uses only its native path:
 
@@ -891,4 +970,5 @@ directional improvement; statistically inconclusive; do not ship over the prior 
 
 The GRPO ship gate above presumes GRPO was run at all. GRPO is run only when the
 best prior tuned stage has plateaued and reward correctness is proven; both
-preconditions are defined operationally in `docs/training_plan_colab.md` Stage 9.
+preconditions are defined operationally in `docs/training_plan_colab.md` Stage 15
+(conditional GRPO under ADR 0025 training sequence v2).

@@ -1,6 +1,6 @@
 # Baseline Comparisons
 
-Status: Amended.
+Status: Amended; see ADR 0024 (eval-honesty contract).
 
 Evaluation compares the tuned prompt-to-LUT model against null, constant,
 deterministic, prompted, frontier, image-blind, and tuned-stage baselines.

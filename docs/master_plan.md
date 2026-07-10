@@ -25,7 +25,7 @@ Build the real image-conditioned prompt-to-LUT model with caveats.
 - Use Colab QLoRA for SFT.
 - Use RS/DPO before GRPO; run GRPO only after simpler tuned stages plateau and
   reward correctness is proven. Plateau and reward-correctness are defined
-  operationally in `docs/training_plan_colab.md` Stage 9.
+  operationally in `docs/training_plan_colab.md` Stage 15.
 
 ## Document Set
 
@@ -33,21 +33,40 @@ Build the real image-conditioned prompt-to-LUT model with caveats.
 | --- | --- |
 | `docs/behavior_spec.md` | compact falsifiable behavior contract |
 | `docs/detailed_behavior_spec.md` | full behavioral contract, boundaries, style recipes, thresholds, CLI/workbench behavior |
+| `docs/attribute_spec.md` | interpreter/generator interface: `AttributeSpec` schema, `behavior_v2` axes, route enum, unified tag vocabulary (ADR 0021, 0022) |
 | `docs/eval_harness_implementation.md` | eval layers, parser, constrained decoding modes, metrics, splits, baselines, reports |
 | `docs/model_architecture.md` | model, tokenizer, vocabulary, runtime, safety, version manifest, rollout architecture |
 | `docs/data_collection_plan.md` | scraping, derivation, provenance, representability gates, usage-aware culling, active dataset |
 | `docs/training_plan_colab.md` | Colab notebooks, tokenizer training, warmup, QLoRA SFT, RS/DPO, optional GRPO |
+| `docs/AUDIT_claude_codex_prompt_to_lut.md` | prompt-to-LUT design audit; motivates the two-stage interpreter/generator move (ADR 0020) |
 | `docs/master_plan.md` | consolidated project direction |
 
-`docs/lut_methodology_improvement_plan.md` is superseded. `docs/project spec.md`
+`docs/archive/lut_methodology_improvement_plan.md` is superseded. `docs/project spec.md`
 is the external/course brief, not project methodology authority.
 
 ## Core Behavior
 
-Supported prompt:
+The system input is a source image plus free-form user text, processed in two
+stages (ADR 0020).
+
+Stage 1 - Interpreter (small distilled LM, default `LiquidAI/LFM2.5-350M-Base`)
+maps the user text to an `AttributeSpec` carrying a route:
 
 ```text
-source image + global color instruction
+source image + user text
+        ->
+Interpreter -> AttributeSpec { route, behavior_v2 axes, confidence, out_of_gamut }
+```
+
+- `grade`: serialize the spec to `attribute_spec_text` and pass it to Stage 2.
+- `clarify`: offer concrete supported directions instead of guessing a grade.
+- `refuse`: emit `<unsupported>` (ADR 0023).
+
+Stage 2 - Generator (the same `Qwen2.5-VL-3B-Instruct` QLoRA) is conditioned on
+`attribute_spec_text` (+ image):
+
+```text
+attribute_spec_text + source image
         ->
 <lut_bos> exactly 64 valid LUT code tokens <lut_eos>
         ->
@@ -56,21 +75,21 @@ canonical 17x17x17 residual global LUT
 full .cube LUT + graded image
 ```
 
-Unsupported prompt:
+Refused prompt - out of scope OR out of gamut:
 
 ```text
-source image + local/semantic/generative/relighting/reference/etc. instruction
+local/semantic/generative/relighting/reference instruction   (out of scope)
+   or infrared / pure-primary / hue-rotation look             (out of gamut)
         ->
 <unsupported>
 ```
 
-Mixed prompt:
-
-```text
-supported global request + any unsupported component
-        ->
-<unsupported>
-```
+Out-of-gamut looks are refused, not rendered: there is no parametric renderer,
+and the refuse boundary mirrors the frozen tokenizer's materialization admission
+gate (`docs/attribute_spec.md` "Route semantics"; ADR 0023). Mixed prompts
+(supported global request + any unsupported component) refuse. The `AttributeSpec`
+schema, `behavior_v2` axes, and unified tag vocabulary are the source of truth in
+`docs/attribute_spec.md` (ADR 0021, 0022).
 
 The model output contains no prose. Explanations and "what changed" labels are
 generated later from metrics and UI logic.
@@ -220,24 +239,37 @@ Order:
 7. Train VQ LUT tokenizer on train-split accepted LUTs only.
 8. Freeze tokenizer after mean, tail, per-family, per-target, codebook, and
    roundtrip gates pass.
-9. Build active 10k-15k instruction dataset and freeze final headline,
-    diagnostic, and qualitative eval sets.
+9. Define the `AttributeSpec` schema (`behavior_v2` axes + route) and caption
+    corpus LUTs, then build the active 10k-15k dataset pairing (image,
+    `attribute_spec_text`) with 64-code targets and freeze final headline,
+    diagnostic, and qualitative eval sets (ADR 0021, 0022, 0024, 0026).
 10. Resize vocabulary and run embedding/head preflight assertions.
 11. Materialize `data/warmup/{warmup_set_version}/` from train-only accepted
     LUT/image identities after `active_set_version` and `eval_set_version` are
     frozen.
 12. Run generative LUT-token warmup on the frozen train-only warmup set.
 13. Run SFT smoke tests.
-14. Train Qwen2.5-VL-3B-Instruct with QLoRA.
+14. Retrain the generator - the same Qwen2.5-VL-3B-Instruct QLoRA - now
+    conditioned on `attribute_spec_text` (+ image) rather than a free-text
+    instruction, after the Stage 13A interpreter is distilled (ADR 0020, 0025).
 15. Re-evaluate and report base, null, constant, deterministic, image-blind,
     warmup, and SFT baselines (confirmatory; the image-conditioning ablations
     are gated at Stage 14, not here).
 16. Run RS/DPO over scored rollouts if SFT clears gates.
 17. Run GRPO only if RS/DPO plateaus and reward correctness is proven (plateau
     rule and reward-correctness test set in `docs/training_plan_colab.md`
-    Stage 9).
+    Stage 15).
 18. Package CLI demo.
 19. Plan workbench.
+
+The two-stage split (ADR 0020) and its authoritative v2 stage sequence live in
+`docs/adr/0025-training-sequence-v2.md`; `docs/training_plan_colab.md` renumbers
+in lockstep. Two lettered sub-stages carry the split into the binding **Stage
+Artifact Contracts** below without renumbering the frozen tokenizer,
+materialization, or warmup stages: **9A** (`AttributeSpec` + captioning + oracle
+`attribute_spec -> codes` gate; ADR 0025 step 9) and **13A** (interpreter
+distillation, default `LiquidAI/LFM2.5-350M-Base`; ADR 0025 step 10), which runs
+before the Stage 14 generator retrain (ADR 0025 step 11).
 
 SFT pass gates are CI-gated and defined in `docs/eval_harness_implementation.md`.
 At a high level, SFT must pass free-generation validity, boundary metrics,
@@ -246,7 +278,7 @@ deterministic-renderer baselines, plus the image-conditioning ablation baselines
 
 GRPO pass gates are also CI-gated. GRPO runs only after the best prior tuned
 stage has plateaued and reward correctness is proven against the adversarial
-reward-hacking test set (`docs/training_plan_colab.md` Stage 9). To ship, GRPO
+reward-hacking test set (`docs/training_plan_colab.md` Stage 15). To ship, GRPO
 must beat the best prior tuned stage, not just SFT, and must not increase
 over-refusal or boundary failures beyond the allowed ceiling; the exact ship
 boolean is `(improvement OR safety-improvement) AND (all guardrails)`, defined in
@@ -259,7 +291,9 @@ inputs exist and the prior stage's acceptance gate passed. Gate-required baselin
 the artifact root in `docs/training_plan_colab.md` "Artifact Storage". Version
 keys are artifact identity fields from the runtime manifest, provenance
 registry, tokenizer manifest, active/eval manifests, deterministic threshold manifest, gating-slice
-registry, warmup manifest, and reward config. Stage numbers follow the Training Strategy order above. Gates are
+registry, warmup manifest, and reward config. Stage numbers follow the Training Strategy order above; lettered sub-stages (9A,
+13A) insert the two-stage interpreter/generator split (ADR 0020, 0025) without
+renumbering the frozen tokenizer, materialization, or warmup stages. Gates are
 summarized here; the authoritative doc § holds the exact formulas and
 thresholds.
 
@@ -274,16 +308,18 @@ thresholds.
 | 6 split manifest + eval reservations | accepted canonical candidates + quality/representability reports + `configs/leakage_thresholds.yaml` | `data/splits/` split manifest — `split_id`, `leakage_report_hash`, `leakage_policy_version` | deterministic split units created; eval/diagnostic/qualitative identities reserved before tokenizer or warmup use; no exact/near-neighbor leakage by image, LUT, source pair, support map, or prompt template, using the pinned thresholds in `configs/leakage_thresholds.yaml` (a `leakage_policy_version` bump forces a fresh `leakage_report.json`) | data_collection_plan.md "Splits And Leakage Rules" |
 | 7 train VQ tokenizer | train-split accepted canonical residual tensors + tokenizer-dev holdout; eval-reserved identities excluded | `tokenizer/checkpoints/` candidate — `tokenizer_weights_hash` | heldout mean DeltaE00 <= 2.0, p95 <= 4.0, p99 <= 6.0; mean PSNR >= 35 dB, p5 >= 30 dB; per-family gates; active-code/perplexity alert reviewed; roundtrip tests pass | training_plan_colab.md "Stage 1: LUT Tokenizer Training"; model_architecture.md "LUT Tokenizer" |
 | 8 freeze tokenizer | passing tokenizer checkpoint + diagnostics | `tokenizer/final/` frozen decoder + manifest — `tokenizer_version`, `vq_codebook_sha256`, `vq_decoder_sha256`, `flatten_order` | mean/tail/per-family/per-target/codebook/roundtrip gates all pass; frozen manifest fields recorded; per-target SFT admission mean <= 3.0, p95 <= 6.0 | model_architecture.md "LUT Tokenizer" (frozen manifest fields); training_plan_colab.md "Stage 1: LUT Tokenizer Training"; data_collection_plan.md "Post-Tokenizer Filtering" |
-| 9 active dataset + frozen eval sets | accepted gold rows + per-target tokenizer reconstruction + selection embeddings + split units + `configs/model_clients.yaml` | `data/active_sft/` (10k-15k, default 12k) + `data/eval/` frozen sets (usage-weighted headline 800 supported/200 unsupported/100 qual + additive diagnostic slices -> 1300 supported/300 unsupported total; see eval_harness_implementation.md "Eval Splits") + `eval/configs/calibration_manifest.json` (deterministic style windows + skin-locus thresholds copied from the spec/config) + `eval/configs/gating_slice_registry.yaml` — `active_set_version`, `eval_set_version`, `style_window_version`, `skin_locus_threshold_version`, `gating_slice_registry_version` | Active Dataset Acceptance Criteria (scale, no-dominance, no-leakage, provenance + measured behavior, canonical domain, representability + tokenizer recon, tags backed by checks, unsupported coverage); deterministic style windows + skin-locus thresholds are frozen from the behavior spec/config with no human-rater labels; every ship-gated metric has a `gating_slice_registry.yaml` entry; headline-eligibility assigned | data_collection_plan.md "Active Dataset Acceptance Criteria", "Splits And Leakage Rules"; detailed_behavior_spec.md "Deterministic Threshold Freeze"; training_plan_colab.md "Stage 2: Active Dataset Preparation"; eval_harness_implementation.md "Eval Splits", "Initial binding registry" |
+| 9 active dataset + frozen eval sets | accepted gold rows + per-target tokenizer reconstruction + selection embeddings + split units + `configs/model_clients.yaml` | `data/active_sft/` (10k-15k, default 12k; supported rows condition on `attribute_spec_text` per Stage 9A) + `data/eval/` frozen sets (usage-weighted headline 800 supported/200 unsupported/100 qual + additive diagnostic slices -> 1300 supported/300 unsupported total; see eval_harness_implementation.md "Eval Splits") + `eval/configs/calibration_manifest.json` (deterministic style windows + skin-locus thresholds copied from the spec/config) + `eval/configs/gating_slice_registry.yaml` — `active_set_version`, `eval_set_version`, `style_window_version`, `skin_locus_threshold_version`, `gating_slice_registry_version` | Active Dataset Acceptance Criteria (scale, no-dominance, no-leakage, provenance + measured behavior, canonical domain, representability + tokenizer recon, tags backed by checks, unsupported coverage); deterministic style windows + skin-locus thresholds are frozen from the behavior spec/config with no human-rater labels; every ship-gated metric has a `gating_slice_registry.yaml` entry; headline-eligibility assigned | data_collection_plan.md "Active Dataset Acceptance Criteria", "Splits And Leakage Rules"; detailed_behavior_spec.md "Deterministic Threshold Freeze"; training_plan_colab.md "Stage 2: Active Dataset Preparation"; eval_harness_implementation.md "Eval Splits", "Initial binding registry" |
+| 9A AttributeSpec + captioning + oracle gate | frozen tokenizer decoder + accepted corpus LUTs + `measured_behavior` (`behavior_v2`) + `configs/model_clients.yaml` | `AttributeSpec` schema/serializer + captioned `(caption -> AttributeSpec + route)` pairs and `attribute_spec_text` for active/eval rows — `attribute_spec_version = attribute_spec_v1`, `behavior_vector_version = behavior_v2` | canonical serialize->parse is identity; every asserted axis backed by a measurable `behavior_v2` axis (backing rule); **oracle gate (hard go/no-go)**: feeding ground-truth `measured_behavior` as `attribute_spec_text` reproduces target codes at or above one-stage token accuracy, else abandon the two-stage move before Stages 13A/14 | attribute_spec.md (whole), "Oracle upper-bound gate", "Backing rule"; data_collection_plan.md "Measured Behavior Vector"; ADR 0021, 0022, 0025, 0026 |
 | 10 vocab resize + preflight | `Qwen/Qwen2.5-VL-3B-Instruct` base + frozen tokenizer manifest | resized base + preflight report — `vocab_size_after_resize`, `added_special_token_ids`, `tied_embedding_status` | `len(tokenizer) == embed rows == lm_head rows`; token-suffix→codebook index asserted; only the 259 new rows train; old rows unchanged after a smoke step; save/load roundtrip within tolerance | model_architecture.md "Vocabulary Resize And Embedding Preflight"; training_plan_colab.md "Stage 3: Vocabulary Resize And Preflight" |
 | 11 warmup dataset materialization | frozen tokenizer + split manifest + active/eval manifests + train-only accepted LUTs/images | `data/warmup/{warmup_set_version}/manifest.json` + `pairs.parquet` — `warmup_set_version`, `leakage_report_hash` | 30k-100k pairs; every supported target has 64 valid tokens; no eval/diagnostic/qualitative image, LUT, source_pair, support_map, prompt-template, split-unit, or near-neighbor identity; diversity/token reports pass | data_collection_plan.md "Warmup Data Materialization"; training_plan_colab.md "Stage 4A: Materialize Warmup Dataset" |
 | 12 generative LUT-token warmup | frozen warmup set + resized base | `models/warmup_adapters/` — `adapter_id`, `adapter_sha256`, `adapter_step`, `warmup_set_version` | 50-example overfit near-perfect free-generation grammar; 200-example reproduces supported sequences + exact `<unsupported>` (where included); `free_generation_valid_token_rate` beats token baseline; no old-vocab drift | training_plan_colab.md "Stage 4B: Generative LUT-Token Warmup" |
 | 13 SFT smoke tests | `data/active_sft/` 50/200 subset + warmup adapter + resized base | `models/sft_adapters/` smoke checkpoints (`smoke_50_examples`, `overfit_200_examples`) — `adapter_step` | 50-example overfit near-perfect free-gen token syntax; 200-example reproduces supported tokens + unsupported; single-seed allowed but labeled exploratory | training_plan_colab.md "Stage 5: SFT With QLoRA" (smoke tests), "Stage 0: Eval Before Training" |
-| 14 QLoRA SFT | full `data/active_sft/` + warmup adapter + resized base | `models/sft_adapters/` (`sft_final`) — `adapter_id`, `adapter_sha256`, `adapter_step` | SFT Pass Criteria: free-gen valid-token lower CI >= 85%; unsupported recall/precision, boundary_f1, mixed recall lower CI >= 80%; near-boundary pair acc >= 85%; over-refusal upper CI <= 10%; supported target pass >= 60%; beats null +30pp / constant +20pp / deterministic headline +5pp and renderer-hard slice gates; the image-blind (+10pp), blank-image (> 0), and shuffled-image (> 0) ablations on `eval_image_sensitivity` are trained and scored within this stage and must clear before the gate is evaluated; 3 seeds for final claims | eval_harness_implementation.md "Pass Criteria"; training_plan_colab.md "Stage 5: SFT With QLoRA", "Stage 6: SFT Evaluation Gate", "Stage 7: Image-Conditioning Ablations" |
-| 15 confirmatory baselines + ablations report | frozen eval sets + base/null/constant/deterministic/image-blind/warmup/SFT checkpoints | `eval_runs/{run_id}/` (`overall_results.csv`, `baseline_delta.csv`, `seed_summary.csv`, ...) — `eval_config_version`, `eval_set_version`, seed policy | runtime constrained `syntax_valid_rate == 100%`; full baseline and ablation deltas archived with paired CIs and min_N registry; reproduces the Stage 14 image-conditioning ablation result as confirmation — this stage is reporting/analysis and is not a prerequisite for the SFT gate | eval_harness_implementation.md "Baselines", "Statistics", "Reports"; training_plan_colab.md "Stage 7: Image-Conditioning Ablations" |
-| 16 RS/DPO | passing SFT checkpoint + scored rollouts (4-8 completions/prompt) | `models/rs_dpo_adapters/` — `adapter_id`, `adapter_sha256`, `adapter_step`, `reward_config_version` | ships only if it beats SFT outside paired CI without increasing over-refusal, mixed-boundary failure, or safety failures beyond allowed gates; RS/DPO hyperparameters pinned | training_plan_colab.md "Stage 8: Rejection Sampling / DPO"; model_architecture.md "Rollout Optimization Architecture" |
-| 17 GRPO | best prior tuned checkpoint (plateaued) + 1k-3k prompts x4 completions | `models/grpo_adapters/` — `adapter_id`, `adapter_sha256`, `reward_config_version`, `eval_config_version` | GRPO ships only if paired-boot 95% lower bound pass_rate(GRPO - best prior tuned) >= +5pp, or safety upper bound <= -5pp; over-refusal <= +2pp; mixed recall and near-boundary pair acc drop <= 2pp; multi-seed confirms | eval_harness_implementation.md "Pass Criteria" (GRPO ships only if); training_plan_colab.md "Stage 9: Optional GRPO"; model_architecture.md "Rollout Optimization Architecture" |
-| 18 package CLI demo | frozen tokenizer decoder + best tuned adapter + eval config + sample images + manifest | `cli_exports/` `prompt_to_lut` bundle + `version_manifest.json` — full manifest key set | `prompt_to_lut --self-check` matches manifest (vocab size, special-token ids, `vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, color pipeline, ICC config, `.cube` serialization); repeat run gives identical `output_tokens.txt` + `.cube` hash only under same locked environment; constrained syntax-valid 100%; unsupported writes `<unsupported>`, no silent identity LUT; `eval_real_world_cli_inputs` reported | training_plan_colab.md "Stage 10: CLI Demo Export"; model_architecture.md "Runtime Inference", "Version Manifest And Startup Assertions" |
+| 13A interpreter distillation | `AttributeSpec` schema + captioned `(user text -> AttributeSpec + route)` corpus (Stage 9A) + interpreter base (`LiquidAI/LFM2.5-350M-Base`) | `models/interpreter/` distilled Stage-1 LM — `interpreter_id`, `interpreter_sha256`, `interpreter_base_id` | route accuracy (3-way grade/clarify/refuse) and per-axis `AttributeSpec` fidelity clear their gates; out-of-scope + out-of-gamut route to refuse; backing rule holds; paraphrase/unseen-wording/counterfactual eval-honesty slices pass | attribute_spec.md "Route semantics", "Backing rule"; ADR 0020, 0023, 0024, 0025 |
+| 14 QLoRA SFT (generator retrain) | full `data/active_sft/` conditioned on `attribute_spec_text` (+ image), not a free-text instruction (Stage 9A) + warmup adapter + resized base | `models/sft_adapters/` (`sft_final`) — `adapter_id`, `adapter_sha256`, `adapter_step` | SFT Pass Criteria: free-gen valid-token lower CI >= 85%; unsupported recall/precision, boundary_f1, mixed recall lower CI >= 80%; near-boundary pair acc >= 85%; over-refusal upper CI <= 10%; supported target pass >= 60%; beats null +30pp / constant +20pp / deterministic headline +5pp and renderer-hard slice gates; the image-blind (+10pp), blank-image (> 0), and shuffled-image (> 0) ablations on `eval_image_sensitivity` are trained and scored within this stage and must clear before the gate is evaluated; 3 seeds for final claims | eval_harness_implementation.md "Pass Criteria"; training_plan_colab.md "Stage 5: SFT With QLoRA", "Stage 6: SFT Evaluation Gate And Eval-Honesty (ADR 0024)", "Stage 12: Image-Conditioning Ablations"; ADR 0020, 0025 |
+| 15 confirmatory baselines + ablations report | frozen eval sets + base/null/constant/deterministic/image-blind/warmup/SFT checkpoints | `eval_runs/{run_id}/` (`overall_results.csv`, `baseline_delta.csv`, `seed_summary.csv`, ...) — `eval_config_version`, `eval_set_version`, seed policy | runtime constrained `syntax_valid_rate == 100%`; full baseline and ablation deltas archived with paired CIs and min_N registry; reproduces the Stage 14 image-conditioning ablation result as confirmation — this stage is reporting/analysis and is not a prerequisite for the SFT gate | eval_harness_implementation.md "Baselines", "Statistics", "Reports"; training_plan_colab.md "Stage 12: Image-Conditioning Ablations" |
+| 16 RS/DPO | passing SFT checkpoint + scored rollouts (4-8 completions/prompt) | `models/rs_dpo_adapters/` — `adapter_id`, `adapter_sha256`, `adapter_step`, `reward_config_version` | ships only if it beats SFT outside paired CI without increasing over-refusal, mixed-boundary failure, or safety failures beyond allowed gates; RS/DPO hyperparameters pinned | training_plan_colab.md "Stage 14: Rejection Sampling / DPO"; model_architecture.md "Rollout Optimization Architecture" |
+| 17 GRPO | best prior tuned checkpoint (plateaued) + 1k-3k prompts x4 completions | `models/grpo_adapters/` — `adapter_id`, `adapter_sha256`, `reward_config_version`, `eval_config_version` | GRPO ships only if paired-boot 95% lower bound pass_rate(GRPO - best prior tuned) >= +5pp, or safety upper bound <= -5pp; over-refusal <= +2pp; mixed recall and near-boundary pair acc drop <= 2pp; multi-seed confirms | eval_harness_implementation.md "Pass Criteria" (GRPO ships only if); training_plan_colab.md "Stage 15: Optional GRPO"; model_architecture.md "Rollout Optimization Architecture" |
+| 18 package CLI demo | frozen tokenizer decoder + best tuned adapter + eval config + sample images + manifest | `cli_exports/` `prompt_to_lut` bundle + `version_manifest.json` — full manifest key set | `prompt_to_lut --self-check` matches manifest (vocab size, special-token ids, `vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, color pipeline, ICC config, `.cube` serialization); repeat run gives identical `output_tokens.txt` + `.cube` hash only under same locked environment; constrained syntax-valid 100%; unsupported writes `<unsupported>`, no silent identity LUT; `eval_real_world_cli_inputs` reported | training_plan_colab.md "Stage 13: Two-Stage E2E Integration And CLI Demo Export"; model_architecture.md "Runtime Inference", "Version Manifest And Startup Assertions" |
 | 19 plan workbench | stable CLI inference/decoding/eval | workbench plan (no new model artifact; reuses shipped `version_manifest.json`) | begins only after CLI inference, decoding, and eval are stable | master_plan.md "Workbench Later"; model_architecture.md "Workbench Extension" |
 
 ## CLI First

@@ -45,11 +45,21 @@ notebooks/
   03_vocab_resize_preflight.ipynb
   04_lut_token_warmup.ipynb
   05_qwen_vl_sft_qlora.ipynb
-  06_eval_harness.ipynb
-  07_rs_dpo.ipynb
-  08_optional_grpo.ipynb
-  09_cli_demo_export.ipynb
+  06_eval_harness_honesty.ipynb
+  07_refuse_path_staging.ipynb
+  08_behavior_v2_remeasure.ipynb
+  09_attribute_spec_captioning.ipynb
+  10_interpreter_distillation.ipynb
+  11_generator_retrain_attrspec.ipynb
+  12_image_conditioning_ablations.ipynb
+  13_two_stage_e2e_cli_export.ipynb
+  14_rs_dpo.ipynb
+  15_optional_grpo.ipynb
 ```
+
+Notebooks 06-15 follow the ADR 0025 training sequence v2 (two-stage
+interpreter/generator); 14-15 (RS/DPO, GRPO) are conditional and run only if
+warranted.
 
 Keep heavy scraping and RAW conversion outside fragile notebook sessions when
 possible. Colab notebooks should consume checkpointed artifacts from Drive or
@@ -669,7 +679,7 @@ Smoke tests:
   collator, special-token handling, and row-selective embedding/head training
   before full training.
 
-## Stage 6: SFT Evaluation Gate
+## Stage 6: SFT Evaluation Gate And Eval-Honesty (ADR 0024)
 
 SFT is usable only if the eval harness CI-gated pass criteria clear:
 
@@ -687,11 +697,27 @@ beats deterministic renderer on renderer-hard slices as required by eval harness
 beats prompt-only/image-blind, blank-image, and shuffled-image baselines on eval_image_sensitivity
 ```
 
-The prompt-only/image-blind SFT baseline and the blank-image and shuffled-image ablation runs that this gate compares against are trained and scored as part of this stage, before the gate is evaluated. Stage 7 provides the deeper per-image breakdown and confirmatory analysis and is not a prerequisite for this gate.
+The prompt-only/image-blind SFT baseline and the blank-image and shuffled-image ablation runs that this gate compares against are trained and scored as part of this stage, before the gate is evaluated. Stage 12 provides the deeper per-image breakdown and confirmatory analysis and is not a prerequisite for this gate.
 
 Every gated metric must have a gating-slice registry entry from
 `docs/eval_harness_implementation.md` declaring min_N/min_paired_N, MDE, CI
 method, multiplicity family, and underpowered behavior before final eval freeze.
+
+Eval-honesty requirements (ADR 0024). This gate is scored under the eval-honesty
+contract; see `docs/eval_harness_implementation.md` "Eval-Honesty Slices And
+Interpreter Metrics":
+
+- unit-aware holdout keyed on `split_unit_id` (never row id); expect and accept a
+  headline drop that quantifies prior per-row-split inflation;
+- score ALL held-out rows (no default `--limit`) with macro per-slice/per-family
+  group-bootstrap CIs;
+- assert exactly 64 surviving code positions on every scored supported row;
+- route is 3-way at the L0 boundary — `grade` / `clarify` / `refuse`, where
+  `refuse` covers out-of-scope AND out-of-gamut (ADR 0023);
+- add the decoder-free slices (unseen-wording, named-concept, nonce-concept,
+  counterfactual-ranking, paraphrase-consistency, refuse, in-distribution
+  regression) and interpreter metrics (attribute-F1, route accuracy,
+  over-refusal); the frozen decoder stays disabled.
 
 Also report:
 
@@ -729,7 +755,159 @@ resolution is to narrow the claim rather than redesigning data by default: repor
 prompt-to-LUT reliability on the supported synthetic prompt distribution, and do
 not claim image-conditioned behavior.
 
-## Stage 7: Image-Conditioning Ablations (Confirmatory)
+## Stage 7: Refuse Path Load-Bearing (ADR 0023)
+
+Make the refuse path trainable and measured before any retrain. Today the
+unsupported rows carry absolute image paths that fail to resolve on Colab and are
+skipped every epoch, so the model neither supports nor cleanly refuses — it emits a
+muted LUT (AUDIT F2). ADR 0023 makes the 3-way route `grade` / `clarify` / `refuse`
+load-bearing.
+
+Work:
+
+- Portable staging so unsupported/refusal rows resolve and actually train (no
+  absolute paths); the refuse route is trained and scored, not skipped.
+- `refuse:out_of_scope` keeps the existing taxonomy (local / semantic / content /
+  relighting / geometry / texture / reference).
+- `refuse:out_of_gamut` is NEW: a global look whose nearest representable LUT
+  exceeds the materialization admission gate (mean DeltaE00 <= 3.0 / p95 <= 6.0) is
+  refused. The refuse route only READS this boundary; the frozen tokenizer is never
+  modified.
+- `clarify` handles under-specified color intent ("make it better") by offering
+  supported directions instead of fabricating a grade.
+- Keep the taxonomy strings in sync across the unsupported generators, the smoke
+  fixtures, and `eval/unsupported_metrics.py` (a sync test is added in the code
+  phase).
+
+Gate:
+
+```text
+refuse path is trained (unsupported rows resolve and are not skipped)
+over-refusal, out-of-gamut recall, and boundary F1 are measurable and reported
+3-way route (grade/clarify/refuse) scored at the L0 boundary (see eval harness)
+frozen tokenizer/decoder unchanged
+```
+
+## Stage 8: behavior_v2 Re-measure (ADR 0022)
+
+Extend the measured behavior vector from the 2-axis color ontology to `behavior_v2`
+and re-measure the corpus into a NEW versioned artifact. The whole hue circle
+previously collapsed onto `temperature_delta_b`/`tint_delta_a`, so
+"red / orange / teal / Mars-ish" had no representation (AUDIT F1/M1).
+
+New axes (all derivable from `eval/color_pipeline.py` `hue_deg`/`chroma` + the
+existing region masks; no new probe):
+
+```text
+global_hue_deg + global_hue_magnitude                  # absolute global cast
+shadow_hue_deg / midtone_hue_deg / highlight_hue_deg   # per-region hue
+per_hue_saturation[sector]                             # chroma by INPUT hue sector (7 sectors)
+contrast_toe_delta / contrast_shoulder_delta          # contrast SHAPE, not just spread
+matte_strength                                         # matte as a first-class axis
+```
+
+All 27 `behavior_v1` fields are retained for reproducibility. Adopt the single
+unified tag vocabulary (`docs/attribute_spec.md` §10, retiring `more_magenta`,
+`higher_contrast`, `desaturated`, ...) — the same table the eval direction-checks
+use.
+
+Versioning gate:
+
+```text
+BEHAVIOR_VECTOR_VERSION -> "behavior_v2"
+QUALITY_FILTER_VERSION bumped too   # cache-currency keys on it, not the behavior version;
+                                    # skipping this silently prevents re-measurement
+re-measurement writes a NEW versioned measured_behavior artifact
+frozen corpus and tokenizer untouched (ADR 0026)
+```
+
+## Stage 9: AttributeSpec + Captioning + Oracle Gate (ADR 0021, 0026)
+
+Define the interpreter<->generator interface and the caption corpus, then run the
+HARD oracle go/no-go before spending on the interpreter or generator.
+
+AttributeSpec (ADR 0021):
+
+- The interpreter output is `AttributeSpec`, serialized to `attribute_spec_text`
+  (NOT "recipe"). It carries the route enum `{grade, clarify, refuse}`,
+  `confidence`, `out_of_gamut`, and `source_text`.
+- Its axis schema is `behavior_v2` (Stage 8), so a requested spec and a measured one
+  are directly comparable.
+- Backing rule: every asserted attribute must be backed by a measurable axis
+  (generalizing `validate_tags_against_behavior`); the input language is unbounded,
+  the asserted axes are the bounded measurable set.
+- Serialization is deterministic and round-trippable (serialize->parse identity).
+  Schema source of truth: `docs/attribute_spec.md`.
+
+Captioning corpus (ADR 0026):
+
+- Diversity comes from captioning, not scraping: the teacher produces many diverse
+  captions per real corpus LUT (literal, metaphor, mood, concept, slang), each
+  mapped to that LUT's measured `AttributeSpec`. Every caption is grounded in a
+  renderable LUT, so input language is unbounded while the target stays backable.
+- Recover discarded LUT titles as caption seeds. Which concepts are supported is
+  defined empirically by which corpus LUTs materialize within the admission gate;
+  out-of-gamut concepts fall to `refuse` (Stage 7).
+- Every artifact is NEW and VERSIONED (bumped `active_set_version`/behavior
+  version); the frozen LUT/image corpus and tokenizer are never mutated.
+
+Oracle `attribute_spec -> codes` upper-bound gate (HARD go/no-go):
+
+```text
+feed GROUND-TRUTH measured_behavior (as attribute_spec_text) to the Generator
+must reproduce target codes at or above current one-stage token accuracy
+if a perfect spec cannot drive the Generator (seam is lossy; many LUTs share a
+  summary) -> ABANDON the two-stage move before Stage 10/11 spend
+```
+
+This gate must pass before Stage 10 (interpreter distillation) and Stage 11
+(generator retrain).
+
+## Stage 10: Interpreter Distillation (ADR 0020)
+
+Train the small, separately-trained Interpreter that maps ANY user text to an
+`AttributeSpec` + route. All linguistic diversity and world knowledge live here;
+the Interpreter never touches the frozen stack.
+
+- Training data: `(caption -> AttributeSpec + route)` pairs from Stage 9.
+- Output: `AttributeSpec` with route `{grade, clarify, refuse}` — `grade` serializes
+  to `attribute_spec_text` for the Generator; `clarify` offers supported directions;
+  `refuse` emits `<unsupported>`, covering out-of-scope and out-of-gamut.
+- The Interpreter is a small text model, iterable cheaply without the expensive VLM
+  run.
+
+Gate:
+
+```text
+interpreter_attribute_f1 (requested vs measured axes)
+route_accuracy (3-way grade/clarify/refuse)
+over_refusal_rate within the eval-harness ceiling
+paraphrase-consistency, unseen-wording, named/nonce-concept, and
+  counterfactual-ranking slices pass (see eval harness, ADR 0024)
+```
+
+## Stage 11: Generator Retrain On attribute_spec_text (ADR 0020, 0025)
+
+Retrain the SAME Qwen2.5-VL-3B QLoRA generator, changing ONLY its input: the
+serialized `attribute_spec_text` (+ image) replaces the free-text `instruction` at
+the input position currently holding `instruction` (`sft/example.py`). The target
+side and locked knobs are unchanged.
+
+Unchanged (do not modify):
+
+```text
+SFT INPUT      = attribute_spec_text (+ image)             # the only change vs Stage 5
+SFT TARGET     = 64 VQ codes                                # unchanged
+loss           = over the 64 codes, assistant-target-only   # unchanged
+locked knobs   = quantization, LoRA policy, epochs=2, schedule, ... (Stage 5)  # unchanged
+frozen stack   = VQ tokenizer, decoder, .cube/runtime contract (ADR 0017)  # unchanged
+```
+
+The Generator never receives raw open-vocabulary language; it renders a bounded,
+backable spec. Re-run the Stage 6 eval-honesty gate and the Stage 12 ablations
+against the retrained generator. Prerequisite: the Stage 9 oracle gate passed.
+
+## Stage 12: Image-Conditioning Ablations (Confirmatory)
 
 The prompt-only/image-blind SFT baseline and the blank-image and shuffled-image
 ablations are produced and scored in Stage 6, where they gate the SFT pass
@@ -756,7 +934,95 @@ and beat the blank-image and shuffled-image ablations by a positive lower bound.
 This stage re-reports that result with per-image breakdowns; if image-blind falls within that margin the Stage 6 gate fails: the VL premise is not
 justified and either simplify the model or redesign data.
 
-## Stage 8: Rejection Sampling / DPO
+## Stage 13: Two-Stage E2E Integration And CLI Demo Export
+
+Wire the full two-stage path end to end and package it as the CLI demo (ADR 0020,
+0023, 0025). At runtime the CLI runs: user text (+ image) -> Interpreter ->
+AttributeSpec + route; on `route == grade`, serialize -> `attribute_spec_text`
+(+ image) -> Generator -> 64 VQ codes -> frozen decoder -> LUT; `clarify` offers
+supported directions and `refuse` writes `<unsupported>`. If the optional Stage 14
+(RS/DPO) / Stage 15 (GRPO) tuning is run, re-export with the improved generator
+adapter.
+
+The CLI demo packages:
+
+```text
+prompt_to_lut
+interpreter model (text -> AttributeSpec + route)
+generator adapter (attribute_spec_text + image -> 64 VQ codes)
+frozen tokenizer decoder
+eval config
+sample images
+version manifest
+```
+
+Command:
+
+```text
+prompt_to_lut --image input.jpg --prompt "give it a warm faded film look" --out outputs/run_001
+```
+
+Artifacts:
+
+```text
+outputs/run_001/
+  input.png
+  graded.png
+  preview_side_by_side.png
+  output.cube
+  output_tokens.txt
+  metrics.json
+  version_manifest.json
+```
+
+`graded.png`, `preview_side_by_side.png`, and `output.cube` are supported-only
+artifacts, produced only for valid token sequences. An `<unsupported>` run omits
+them and writes the refusal-artifact set only — `input.png`, `output_tokens.txt`
+(containing `<unsupported>`), `metrics.json` (`output.kind = "unsupported"`), and
+`version_manifest.json` — with no LUT applied (see model_architecture.md "Runtime
+Inference" step 6).
+
+`metrics.json` includes:
+
+```text
+parser result
+valid token count
+decoded LUT validity
+decoding mode and FSM version
+canonical domain metadata
+measured behavior deltas
+direction checks only when expected attributes are supplied
+target-fidelity diagnostics when target exists
+clip rate
+smoothness
+foldover
+neutral drift
+skin-locus metrics
+unsupported flag
+tokenizer metadata
+model checkpoint id
+version manifest hash
+```
+
+CLI export acceptance:
+
+- `prompt_to_lut --self-check` fails if vocab size, special-token ids, codebook
+  size, `vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, color
+  pipeline, ICC config, `.cube` serialization, or deterministic-environment
+  scope differ from the manifest.
+- Same image/prompt/model/profile run twice produces identical `output_tokens.txt`
+  and `.cube` hash, excluding timestamps, only under the same locked
+  deterministic environment.
+- Constrained runtime syntax-valid rate is 100%.
+- Unsupported output writes `<unsupported>` and metrics, with no silent identity
+  LUT.
+- `eval_real_world_cli_inputs` runs before CLI acceptance and is reported as a
+  product robustness slice.
+
+## Stage 14: Rejection Sampling / DPO (Conditional)
+
+Conditional post-hoc tuning of the Stage 11 generator; runs after Stage 13 only if
+warranted (ADR 0025). Ship gates and the plateau rule are unchanged.
 
 Run before GRPO:
 
@@ -785,11 +1051,14 @@ RS/DPO ships only if it beats SFT outside paired confidence intervals without
 increasing over-refusal, mixed-boundary failure, or safety failures beyond
 allowed gates.
 
-Escalate to GRPO (Stage 9) only after the best tuned stage so far (SFT, then
-RS/DPO) has plateaued under the plateau rule defined in Stage 9. A stage that
+Escalate to GRPO (Stage 15) only after the best tuned stage so far (SFT, then
+RS/DPO) has plateaued under the plateau rule defined in Stage 15. A stage that
 still clears its ship margin has not plateaued; keep tuning that stage instead.
 
-## Stage 9: Optional GRPO
+## Stage 15: Optional GRPO (Conditional)
+
+Conditional, after Stage 14, only if warranted (ADR 0025); run only when the best
+prior tuned stage has plateaued and reward correctness is proven.
 
 GRPO starts only after SFT and RS/DPO pass syntax, direction, boundary, safety,
 target, and baseline gates and then plateau.
@@ -888,82 +1157,6 @@ under the CI-gated eval criteria.
 
 Otherwise ship the best previous tuned model and record GRPO as inconclusive.
 
-## Stage 10: CLI Demo Export
-
-The CLI demo packages:
-
-```text
-prompt_to_lut
-frozen tokenizer decoder
-SFT, RS/DPO, or GRPO adapter
-eval config
-sample images
-version manifest
-```
-
-Command:
-
-```text
-prompt_to_lut --image input.jpg --prompt "give it a warm faded film look" --out outputs/run_001
-```
-
-Artifacts:
-
-```text
-outputs/run_001/
-  input.png
-  graded.png
-  preview_side_by_side.png
-  output.cube
-  output_tokens.txt
-  metrics.json
-  version_manifest.json
-```
-
-`graded.png`, `preview_side_by_side.png`, and `output.cube` are supported-only
-artifacts, produced only for valid token sequences. An `<unsupported>` run omits
-them and writes the refusal-artifact set only — `input.png`, `output_tokens.txt`
-(containing `<unsupported>`), `metrics.json` (`output.kind = "unsupported"`), and
-`version_manifest.json` — with no LUT applied (see model_architecture.md "Runtime
-Inference" step 6).
-
-`metrics.json` includes:
-
-```text
-parser result
-valid token count
-decoded LUT validity
-decoding mode and FSM version
-canonical domain metadata
-measured behavior deltas
-direction checks only when expected attributes are supplied
-target-fidelity diagnostics when target exists
-clip rate
-smoothness
-foldover
-neutral drift
-skin-locus metrics
-unsupported flag
-tokenizer metadata
-model checkpoint id
-version manifest hash
-```
-
-CLI export acceptance:
-
-- `prompt_to_lut --self-check` fails if vocab size, special-token ids, codebook
-  size, `vq_codebook_sha256`, `vq_decoder_sha256`, flatten order, color
-  pipeline, ICC config, `.cube` serialization, or deterministic-environment
-  scope differ from the manifest.
-- Same image/prompt/model/profile run twice produces identical `output_tokens.txt`
-  and `.cube` hash, excluding timestamps, only under the same locked
-  deterministic environment.
-- Constrained runtime syntax-valid rate is 100%.
-- Unsupported output writes `<unsupported>` and metrics, with no silent identity
-  LUT.
-- `eval_real_world_cli_inputs` runs before CLI acceptance and is reported as a
-  product robustness slice.
-
 ## Final Deliverables
 
 Project deliverables:
@@ -987,7 +1180,7 @@ Project deliverables:
 ## Schedule Crosswalk
 
 This table is a coarse implementation phase view, not the authoritative
-`Stage 0..10` numbering above.
+`Stage 0..15` numbering above.
 
 | Phase | Work |
 | --- | --- |
@@ -999,10 +1192,11 @@ This table is a coarse implementation phase view, not the authoritative
 | 6 | warmup dataset materialization and generative LUT-token warmup |
 | 7 | 50/200-example SFT smoke tests |
 | 8 | full 10k-15k SFT |
-| 9 | base-vs-SFT eval, ablations, error analysis |
-| 10 | RS/DPO |
-| 11 | optional GRPO |
-| 12 | CLI packaging |
-| 13 | workbench planning |
+| 9 | base-vs-SFT eval + eval-honesty (ADR 0024) |
+| 10 | refuse-path staging (ADR 0023); behavior_v2 re-measure (ADR 0022) |
+| 11 | AttributeSpec + captioning + oracle gate (ADR 0021, 0026); interpreter distillation (ADR 0020) |
+| 12 | generator retrain on attribute_spec_text; image-conditioning ablations |
+| 13 | two-stage E2E + CLI packaging; then optional RS/DPO and GRPO |
+| 14 | workbench planning |
 
 The workbench begins only after CLI inference, decoding, and eval are stable.

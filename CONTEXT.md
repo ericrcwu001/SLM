@@ -17,19 +17,35 @@ A future architecture that combines multiple LUTs with masks or gating weights t
 _Avoid_: V1 LUT, global LUT
 
 **Image-Conditioned Prompt-to-LUT**:
-A color-grading task where the model receives both the source image and a natural-language grading prompt before producing a global LUT.
+A color-grading task where the system receives both the source image and user text: the interpreter produces an AttributeSpec, and the generator, conditioned on that AttributeSpec plus the image, produces a global LUT.
 _Avoid_: Prompt-only LUT generation
 
 **Instruction-Guided Grading**:
-A prompt-to-LUT task where the model receives a source image and a text instruction describing the desired global color grade.
+A prompt-to-LUT task where the system receives a source image and a text instruction describing the desired global color grade; the interpreter maps the instruction to an AttributeSpec that conditions the generator.
 _Avoid_: Reference-style transfer
 
 **Reference-Style Transfer**:
 A color-grading task where the model receives a source image and a separate reference image whose color style should be copied.
 _Avoid_: V1 task, instruction-guided grading
 
+**Interpreter**:
+The small model mapping any user text to an AttributeSpec plus a route.
+_Avoid_: teacher model, generator
+
+**AttributeSpec**:
+The structured, high-resolution color-attribute representation the Interpreter produces from user text and the Generator is conditioned on; shares the behavior_v2 axis schema with the measured behavior vector (see docs/attribute_spec.md).
+_Avoid_: recipe, JSON recipe, structured recipe
+
+**Route (grade / clarify / refuse)**:
+The interpreter's three-way decision.
+_Avoid_: render (implies the deferred parametric renderer)
+
+**Generator**:
+The Qwen2.5-VL-3B QLoRA model conditioned on attribute_spec_text (+image) that emits the 64 LUT code tokens.
+_Avoid_: interpreter, teacher model
+
 **LUT Token Sequence**:
-A fixed-length sequence of discrete tokens that represents one global LUT before it is decoded back into a full LUT tensor.
+A fixed-length sequence of discrete tokens that represents one global LUT before it is decoded back into a full LUT tensor. The interpreter's upstream output is the AttributeSpec, not a "recipe".
 _Avoid_: JSON recipe, raw LUT floats
 
 **LUT Codebook**:
@@ -93,7 +109,7 @@ A set of measurements describing how well a derived LUT behaves as a global colo
 _Avoid_: Aesthetic score
 
 **Supported Prompt Attribute**:
-A color-grading intent that v1 is expected to convert into a global LUT and evaluate with measurable color statistics.
+A color-grading intent that v1 is expected to convert into a global LUT and evaluate with measurable color statistics. Supported attributes now include the behavior_v2 hue axes — global hue cast (angle + magnitude), per-tone-region hue (shadow/midtone/highlight), per-hue saturation, contrast shape (toe/shoulder), and matte — not just the two Lab axes (temperature/tint).
 _Avoid_: Arbitrary edit request
 
 **Style Bundle**:
@@ -109,7 +125,7 @@ The primary evaluation metric: the fraction of headline-eligible image-and-instr
 _Avoid_: Aesthetic score as primary metric
 
 **Unsupported Output**:
-A dedicated model output indicating that a prompt cannot be represented by one global LUT.
+A dedicated interpreter output on the refuse route indicating that a prompt cannot be represented by one global LUT, covering both out_of_scope and out_of_gamut intents (e.g. infrared, pure-primary, hue-rotation).
 _Avoid_: Identity LUT as refusal
 
 **V1 Base Model**:
@@ -141,5 +157,5 @@ A reserved multi-slice evaluation set including usage-weighted headline, coverag
 _Avoid_: Training split
 
 **Gold Prompt Tags**:
-Frozen structured labels for an instruction, created during dataset construction and used by evaluation to check whether the decoded LUT matches the requested attributes.
+Frozen structured labels for an instruction, created during dataset construction and used by evaluation to check whether the decoded LUT matches the requested attributes; tags map to the unified behavior_v2 vocabulary.
 _Avoid_: Model-predicted tags

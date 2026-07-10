@@ -1,7 +1,7 @@
 # Training Sequence
 
-Status: Partially superseded by ADR 0015 and the current
-`docs/training_plan_colab.md`.
+Status: Superseded by ADR 0025 (training sequence v2). Previously partially superseded by
+ADR 0015 and the current `docs/training_plan_colab.md`.
 
 The older sequence moved from tokenizer training directly into 50,000
 instruction examples, SFT, and a small GRPO stage. The current sequence keeps the

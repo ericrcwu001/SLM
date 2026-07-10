@@ -583,38 +583,25 @@ Headline eval uses stricter decoded-target eligibility from the eval harness.
 
 ## Measured Behavior Vector
 
-Each accepted LUT gets a measured behavior vector:
+Each accepted LUT gets a measured behavior vector. As of ADR 0022 this is
+`behavior_v2`, which supersedes the earlier 2-axis color representation
+(`temperature_delta_b` b* + `tint_delta_a` a*) with an explicit hue and
+per-hue-saturation color model while retaining the tonal and safety axes. The
+`AttributeSpec` the interpreter emits shares this exact axis schema (its
+requested-from-text counterpart); the field list below is the byte-identical
+source of truth and must match `docs/attribute_spec.md` §3:
 
 ```text
-temperature_delta_b
-tint_delta_a
-mean_l_delta
-contrast_l_spread_delta
-black_point_l_delta
-highlight_l_delta
-highlight_delta_a
-highlight_delta_b
-highlight_hue_delta_deg
-highlight_chroma_delta
-shadow_l_delta
-shadow_b_delta
-shadow_delta_a
-shadow_hue_delta_deg
-shadow_chroma_delta
-chroma_delta
-split_tone_strength
-split_tone_high_hue_quadrant
-split_tone_shadow_hue_quadrant
-style_multi_match_count
-style_margin_to_nearest_neighbor
-neutral_drift_deltaE
-skin_locus_deltaE00_p95
-skin_locus_hue_drift_deg_p95
-clip_rate
-smoothness
-foldover_rate
-residual_norm
+Tonal (unchanged): mean_l_delta, contrast_l_spread_delta, black_point_l_delta, shadow_l_delta, highlight_l_delta.
+Color legacy (retained): temperature_delta_b (b*), tint_delta_a (a*), chroma_delta, highlight_chroma_delta, shadow_chroma_delta, split_tone_shadow_a/b, split_tone_highlight_a/b, split_tone_strength.
+Color NEW (behavior_v2): global_hue_deg, global_hue_magnitude, shadow_hue_deg, midtone_hue_deg, highlight_hue_deg, per_hue_saturation{red,orange,yellow,green,cyan,blue,magenta}, contrast_toe_delta, contrast_shoulder_delta, matte_strength.
+Safety/context (unchanged): neutral_drift_deltaE(_p95), skin_locus_deltaE00_mean/_p95, skin_locus_hue_drift_deg_p95, skin_chroma_ratio_min/max, clip_rate, smoothness, foldover_rate, residual_norm (+ smoothness_native).
 ```
+
+Bumping to `behavior_v2` requires bumping BOTH `BEHAVIOR_VECTOR_VERSION`
+(-> `"behavior_v2"`) AND `QUALITY_FILTER_VERSION` — the pipeline cache check keys
+on `QUALITY_FILTER_VERSION`, not the behavior version, so the behavior bump alone
+would not invalidate stale caches.
 
 This vector is the authority for prompt tags. If a prompt says "warmer" but the
 measured behavior is cooler, the row is rejected or regenerated.
@@ -668,32 +655,45 @@ facility-location/MMR decides what survives inside each bucket.
 
 ## Instruction Generation
 
-V1 uses synthetic prompts only. Active and eval prompts are generated from the
-accepted image-LUT pair, measured behavior, and structured tags by the pinned
-teacher profile. This plan does not claim robustness to independently
-human-authored prompt phrasing; `eval_real_world_cli_inputs` covers real-world
-image/file conditions, not real-human prompt distribution.
+V1 language supervision comes from captioning, not teacher-written instructions
+(ADR 0026). Linguistic diversity comes from many diverse captions per real corpus
+LUT — each caption mapped to that LUT's measured `AttributeSpec` (ADR 0021) — and
+is generated, not scraped. Every caption is grounded in a renderable LUT, so the
+language surface is unbounded while the target stays backable by a real corpus
+LUT. Discarded corpus LUT titles are recovered as an additional grounded caption
+source. This plan does not claim robustness to independently human-authored prompt
+phrasing; `eval_real_world_cli_inputs` covers real-world image/file conditions, not
+real-human prompt distribution.
 
-For each accepted image-LUT pair, generate:
+The two-stage SFT input is `attribute_spec_text`: the interpreter learns to map
+caption text to the `AttributeSpec`, and the generator is conditioned on the
+serialized `attribute_spec_text` (see `docs/model_architecture.md` "Dataset
+Interface"; schema source of truth `docs/attribute_spec.md`).
 
-- structured tags;
-- one concise prompt;
-- one more natural/creative prompt.
+For each accepted corpus LUT (with its measured `AttributeSpec`), generate:
 
-Example:
+- structured tags backed by the measured behavior;
+- many diverse captions spanning phrasing, register, and specificity, each mapped
+  to that LUT's measured `AttributeSpec`;
+- recovered LUT title(s), when available, as additional grounded captions.
+
+Diversity is generated, not scraped; every caption traces back to one renderable
+corpus LUT.
+
+Example (one LUT, its measured AttributeSpec, and several of its captions):
 
 ```text
-tags:
+attribute_spec (measured):
   ["warmer", "muted", "lifted_blacks", "matte"]
 
-concise:
+captions:
   "Make the image warmer, more muted, and lift the blacks."
-
-natural:
   "Give it a soft warm matte look with gentler colors."
+  "Cozy faded film vibe — warm, low-contrast, gentle color."
+  "Warm it up, pull the saturation back, and lift the shadows."
 ```
 
-Teacher output must not mention:
+Generated captions must not mention:
 
 - local object edits;
 - scene content not relevant to global color;
@@ -701,7 +701,7 @@ Teacher output must not mention:
 - aesthetic rankings such as "best" or "beautiful" unless mapped to a style
   recipe and approved.
 
-Prompt generation and L8 judging are blocked until `configs/model_clients.yaml`
+Caption generation and L8 judging are blocked until `configs/model_clients.yaml`
 pins provider, `model_id`, endpoint/base-url env var, API-key env var, prompt
 version, and batch id for both `teacher` and `judge`. The required profile names
 are `teacher_primary` and `judge_primary`; their `model_id` values must be
@@ -730,9 +730,10 @@ judge_primary:
   credential_profile: default
 ```
 
-Prompt/tag validation is bidirectional. Every explicit prompt tag must be backed
-by deterministic measured behavior, and every major measured behavior above the
-predeclared coverage threshold must either appear in `gold_tags` / prompt text,
+Caption/attribute validation is bidirectional (the backing rule of ADR 0021).
+Every explicit caption tag must be backed by a deterministic measurable axis in
+the LUT's measured behavior, and every major measured behavior above the
+predeclared coverage threshold must either appear in `gold_tags` / caption text,
 be marked as allowed unmentioned behavior, or cause the row to be rejected or
 recast as composite/style.
 
