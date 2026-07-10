@@ -71,3 +71,70 @@ def test_tint_sign():
 def test_teal_orange_has_split_tone():
     b = measure_behavior(_lut("proc_style_teal-orange"))
     assert b["split_tone_strength"] > 1.0
+
+
+# --- behavior_v2 axes (ADR 0022) -------------------------------------------------------------
+from data_pipeline.constants import BEHAVIOR_VECTOR_VERSION  # noqa: E402
+from eval.tag_vocabulary import HUE_SECTORS  # noqa: E402
+
+_V2_FIELDS = {
+    "global_hue_deg", "global_hue_magnitude", "shadow_hue_deg", "midtone_hue_deg",
+    "highlight_hue_deg", "per_hue_saturation", "contrast_toe_delta", "contrast_shoulder_delta",
+    "matte_strength",
+}
+
+
+def test_version_is_behavior_v2_and_fields_present():
+    b = measure_behavior(_lut("proc_attr_warmer"))
+    assert BEHAVIOR_VECTOR_VERSION == "behavior_v2"
+    assert b["behavior_vector_version"] == "behavior_v2"
+    assert _V2_FIELDS <= set(b)                      # all new axes present
+    # all 27 behavior_v1 fields retained (spot-check the axis families)
+    for k in ("temperature_delta_b", "tint_delta_a", "mean_l_delta", "chroma_delta",
+              "split_tone_strength", "skin_locus_deltaE00_mean", "residual_norm"):
+        assert k in b
+
+
+def test_identity_v2_axes_near_zero():
+    b = measure_behavior(identity_grid(17))
+    assert b["global_hue_magnitude"] < 0.2
+    assert abs(b["matte_strength"]) < 0.2
+    assert abs(b["contrast_toe_delta"]) < 0.05 and abs(b["contrast_shoulder_delta"]) < 0.05
+    assert all(abs(v) < 0.2 for v in b["per_hue_saturation"].values())
+
+
+def test_global_hue_angle_warm_points_yellow():
+    # A warm cast is +b* (toward yellow); Lab hue atan2(b,a) ~ 90 deg.
+    b = measure_behavior(_lut("proc_attr_warmer"))
+    assert b["global_hue_magnitude"] > 1.5
+    assert 60.0 <= b["global_hue_deg"] <= 120.0
+
+
+def test_per_hue_saturation_is_seven_sector_map():
+    b = measure_behavior(_lut("proc_attr_muted"))
+    phs = b["per_hue_saturation"]
+    assert set(phs) == set(HUE_SECTORS)
+    # muting pulls chroma down, so at least one populated sector is negative
+    assert min(phs.values()) < 0.0
+
+
+def test_matte_strength_positive_for_matte_and_faded():
+    assert measure_behavior(_lut("proc_style_matte"))["matte_strength"] > 0.5
+    assert measure_behavior(_lut("proc_style_faded"))["matte_strength"] > 0.5
+    assert measure_behavior(_lut("proc_attr_warmer"))["matte_strength"] < 0.5  # a warm tint is not matte
+
+
+def test_contrast_shape_toe_shoulder():
+    # less_contrast softens the tone curve -> toe rises / shoulder falls relative to identity;
+    # the shape axes must at least differ measurably between more- and less-contrast LUTs.
+    more = measure_behavior(_lut("proc_attr_more_contrast"))
+    less = measure_behavior(_lut("proc_attr_less_contrast"))
+    assert more["contrast_shoulder_delta"] != less["contrast_shoulder_delta"]
+    assert more["contrast_toe_delta"] != less["contrast_toe_delta"]
+
+
+def test_teal_orange_region_hue_split():
+    b = measure_behavior(_lut("proc_style_teal-orange"))
+    # shadows teal (~180-220 deg), highlights orange (~0-60 deg) — the defining split.
+    assert 150.0 <= b["shadow_hue_deg"] <= 250.0
+    assert (b["highlight_hue_deg"] <= 70.0) or (b["highlight_hue_deg"] >= 330.0)

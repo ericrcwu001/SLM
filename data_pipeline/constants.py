@@ -35,8 +35,14 @@ PROCEDURAL_GENERATOR_VERSION = "proc_v1"
 # v7: graded structure penalty -- a single marginal spatial-structure signal (below a wider gold
 # ceiling) no longer blocks gold for pair-fits; >=2 signals or any past its ceiling still demote
 # to diagnostic. Reclaims faithful global fits with a faint local component. Bump invalidates tiers.
-QUALITY_FILTER_VERSION = "quality_v7_graded_structure"
-BEHAVIOR_VECTOR_VERSION = "behavior_v1"
+# v8: behavior_v2 re-measurement (ADR 0022). The gates/tiers are UNCHANGED, but the pipeline's
+# cache-currency check keys on QUALITY_FILTER_VERSION (run_pipeline.py:182), NOT on the behavior
+# version, so bumping it here is what forces measure_behavior to re-run and write the new
+# behavior_v2 fields. Bump invalidates cached tiers (they are recomputed identically).
+QUALITY_FILTER_VERSION = "quality_v8_behavior_v2"
+# behavior_v2 (ADR 0022): adds absolute/region hue, per-hue saturation, contrast-shape (toe/
+# shoulder), and matte as a first-class axis; all 27 behavior_v1 fields retained.
+BEHAVIOR_VECTOR_VERSION = "behavior_v2"
 
 # Run-stamped placeholders (frozen at Stage 9 in a real run).
 ACTIVE_SET_VERSION_PLACEHOLDER = "active_set_pending_freeze"

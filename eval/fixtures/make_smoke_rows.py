@@ -31,12 +31,12 @@ from ..vocab import UNSUPPORTED
 _SUPPORTED_ATOMS = [
     ("Make the image warmer.", ["warmer"], "temperature", None),
     ("Cool it down a little.", ["cooler"], "temperature", None),
-    ("Add a touch more magenta.", ["more_magenta"], "tint", None),
-    ("Make it a bit greener.", ["more_green"], "tint", None),
+    ("Add a touch more magenta.", ["tint_magenta"], "tint", None),
+    ("Make it a bit greener.", ["tint_green"], "tint", None),
     ("Brighten the photo.", ["brighter"], "exposure", None),
     ("Make it darker overall.", ["darker"], "exposure", None),
-    ("Give it more punch.", ["higher_contrast"], "contrast", None),
-    ("Soften the contrast.", ["softer_contrast"], "contrast", None),
+    ("Give it more punch.", ["more_contrast"], "contrast", None),
+    ("Soften the contrast.", ["less_contrast"], "contrast", None),
     ("Lift the blacks.", ["lifted_blacks"], "black_point", None),
     ("Crush the blacks.", ["crushed_blacks"], "black_point", None),
     ("Soften the highlights.", ["softer_highlights"], "highlights", None),
@@ -49,20 +49,20 @@ _SUPPORTED_ATOMS = [
 
 _SUPPORTED_STYLES = [
     ("Give it a soft matte look.", ["matte", "lifted_blacks", "muted"], "matte"),
-    ("Make it look faded.", ["faded", "muted", "softer_contrast"], "faded"),
+    ("Make it look faded.", ["faded", "muted", "less_contrast"], "faded"),
     ("Give it a filmic look.", ["filmic", "softer_highlights"], "filmic"),
     ("Add a cinematic teal-and-orange grade.", ["cinematic"], "cinematic"),
     ("Push a strong teal-orange look.", ["teal-orange"], "teal-orange"),
     ("Give it a warm sepia tone.", ["sepia", "warmer", "muted"], "sepia"),
-    ("Apply a bleach-bypass look.", ["bleach_bypass", "higher_contrast", "muted"], "bleach bypass"),
+    ("Apply a bleach-bypass look.", ["bleach_bypass", "more_contrast", "muted"], "bleach bypass"),
     ("Keep it natural and clean.", ["natural"], "natural"),
 ]
 
 _SUPPORTED_COMPOUND = [
-    ("Make it warmer with softer contrast.", ["warmer", "softer_contrast"], "temperature"),
+    ("Make it warmer with softer contrast.", ["warmer", "less_contrast"], "temperature"),
     ("Brighten it and lift the shadows.", ["brighter", "lifted_shadows"], "exposure"),
     ("Cool it down and mute the colors.", ["cooler", "muted"], "temperature"),
-    ("More punch and a touch warmer.", ["higher_contrast", "warmer"], "contrast"),
+    ("More punch and a touch warmer.", ["more_contrast", "warmer"], "contrast"),
 ]
 
 # --- unsupported prompts: (instruction, category, unsup_components, supported_components, mixed) ---

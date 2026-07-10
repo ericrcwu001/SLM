@@ -27,37 +27,21 @@ from typing import Optional
 import numpy as np
 
 from data_pipeline.behavior_vector import measure_behavior
+from eval.tag_vocabulary import DIRECTIONAL_TAG_AXIS, canonicalize_tags, min_magnitude_for_axis
 
 PASS = "pass"
 FAIL = "fail"
 NOT_EVALUATED = "not_evaluated"
 
-# Perceptible-movement bars (Lab units) per axis family. Temperature/tint use the spec's
-# 1.5; luminance axes use 1.5 L*; chroma is a touch lower (chroma deltas run smaller).
-_MAG_LAB = 1.5
-_MAG_CHROMA = 1.0
-
 # gold tag -> list of (behavior_vector key, required sign (+1/-1), min |magnitude|).
-# A tag passes iff its measured metric has the right sign AND clears the magnitude bar.
-# Only *directional* tags appear here; style-bundle tags are intentionally absent.
+# A tag passes iff its measured metric has the right sign AND clears the magnitude bar. Built from
+# the ONE unified tag vocabulary (ADR 0022; eval.tag_vocabulary) so it can never drift from
+# instruction_gen._TAG_BEHAVIOR. Retired aliases (more_magenta/higher_contrast/desaturated/…) are
+# accepted via canonicalize_tags on ingest (evaluate_direction). Style bundles are absent (they are
+# non-directional). Per-axis magnitude bars come from min_magnitude_for_axis (Lab 1.5 / chroma 1.0).
 TAG_DIRECTIONS: dict[str, list[tuple[str, int, float]]] = {
-    "warmer": [("temperature_delta_b", +1, _MAG_LAB)],
-    "cooler": [("temperature_delta_b", -1, _MAG_LAB)],
-    "more_magenta": [("tint_delta_a", +1, _MAG_LAB)],
-    "more_green": [("tint_delta_a", -1, _MAG_LAB)],
-    "brighter": [("mean_l_delta", +1, _MAG_LAB)],
-    "darker": [("mean_l_delta", -1, _MAG_LAB)],
-    "brighter_highlights": [("highlight_l_delta", +1, _MAG_LAB)],
-    "softer_highlights": [("highlight_l_delta", -1, _MAG_LAB)],
-    "lifted_shadows": [("shadow_l_delta", +1, _MAG_LAB)],
-    "lifted_blacks": [("black_point_l_delta", +1, _MAG_LAB)],
-    "crushed_blacks": [("black_point_l_delta", -1, _MAG_LAB)],
-    "higher_contrast": [("contrast_l_spread_delta", +1, _MAG_LAB)],
-    "softer_contrast": [("contrast_l_spread_delta", -1, _MAG_LAB)],
-    "more_saturated": [("chroma_delta", +1, _MAG_CHROMA)],
-    "muted": [("chroma_delta", -1, _MAG_CHROMA)],
-    "desaturated": [("chroma_delta", -1, _MAG_CHROMA)],
-    "cooler_shadows": [("split_tone_shadow_b", -1, _MAG_CHROMA)],
+    tag: [(axis, sign, min_magnitude_for_axis(axis))]
+    for tag, (axis, sign) in DIRECTIONAL_TAG_AXIS.items()
 }
 
 # Safety thresholds (provisional pilot values).
@@ -86,7 +70,7 @@ def evaluate_direction(behavior: dict, gold_tags: list[str]) -> DirectionResult:
     Rows whose tags are all non-directional (pure style bundles, or empty) are
     ``not_evaluated`` — direction is genuinely undefined for them here.
     """
-    directional = [t for t in (gold_tags or []) if t in TAG_DIRECTIONS]
+    directional = [t for t in canonicalize_tags(gold_tags) if t in TAG_DIRECTIONS]
     if not directional:
         return DirectionResult(NOT_EVALUATED, directional_tags=[])
 

@@ -65,6 +65,13 @@
     "overall": "pass"
   },
   "active_set_version": "active_set_v2_portable_unsup",
+  "behavior_v2_remeasure": {
+    "adr": "0022",
+    "behavior_vector_version": "behavior_v2",
+    "note": "measured_behavior recomputed at behavior_v2 from luts/canonical_residual",
+    "supported_remeasured": 2761
+  },
+  "behavior_vector_version": "behavior_v2",
   "counts": {
     "supported": 2761,
     "total": 3033,

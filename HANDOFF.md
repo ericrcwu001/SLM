@@ -123,3 +123,51 @@ exercised via the eval smoke fixtures. Best folded into the P4 teacher pass.
 Commit: see `feat/two-stage` history (P2).
 
 ---
+
+## P3 — behavior_v2 axes + unified tag vocabulary (ADR 0022) ✅  (local; no Colab)
+
+**Goal.** Give color language real resolution: extend the measured behavior vector with absolute +
+per-region hue, per-hue saturation, contrast shape, and matte; unify the three divergent tag tables
+into one source of truth; re-measure the corpus into a new versioned `measured_behavior`.
+
+**Changes**
+- `data_pipeline/behavior_vector.py` — `measure_behavior` now emits the 9 `behavior_v2` axes
+  (docs/attribute_spec.md §3b), all from the EXISTING probes (no new probe): `global_hue_deg`,
+  `global_hue_magnitude`, `shadow_hue_deg` / `midtone_hue_deg` / `highlight_hue_deg`,
+  `per_hue_saturation` (7 input-hue sectors), `contrast_toe_delta` / `contrast_shoulder_delta`,
+  `matte_strength`. All 27 `behavior_v1` fields are retained byte-for-byte (verified: re-measure
+  changed 0 v1 numeric values).
+- `data_pipeline/constants.py` — `BEHAVIOR_VECTOR_VERSION → behavior_v2` AND
+  `QUALITY_FILTER_VERSION → quality_v8_behavior_v2` (the cache-currency check keys on the latter,
+  `run_pipeline.py:182`, so bumping it is what forces re-measurement — the ADR-0022 gotcha).
+- `eval/tag_vocabulary.py` — NEW single source of truth (pure; in `eval` so both layers import it
+  without a cycle): canonical `DIRECTIONAL_TAG_AXIS`, `RETIRED_ALIASES`
+  (`more_magenta→tint_magenta`, `higher_contrast→more_contrast`, `desaturated→muted`, …),
+  `STYLE_TAGS`, and the NEW behavior_v2 hue families (`hue_cast_*`, `sat_*_up/down`).
+- `data_pipeline/instruction_gen.py` + `eval/frontier_scoring.py` — `_TAG_BEHAVIOR` and
+  `TAG_DIRECTIONS` now DERIVE from the unified vocabulary; both canonicalize incoming tags, so
+  legacy rows/fixtures using a retired alias still score while the alias is gone from the code
+  vocabulary.
+- `eval/fixtures/make_smoke_rows.py` — supported fixtures updated to canonical tags.
+- `scripts/remeasure_behavior_v2.py` — NEW idempotent re-measurement: joins each supported active
+  row (`id`→provenance `residual_key`→`luts/canonical_residual/<key>.npy`), reconstructs the
+  absolute LUT, re-measures at behavior_v2, and writes the NEW versioned vector (backup
+  `*.bak_pre_behavior_v2`, manifest `behavior_vector_version` + `behavior_v2_remeasure` block).
+  Frozen `luts/`/tokenizer untouched (ADR 0026).
+- Tests: extended `tests/test_behavior_vector.py` (v2 axes: identity≈0, warm→hue 90°, teal-orange
+  region-hue split, matte>0, per-hue-sat 7-sector map); NEW `tests/test_tag_vocabulary.py` (the
+  unify sync test: instruction_gen + frontier_scoring both source the one table; aliases retired
+  but still ingest).
+
+**Exit criteria — verified (ADR 0022)**
+- behavior_v2 axes present on all 2761 supported rows (`remeasure_behavior_v2`: remeasured=2761,
+  unresolved=0), all v1 fields unchanged.
+- Both versions bumped; unified tag table sourced from one module (drift-guarded by the sync test).
+- `python3 -m pytest -q` → **336 passed** (was 322; +14).
+
+**No Colab needed for P3.** The behavior_v2 `measured_behavior` is the input to P4 captioning + the
+oracle gate.
+
+Commit: see `feat/two-stage` history (P3).
+
+---

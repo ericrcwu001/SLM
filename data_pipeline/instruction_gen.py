@@ -28,6 +28,12 @@ from typing import Callable, Optional
 import yaml
 
 from eval import openai_compat
+from eval.tag_vocabulary import (
+    DIRECTIONAL_TAG_AXIS,
+    RETIRED_ALIASES,
+    STYLE_TAGS,
+    canonicalize_tags,
+)
 
 from .constants import (
     INSTRUCTION_STATUS_AUTHORED,
@@ -51,22 +57,15 @@ _MIN_MEASURABLE_MOVE = 1.0
 # diverge (a lower value here would reject rows acceptance keeps).
 INSTRUCTION_COVERAGE_THRESHOLD = 5.0
 
-# gold_tag -> (behavior key, required sign) for direction validation.
-_TAG_BEHAVIOR = {
-    "warmer": ("temperature_delta_b", +1), "cooler": ("temperature_delta_b", -1),
-    "tint_magenta": ("tint_delta_a", +1), "tint_green": ("tint_delta_a", -1),
-    "brighter": ("mean_l_delta", +1), "darker": ("mean_l_delta", -1),
-    "more_contrast": ("contrast_l_spread_delta", +1), "less_contrast": ("contrast_l_spread_delta", -1),
-    "more_saturated": ("chroma_delta", +1), "muted": ("chroma_delta", -1),
-    "lifted_blacks": ("black_point_l_delta", +1), "crushed_blacks": ("black_point_l_delta", -1),
-    "lifted_shadows": ("shadow_l_delta", +1), "brighter_highlights": ("highlight_l_delta", +1),
-}
+# gold_tag -> (behavior key, required sign) for direction validation. Sourced from the ONE unified
+# tag vocabulary (ADR 0022; eval.tag_vocabulary), which reconciles this table with
+# frontier_scoring.TAG_DIRECTIONS and the eval-harness direction table and retires the aliases.
+_TAG_BEHAVIOR = dict(DIRECTIONAL_TAG_AXIS)
 
 # Style-bundle tags imply a recipe of several behaviors, so their presence satisfies the
 # reverse "unmentioned behavior" coverage check (the row is a style/composite, not a single
 # attribute claim).
-_STYLE_TAGS = {"matte", "faded", "filmic", "cinematic", "teal-orange", "sepia",
-               "bleach bypass", "natural"}
+_STYLE_TAGS = set(STYLE_TAGS)
 
 # The full instruction-tag vocabulary the teacher may emit (single source of truth for the
 # prompt). Directional tags first, then style bundles.
@@ -193,6 +192,10 @@ def _norm_tag(s) -> str:
 
 
 _KNOWN_TAGS_NORM = {_norm_tag(t): t for t in KNOWN_TAGS}
+# Accept the retired aliases on ingest (ADR 0022): a teacher/legacy row emitting `more_magenta`
+# etc. maps to the canonical tag rather than being dropped.
+for _alias, _canon in RETIRED_ALIASES.items():
+    _KNOWN_TAGS_NORM.setdefault(_norm_tag(_alias), _canon)
 
 
 def _clean_tags(raw) -> list[str]:
@@ -474,6 +477,7 @@ def validate_tags_against_behavior(gold_tags: list[str], behavior: dict,
     Returns (ok, issues).
     """
     issues: list[str] = []
+    gold_tags = canonicalize_tags(gold_tags)   # retired aliases -> canonical (ADR 0022)
     # forward: tag -> behavior direction
     for tag in gold_tags:
         if tag in _TAG_BEHAVIOR:

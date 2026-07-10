@@ -4,6 +4,14 @@ Probes an absolute LUT on a fixed neutral ramp + chromatic chart + skin anchors 
 shadow samples and measures Lab-domain deltas. This vector is the authority for prompt tags:
 if a prompt says "warmer" but the measured behavior is cooler, the row is rejected/regenerated.
 
+``behavior_v2`` (ADR 0022) extends the 27 ``behavior_v1`` fields (all retained) with the
+color-resolution axes the audit calls the "in-scope unlock": absolute + per-tone-region hue,
+per-INPUT-hue-sector saturation, contrast SHAPE (toe/shoulder), and matte as a first-class axis.
+All are derived from the SAME probes (``eval.color_pipeline`` ``hue_deg``/``chroma`` + the existing
+region masks) — no new probe. Bumping ``BEHAVIOR_VECTOR_VERSION`` requires also bumping
+``QUALITY_FILTER_VERSION`` (the pipeline cache-currency check keys on the latter) or re-measurement
+silently will not run — see ``data_pipeline/constants.py``.
+
 Deterministic (fixed probe set) and real (uses :mod:`eval.color_pipeline`).
 """
 
@@ -71,6 +79,30 @@ def _hue_drift_deg(before_lab: np.ndarray, after_lab: np.ndarray) -> np.ndarray:
     return np.abs(d)
 
 
+# behavior_v2 (ADR 0022): named INPUT-hue sectors on the Lab hue circle (atan2(b*,a*): 0=red,
+# 90=yellow, 180=green, 270=blue). Approximate perceptual centers; each chromatic sample is binned
+# to its nearest center (circular). Ordered to match eval.tag_vocabulary.HUE_SECTORS.
+_HUE_SECTOR_CENTERS: dict[str, float] = {
+    "red": 25.0, "orange": 55.0, "yellow": 95.0, "green": 160.0,
+    "cyan": 200.0, "blue": 270.0, "magenta": 330.0,
+}
+
+
+def _vector_hue_deg(a: float, b: float) -> float:
+    """Hue angle (deg, [0,360)) of an (a*,b*) shift vector; 0.0 for a ~zero vector."""
+    if abs(a) < 1e-9 and abs(b) < 1e-9:
+        return 0.0
+    return float(np.mod(np.degrees(np.arctan2(b, a)), 360.0))
+
+
+def _assign_hue_sector(hues_deg: np.ndarray) -> np.ndarray:
+    """Nearest-center sector name for each input hue angle (circular distance)."""
+    names = list(_HUE_SECTOR_CENTERS)
+    centers = np.array([_HUE_SECTOR_CENTERS[n] for n in names])
+    diff = np.abs(((hues_deg[:, None] - centers[None, :] + 180.0) % 360.0) - 180.0)
+    return np.array(names)[np.argmin(diff, axis=1)]
+
+
 def measure_behavior(lut_abs: np.ndarray) -> dict:
     """Return the measured behavior vector for an absolute LUT."""
     residual = absolute_to_residual(lut_abs)
@@ -96,15 +128,49 @@ def measure_behavior(lut_abs: np.ndarray) -> dict:
     chroma_before = cp.chroma(c_before)
     chroma_after = cp.chroma(c_after)
 
-    # highlight / shadow regions (by input luma)
+    # highlight / midtone / shadow regions (by input luma)
     chart_L = c_before[:, 0]
     hi = chart_L >= 66.0
     lo = chart_L <= 33.0
+    mid = (~hi) & (~lo)
 
     # split tone: chroma-weighted a/b shift in shadows vs highlights
     ab_shift = c_after[:, 1:] - c_before[:, 1:]
     shadow_ab = ab_shift[lo].mean(axis=0) if lo.any() else np.zeros(2)
     highlight_ab = ab_shift[hi].mean(axis=0) if hi.any() else np.zeros(2)
+    midtone_ab = ab_shift[mid].mean(axis=0) if mid.any() else np.zeros(2)
+
+    # behavior_v2 (ADR 0022): per-INPUT-hue-sector chroma change ("crush greens, boost oranges").
+    chroma_shift = chroma_after - chroma_before
+    in_hue = cp.hue_deg(c_before)
+    sectors = _assign_hue_sector(in_hue)
+    per_hue_saturation = {
+        name: (float(chroma_shift[sectors == name].mean()) if (sectors == name).any() else 0.0)
+        for name in _HUE_SECTOR_CENTERS
+    }
+
+    # behavior_v2: contrast SHAPE on the neutral tone curve — toe (shadow) vs shoulder (highlight)
+    # local slope minus the identity slope of 1 (soft toe/shoulder < 0; steepened > 0).
+    in_L, out_L = r_before[:, 0], r_after[:, 0]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        slope = np.gradient(out_L, in_L)
+    toe_mask = in_L <= cp.SHADOW_L_MAX
+    shoulder_mask = in_L >= cp.HIGHLIGHT_L_MIN
+    contrast_toe_delta = float(np.nanmean(slope[toe_mask]) - 1.0) if toe_mask.any() else 0.0
+    contrast_shoulder_delta = float(np.nanmean(slope[shoulder_mask]) - 1.0) if shoulder_mask.any() else 0.0
+
+    # behavior_v2: global cast hue-angle + magnitude (from the neutral-ramp mean a*/b* shift).
+    mean_da, mean_db = float(np.mean(da)), float(np.mean(db))
+    global_hue_deg = _vector_hue_deg(mean_da, mean_db)
+    global_hue_magnitude = float(np.hypot(mean_da, mean_db))
+
+    # behavior_v2: matte as a first-class axis (lifted blacks + reduced contrast + slight desat).
+    _black_point = float(np.mean(dL[low])) if low.any() else 0.0
+    _contrast_spread = float(spread_after - spread_before)
+    _chroma_d = float(np.mean(chroma_after - chroma_before))
+    matte_strength = (max(0.0, _black_point)
+                      + max(0.0, -_contrast_spread)
+                      + 0.5 * max(0.0, -_chroma_d))
 
     # skin locus
     skin = _skin_rgb()
@@ -154,6 +220,16 @@ def measure_behavior(lut_abs: np.ndarray) -> dict:
         "smoothness": smoothness(residual),
         "foldover_rate": foldover_rate(lut_abs),
         "residual_norm": residual_norm(residual),
+        # --- behavior_v2 axes (ADR 0022; docs/attribute_spec.md §3b) ---
+        "global_hue_deg": global_hue_deg,
+        "global_hue_magnitude": global_hue_magnitude,
+        "shadow_hue_deg": _vector_hue_deg(float(shadow_ab[0]), float(shadow_ab[1])),
+        "midtone_hue_deg": _vector_hue_deg(float(midtone_ab[0]), float(midtone_ab[1])),
+        "highlight_hue_deg": _vector_hue_deg(float(highlight_ab[0]), float(highlight_ab[1])),
+        "per_hue_saturation": per_hue_saturation,
+        "contrast_toe_delta": contrast_toe_delta,
+        "contrast_shoulder_delta": contrast_shoulder_delta,
+        "matte_strength": matte_strength,
     }
 
 
