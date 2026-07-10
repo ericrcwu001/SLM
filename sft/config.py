@@ -65,6 +65,10 @@ class SFTConfig:
     # -- data / io --
     active_rows_path: str = "data/active_sft/active_rows.jsonl"
     out_dir: str = "models/sft_adapters"
+    # Generator conditioning input (ADR 0020/0021): "instruction" (one-stage) or
+    # "attribute_spec_text" (two-stage, P6). NOT a locked knob — it is the sanctioned input swap;
+    # all locked hyperparameters are unchanged when it flips.
+    input_field: str = "instruction"
 
     # -- smoke overfit sizes (Stage 5 smoke tests = the FIRST run) --
     smoke_sizes: tuple[int, ...] = (50, 200)
@@ -85,6 +89,8 @@ class SFTConfig:
             raise ValueError("projector_policy must be one of lora|full|frozen")
         if self.bnb_4bit_compute_dtype not in ("bfloat16", "float16"):
             raise ValueError("bnb_4bit_compute_dtype must be bfloat16 or float16")
+        if self.input_field not in ("instruction", "attribute_spec_text"):
+            raise ValueError("input_field must be instruction or attribute_spec_text")
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -105,6 +105,26 @@ def surviving_code_positions(tokenizer, input_ids, n_prompt: int) -> int:
     return sum(1 for t in span if t in code_ids)
 
 
+def input_text_for(row: dict, input_field: str) -> str:
+    """The generator's conditioning text for a row under ``input_field``.
+
+    ``"instruction"`` (one-stage) returns the row's instruction. ``"attribute_spec_text"``
+    (two-stage; ADR 0021) returns a pre-stamped ``attribute_spec_text`` if present, else DERIVES the
+    ground-truth spec from the row (measured LUT behavior for grade rows; a refuse spec for refusal
+    rows) — so the P6 retrain needs no corpus rewrite. Raises if the resolved text is empty.
+    """
+    if input_field == "attribute_spec_text":
+        txt = row.get("attribute_spec_text")
+        if not txt:
+            from data_pipeline.attribute_spec import ground_truth_attribute_spec_text
+            txt = ground_truth_attribute_spec_text(row)
+    else:
+        txt = row.get(input_field)
+    if not txt:
+        raise SFTError(f"row {row.get('id')}: empty input field {input_field!r}")
+    return txt
+
+
 def build_supervised_example(processor, row: dict, cfg, *, device=None,
                              input_field: str = "instruction") -> dict:
     """Build one ``(inputs, labels)`` example: assistant target un-masked, prompt masked to ``-100``.
@@ -120,9 +140,7 @@ def build_supervised_example(processor, row: dict, cfg, *, device=None,
     """
     from qwen_vl_utils import process_vision_info
 
-    text = row.get(input_field)
-    if not text:
-        raise SFTError(f"row {row.get('id')}: empty input field {input_field!r}")
+    text = input_text_for(row, input_field)
     user = {
         "role": "user",
         "content": [

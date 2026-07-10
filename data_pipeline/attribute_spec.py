@@ -28,6 +28,7 @@ from dataclasses import dataclass, field, replace
 
 from eval.refuse_taxonomy import (
     REFUSE_KINDS,
+    REFUSE_OUT_OF_SCOPE,
     ROUTE_CLARIFY,
     ROUTE_GRADE,
     ROUTE_REFUSE,
@@ -227,6 +228,22 @@ def measured_behavior_to_text(mb: dict, *, route: str = ROUTE_GRADE,
                               confidence: float | None = None) -> str:
     """Convenience: ground-truth ``measured_behavior`` -> ``attribute_spec_text`` (oracle-gate path)."""
     return serialize(from_measured_behavior(mb, route=route, confidence=confidence))
+
+
+def ground_truth_attribute_spec_text(row: dict) -> str:
+    """The GROUND-TRUTH ``attribute_spec_text`` for a corpus row — the best-possible interpreter output.
+
+    Used to condition the Generator during the P6 retrain and the oracle gate (no interpreter needed):
+      * a supported (grade) row → its measured LUT behavior serialized as a grade spec;
+      * a refuse row → a refuse spec carrying its ``refuse_kind`` (out_of_scope / out_of_gamut).
+
+    Clarify rows are interpreter-only and never reach the generator (filtered in ``sft.train``), so
+    they are not handled here.
+    """
+    if row.get("is_supported"):
+        return measured_behavior_to_text(row.get("measured_behavior") or {})
+    reason = row.get("refuse_kind") or REFUSE_OUT_OF_SCOPE
+    return serialize(AttributeSpec(route=ROUTE_REFUSE, refuse_reason=reason))
 
 
 def is_backed(spec: AttributeSpec, mb: dict, *, tol: float = 1.0) -> tuple[bool, list[str]]:

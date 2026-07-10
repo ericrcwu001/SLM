@@ -85,3 +85,17 @@ def test_measured_behavior_to_text_matches_pipeline_field():
     assert text.startswith("route=grade")
     assert text.endswith("conf=0.90")
     assert "warmer=+" in text
+
+
+def test_ground_truth_attribute_spec_text_grade_and_refuse():
+    # supported row -> grade spec from measured behavior
+    mb = measure_behavior(_lut("proc_attr_warmer"))
+    grade = A.ground_truth_attribute_spec_text({"is_supported": True, "measured_behavior": mb})
+    assert grade.startswith("route=grade") and "warmer=+" in grade
+    # refuse row -> refuse spec carrying its kind (no LUT needed)
+    oog = A.ground_truth_attribute_spec_text(
+        {"is_supported": False, "refuse_kind": "out_of_gamut"})
+    assert oog == "route=refuse | refuse=out_of_gamut"
+    # refuse row w/o an explicit kind defaults to out_of_scope
+    oos = A.ground_truth_attribute_spec_text({"is_supported": False})
+    assert oos == "route=refuse | refuse=out_of_scope"

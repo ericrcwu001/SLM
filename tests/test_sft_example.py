@@ -39,6 +39,28 @@ def test_resolve_compute_dtype_bf16_kept_on_ampere(monkeypatch):
     assert ex.resolve_compute_dtype(_Cfg("bfloat16")) is torch.bfloat16
 
 
+def test_input_text_for_instruction_and_attribute_spec():
+    row = {"id": "r", "is_supported": True, "instruction": "make it warmer",
+           "measured_behavior": {"temperature_delta_b": 2.4}}
+    assert ex.input_text_for(row, "instruction") == "make it warmer"
+    # two-stage derives the ground-truth spec on the fly (no pre-stamp needed)
+    spec = ex.input_text_for(row, "attribute_spec_text")
+    assert spec.startswith("route=grade") and "warmer=+2.4" in spec
+    # a pre-stamped attribute_spec_text takes precedence over derivation
+    row["attribute_spec_text"] = "route=grade | muted=+3.0"
+    assert ex.input_text_for(row, "attribute_spec_text") == "route=grade | muted=+3.0"
+
+
+def test_input_text_for_refuse_row_derives_refuse_spec():
+    row = {"id": "u", "is_supported": False, "refuse_kind": "out_of_scope"}
+    assert ex.input_text_for(row, "attribute_spec_text") == "route=refuse | refuse=out_of_scope"
+
+
+def test_input_text_for_empty_raises():
+    with pytest.raises(Exception):
+        ex.input_text_for({"id": "x"}, "instruction")   # no instruction field
+
+
 def _supported_row(rid: str, unit: str, *, family: str = "ppr10k_derived") -> dict:
     return {
         "id": rid,

@@ -266,7 +266,55 @@ fixed it**. So the oracle gate's marginal fail is the **confound** (instruction-
 yet read the spec format), not information loss. The two-stage is information-viable; the true test
 is the **P6 generator retrain on `attribute_spec_text`** (honest metric ≥ 0.362 baseline).
 
-**Decision (human-in-the-loop):** _pending — recommend proceeding to P5/P6 given the seam is proven
-lossless; P6 is the real apples-to-apples validation._
+**Decision (human-in-the-loop):** proceed with **P6 first** (the seam is proven lossless; P6 is the
+real apples-to-apples validation), then P5, then P7.
+
+---
+
+## P6 — Generator retrain on `attribute_spec_text` (ADR 0020/0021/0025) ⏸ waiting on Colab
+
+**Goal.** The un-confounded oracle test: retrain the QLoRA generator with the **locked knobs
+unchanged**, swapping ONLY the input `instruction → attribute_spec_text` (ground-truth spec), and
+score the same P1 holdout. Two-stage is validated iff honest token accuracy ≥ 0.362 (one-stage
+baseline) within CI.
+
+**Changes (LOCAL, done)**
+- `sft/config.py` — NEW `SFTConfig.input_field` (`"instruction"` | `"attribute_spec_text"`;
+  validated). It is the sanctioned input swap, NOT a locked knob — every locked hyperparameter is
+  unchanged when it flips.
+- `data_pipeline/attribute_spec.py` — `ground_truth_attribute_spec_text(row)`: grade rows →
+  measured-behavior spec; refuse rows → a refuse spec with their `refuse_kind` (no interpreter/LUT
+  needed).
+- `sft/example.py` — `input_text_for(row, input_field)` derives the two-stage input on the fly
+  (pre-stamped `attribute_spec_text` wins; else derived) → no corpus rewrite; used by
+  `build_supervised_example`.
+- `sft/train.py` + `sft/score_tokens.py` — thread `cfg.input_field` into example construction, so
+  train and score condition on the SAME input; RUN_BEGIN logs `input_field`.
+- `configs/candidate_two_stage.json` — the P6 candidate (full-run winner hyperparams +
+  `input_field=attribute_spec_text`); flows through `bilevel_bridge` (merged over `sft_default.yaml`,
+  validated, passed to both train and score).
+- `notebooks/generator_retrain_run.ipynb` — self-provisioning A100/T4 notebook: retrain (full
+  corpus, 2 epochs) + score the P1 holdout with `attribute_spec_text`, upload adapter to HF.
+- Tests: `input_field` validation + `ground_truth_attribute_spec_text` + `input_text_for` +
+  bridge-accepts-two-stage-candidate. `python3 -m pytest -q` → **369 passed**.
+
+### 🛑 COLAB HANDOFF — P6 retrain + score (the real two-stage gate)
+
+Run `notebooks/generator_retrain_run.ipynb` (**A100 recommended** — full 2-epoch train; T4 works but
+is slow). Auto Connect → Run All. `SLM_ARTIFACT_ROOT=/content/slm` (lowercase), code at `/content/SLM`
+(branch `feat/two-stage`); reuses `models/base_resized`. Secrets: upload `.env` or paste `HF_TOKEN`
+(read) + `HF_WRITE_TOKEN` (`SLM_Alpha_Write`, for the adapter upload) via getpass.
+
+CELL 3 runs `sft.bilevel_bridge --config configs/candidate_two_stage.json --smoke-size 0
+--score-limit 0` (train full corpus on ground-truth `attribute_spec_text`, score the full P1
+holdout, upload to `hf://…/LUT_SLM_sft_adapters`).
+
+**Paste back**: the final `METRIC=<float>` line and the `{"bridge_summary": {…}}` line (adapter HF
+path + train summary).
+
+**Gate**: two-stage validated iff `METRIC ≥ 0.362` (one-stage baseline on the same holdout) within CI
+→ proceed to P5 (interpreter) + P7. Below baseline ⇒ report + reassess before further spend.
+
+Result: _pending Colab paste._
 
 ---

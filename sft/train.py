@@ -126,7 +126,7 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
     rows = _load_rows(cfg.active_rows_path, smoke_size)
     random.Random(seed).shuffle(rows)  # seeded order so BILEVEL_SEED repeats differ
     print(f"[sft] RUN_BEGIN run_id={run_id} rows={len(rows)} smoke_size={smoke_size} "
-          f"seed={seed} artifact_root={artifact_root()}")
+          f"seed={seed} input_field={cfg.input_field} artifact_root={artifact_root()}")
     print(f"[sft] training rows={len(rows)} (smoke_size={smoke_size})")
 
     trainable = [p for p in model.parameters() if p.requires_grad]
@@ -151,7 +151,8 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
     for epoch in range(cfg.epochs):
         for row in rows:
             try:
-                batch = build_supervised_example(processor, row, cfg, device=model.device)
+                batch = build_supervised_example(processor, row, cfg, device=model.device,
+                                                 input_field=cfg.input_field)
             except Exception as exc:  # noqa: BLE001 — skip a bad row rather than kill the run
                 skipped += 1
                 print(f"[sft][skip] {row.get('id')}: {type(exc).__name__}: {exc}")

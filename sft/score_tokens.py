@@ -241,7 +241,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     cfg = _load_config(args.config)
     try:
-        rep = score(cfg, args.resized_model, args.adapter, args.limit)
+        # Score with the SAME conditioning input the adapter was trained on (cfg.input_field):
+        # "instruction" (one-stage) or "attribute_spec_text" (two-stage, P6). Two-stage rows derive
+        # the ground-truth spec on the fly (sft.example.input_text_for), so no corpus rewrite.
+        rep = score(cfg, args.resized_model, args.adapter, args.limit, input_field=cfg.input_field)
     except SFTError as exc:
         print(json.dumps({"score_summary": {"error": str(exc)}}))
         print(f"[score][ABORT] {exc}")

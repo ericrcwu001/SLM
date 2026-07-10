@@ -48,6 +48,24 @@ def test_bridge_rejects_unknown_knob():
         bb._merged_config("configs/sft_default.yaml", {"not_a_field": 1})
 
 
+def test_bridge_accepts_two_stage_input_field():
+    # P6: the sanctioned input swap flows through the bridge (input_field is a real SFTConfig field,
+    # not an unknown knob) and validates; the committed two-stage candidate is well-formed.
+    cand = bb._candidate_params("configs/candidate_two_stage.json")
+    merged = bb._merged_config("configs/sft_default.yaml", cand)
+    assert merged["input_field"] == "attribute_spec_text"
+    bb._validate(merged)  # must not raise
+    # locked knobs are untouched by the two-stage candidate
+    assert "epochs" not in cand and "max_seq_len" not in cand and "seed" not in cand
+
+
+def test_bridge_rejects_bad_input_field():
+    merged = bb._merged_config("configs/sft_default.yaml", {})
+    merged["input_field"] = "something_else"
+    with pytest.raises(ValueError):
+        bb._validate(merged)
+
+
 def test_bridge_rejects_batch_triple_violation():
     merged = bb._merged_config("configs/sft_default.yaml", {})
     merged["gradient_accumulation_steps"] = 5  # 1*5 != effective_batch_size (32) -> __post_init__ raises
