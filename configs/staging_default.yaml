@@ -31,6 +31,8 @@ pack:
     - "*.lock"
     - "*.metadata"
     - "*.part"
+    - ".DS_Store"          # macOS junk — never part of the corpus
+    - "*.bak_pre_*"        # local rollback backups (P2/P3 migrations); never staged/uploaded
   shard_max_bytes: 2147483648        # ~2 GiB per shard (sequential transfer beats small-file I/O)
   compression: none                  # residuals (.npy) and JPGs are already compressed
 
