@@ -117,8 +117,10 @@ def resize_and_preflight(cfg: SFTConfig, out_dir: str | None, preflight_only: bo
         if missing:
             raise SFTError(f"expected {NUM_SPECIAL_TOKENS} new tokens; missing {len(missing)}")
 
+    # low_cpu_mem_usage streams the shards in (lower peak RAM), so the fp32 3B load fits a smaller
+    # runtime (e.g. a standard Colab T4 with ~12.7GB RAM), not just the A100 high-RAM box.
     model = _ModelCls.from_pretrained(cfg.base_model_id, torch_dtype=torch.float32,
-                                      trust_remote_code=True)
+                                      trust_remote_code=True, low_cpu_mem_usage=True)
     model.resize_token_embeddings(len(tok))
 
     # Mean/stat-init the new rows from the existing embedding distribution (avoid random init).

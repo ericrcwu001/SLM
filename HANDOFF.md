@@ -208,7 +208,12 @@ teacher spend.
 
 ### 🛑 COLAB HANDOFF — ORACLE GATE (hard go/no-go; do NOT build P5/P6 until confirmed)
 
-Run `notebooks/oracle_gate_run.ipynb` on the A100 (Auto Connect → Run All). It:
+Runs on an **A100 or a T4** (inference-only: 4-bit 3B VLM teacher-forced scoring, no training — fits
+a T4's 16 GB; bf16→fp16 auto-falls-back on Turing/Volta via `sft.example.resolve_compute_dtype`).
+On a *fresh* T4 that must rebuild `models/base_resized`, use a **High-RAM** runtime (the fp32 resize
+needs ~12 GB RAM; `low_cpu_mem_usage` lowers the peak) or reuse a VM that already built it.
+
+Run `notebooks/oracle_gate_run.ipynb` (Auto Connect → Run All). It:
 `export SLM_ARTIFACT_ROOT=/content/slm` (LOWERCASE staged corpus; code at `/content/SLM` UPPERCASE),
 stages if missing, reuses `models/base_resized`, downloads adapter
 `ericrcwu/LUT_SLM_sft_adapters/bl_a0ccbcff_smokefull` (the current one-stage full-run winner), and

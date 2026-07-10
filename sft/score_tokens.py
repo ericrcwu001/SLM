@@ -161,7 +161,8 @@ def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int,
     except Exception:  # noqa: BLE001
         from transformers import AutoModelForVision2Seq as _ModelCls  # type: ignore
 
-    compute_dtype = torch.bfloat16 if cfg.bnb_4bit_compute_dtype == "bfloat16" else torch.float16
+    from sft.example import resolve_compute_dtype
+    compute_dtype = resolve_compute_dtype(cfg)   # bf16 on A100; auto fp16 on T4/Volta (no hw bf16)
     processor = AutoProcessor.from_pretrained(resized_model, trust_remote_code=True,
                                               min_pixels=cfg.min_pixels, max_pixels=cfg.max_pixels)
     tok = processor.tokenizer

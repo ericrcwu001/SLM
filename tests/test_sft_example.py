@@ -14,6 +14,31 @@ from sft import example as ex
 from sft.holdout import holdout_key, is_holdout_row
 
 
+class _Cfg:
+    def __init__(self, dt):
+        self.bnb_4bit_compute_dtype = dt
+
+
+def test_resolve_compute_dtype_float16_config():
+    import torch
+    assert ex.resolve_compute_dtype(_Cfg("float16")) is torch.float16
+
+
+def test_resolve_compute_dtype_bf16_falls_back_on_t4(monkeypatch):
+    # Simulate a T4: CUDA present but no hardware bf16 -> must fall back to float16.
+    import torch
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
+    assert ex.resolve_compute_dtype(_Cfg("bfloat16")) is torch.float16
+
+
+def test_resolve_compute_dtype_bf16_kept_on_ampere(monkeypatch):
+    import torch
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: True)
+    assert ex.resolve_compute_dtype(_Cfg("bfloat16")) is torch.bfloat16
+
+
 def _supported_row(rid: str, unit: str, *, family: str = "ppr10k_derived") -> dict:
     return {
         "id": rid,

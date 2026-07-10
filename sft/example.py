@@ -29,6 +29,23 @@ def artifact_root() -> Path:
     return Path(os.environ.get("SLM_ARTIFACT_ROOT", os.getcwd()))
 
 
+def resolve_compute_dtype(cfg):
+    """The 4-bit compute dtype, honoring the config's promised bf16→fp16 fallback.
+
+    ``bnb_4bit_compute_dtype='bfloat16'`` is the A100 (Ampere) default; Turing/Volta GPUs (e.g. the
+    Colab **T4**) have no hardware bf16, so we fall back to float16 there. On the T4 the oracle gate
+    is inference-only, and both the baseline and oracle passes use the SAME dtype, so the relative
+    gate comparison is unaffected. Torch is imported lazily so this stays import-safe off-GPU.
+    """
+    import torch
+
+    want_bf16 = getattr(cfg, "bnb_4bit_compute_dtype", "bfloat16") == "bfloat16"
+    if want_bf16 and torch.cuda.is_available() and not torch.cuda.is_bf16_supported():
+        print("[sft] bf16 unsupported on this GPU (e.g. T4) — falling back to float16 compute.")
+        return torch.float16
+    return torch.bfloat16 if want_bf16 else torch.float16
+
+
 def resolve_image(path: str) -> str:
     return path if os.path.isabs(path) else str(artifact_root() / path)
 

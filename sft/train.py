@@ -101,7 +101,8 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
 
     seed = _effective_seed(cfg)
     torch.manual_seed(seed)
-    compute_dtype = torch.bfloat16 if cfg.bnb_4bit_compute_dtype == "bfloat16" else torch.float16
+    from sft.example import resolve_compute_dtype
+    compute_dtype = resolve_compute_dtype(cfg)   # bf16 on A100; auto fp16 on T4/Volta (no hw bf16)
 
     processor = AutoProcessor.from_pretrained(resized_model, trust_remote_code=True,
                                               min_pixels=cfg.min_pixels, max_pixels=cfg.max_pixels)
