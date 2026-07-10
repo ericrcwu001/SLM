@@ -111,3 +111,56 @@ def test_preflight_fails_on_noncontiguous_codes():
                            code_ids=code_ids, new_ids=new_ids, tied=True)
     assert rep["all_pass"] is False
     assert rep["code_tokens_contiguous"] is False
+
+
+# --- save contract: the resized dir must be AutoProcessor-loadable (regression guard) ---
+# sft/train.py calls AutoProcessor.from_pretrained(resized_model), which needs preprocessor_config.json.
+# _write_artifacts must persist the processor, not just tokenizer+model. Faked so no torch/model download.
+class _FakeSaveable:
+    """Stand-in for a HF model/processor/tokenizer: save_pretrained drops sentinel files + records order."""
+
+    def __init__(self, files, calls, name):
+        self._files = files
+        self._calls = calls
+        self._name = name
+
+    def save_pretrained(self, out):
+        from pathlib import Path
+        self._calls.append(self._name)
+        for f in self._files:
+            (Path(out) / f).write_text("{}", encoding="utf-8")
+
+
+def test_write_artifacts_persists_preprocessor_config(tmp_path):
+    from sft.vocab_resize import _write_artifacts
+
+    calls = []
+    model = _FakeSaveable(["config.json", "model.safetensors"], calls, "model")
+    processor = _FakeSaveable(["preprocessor_config.json", "chat_template.json",
+                               "tokenizer_config.json"], calls, "processor")
+    tok = _FakeSaveable(["tokenizer_config.json", "tokenizer.json",
+                         "added_tokens.json"], calls, "tok")
+
+    out = _write_artifacts(str(tmp_path / "base_resized"), model, processor, tok, {"ok": True})
+
+    # The exact file whose absence breaks train.py:AutoProcessor.from_pretrained.
+    assert (out / "preprocessor_config.json").is_file()
+    # Full loadable artifact: model config, processor chat template, tokenizer, and the manifest.
+    for f in ("config.json", "chat_template.json", "tokenizer.json", "vocab_resize_manifest.json"):
+        assert (out / f).is_file()
+    # Tokenizer is written LAST so its 259 added tokens win over the processor's base copy.
+    assert calls == ["model", "processor", "tok"]
+
+
+def test_write_artifacts_creates_missing_out_dir(tmp_path):
+    from sft.vocab_resize import _write_artifacts
+
+    calls = []
+    nested = tmp_path / "does" / "not" / "exist"
+    model = _FakeSaveable(["config.json"], calls, "model")
+    processor = _FakeSaveable(["preprocessor_config.json"], calls, "processor")
+    tok = _FakeSaveable(["tokenizer.json"], calls, "tok")
+
+    out = _write_artifacts(str(nested), model, processor, tok, {})
+    assert out.is_dir()
+    assert (out / "preprocessor_config.json").is_file()

@@ -3,8 +3,10 @@ model_architecture.md "Vocabulary Resize And Embedding Preflight").
 
 Adds the 259 special tokens (eval.vocab: <lut_bos>/<lut_eos>/<unsupported> + <lut_000..255>) to the
 base Qwen2.5-VL tokenizer, resizes the model embeddings/head, mean-initializes the new rows, and runs
-the preflight assertion suite. Writes the resized base + tokenizer to ``--out`` and a
-``vocab_resize_manifest.json`` (identity + preflight report).
+the preflight assertion suite. Writes the resized base + the FULL processor (tokenizer +
+image-processor config + chat template) to ``--out`` and a ``vocab_resize_manifest.json`` (identity +
+preflight report). The processor is required because ``sft/train.py`` loads the dir with
+``AutoProcessor.from_pretrained`` — without ``preprocessor_config.json`` that call raises OSError.
 
 Heavy deps (torch/transformers) are imported lazily; a missing runtime raises the honest guard so no
 result is fabricated. Runs on the Colab GPU stack (or CPU for a small preflight-only check).
@@ -53,6 +55,25 @@ def preflight_checks(*, base_len: int, n_tok: int, n_in: int, n_out: int,
     report["all_pass"] = bool(report["len_tok_eq_embed_eq_head"] and report["code_tokens_contiguous"]
                               and report["special_ids_unique"] and report["count_ok"])
     return report
+
+
+def _write_artifacts(out_dir: str, model, processor, tok, manifest: dict) -> Path:
+    """Persist the resized model + FULL processor + tokenizer + manifest to ``out_dir``.
+
+    Order matters: the processor is written first (``preprocessor_config.json`` + chat template),
+    then the resized tokenizer is written last so its 259 added tokens overwrite the processor's
+    base-tokenizer copy and are authoritative on disk. ``sft/train.py`` loads this dir with
+    ``AutoProcessor.from_pretrained`` and reads ``preprocessor_config.json``; omitting the processor
+    save leaves the artifact unloadable. Extracted so the save contract is unit-testable without a
+    multi-GB model (see tests/test_vocab_resize.py).
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(out)
+    processor.save_pretrained(out)   # writes preprocessor_config.json + chat template (the missing files)
+    tok.save_pretrained(out)         # authoritative resized tokenizer (overwrites the processor's copy)
+    write_manifest(out / "vocab_resize_manifest.json", manifest)
+    return out
 
 
 def _load_config(path: str | None) -> SFTConfig:
@@ -136,16 +157,24 @@ def resize_and_preflight(cfg: SFTConfig, out_dir: str | None, preflight_only: bo
     except Exception:  # noqa: BLE001
         pass
 
-    out = Path(out_dir or "models/base_resized")
-    out.mkdir(parents=True, exist_ok=True)
-    tok.save_pretrained(out)
-    model.save_pretrained(out)
+    # Load the FULL base processor and swap in the resized tokenizer, so the saved artifact carries
+    # preprocessor_config.json + chat template. Fatal on failure: a processor-less dir would only
+    # blow up later at train.py's AutoProcessor.from_pretrained (OSError before step 1).
+    try:
+        from transformers import AutoProcessor
+        processor = AutoProcessor.from_pretrained(cfg.base_model_id, trust_remote_code=True)
+        processor.tokenizer = tok  # the resized tokenizer (with the 259 added tokens)
+    except Exception as exc:  # noqa: BLE001
+        raise SFTError(
+            f"could not load base processor for {cfg.base_model_id!r}; the resized model would be "
+            f"missing preprocessor_config.json and train.py could not load it: {exc}") from exc
+
     manifest = build_vocab_resize_manifest(
         base_model_id=cfg.base_model_id, base_vocab_size=base_len,
         vocab_size_after_resize=n_tok, added_special_token_ids=added_ids,
         tied_embedding_status=report["tied_embedding_status"], tokenizer_manifest=tok_manifest,
         preflight=report)
-    write_manifest(out / "vocab_resize_manifest.json", manifest)
+    out = _write_artifacts(out_dir or "models/base_resized", model, processor, tok, manifest)
     print(f"[vocab-resize][OK] {out}  base={base_len} -> {n_tok} (+{len(new_ids)}) "
           f"tied={report['tied_embedding_status']}")
     return report
