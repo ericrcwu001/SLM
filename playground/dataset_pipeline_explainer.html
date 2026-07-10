@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>From frozen row to ship decision — Prompt-to-LUT</title>
+<title>From source files to ship decision — Prompt-to-LUT</title>
 <meta name="description" content="An animated walkthrough of how the Prompt-to-LUT dataset is built and how the eval harness scores every model output." />
 <meta name="theme-color" content="#0A0B0D" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230A0B0D'/%3E%3Cpath d='M16 44 30 12l7 18 11-10-9 32z' fill='%23E9B44C'/%3E%3C/svg%3E" />
@@ -217,6 +217,7 @@ nav{
   display:grid;grid-template-columns:minmax(260px,.72fr) minmax(570px,1.45fr);gap:42px;align-items:center;}
 .harness-copy h2{font-size:clamp(2rem,3.4vw,3rem);margin:10px 0 12px;max-width:10.5ch;text-wrap:balance;}
 .harness-copy>.lede{font-size:.92rem;line-height:1.55;max-width:43ch;}
+.harness-compact-note{display:none;}
 .harness-controls{display:flex;align-items:center;gap:14px;margin:16px 0 12px;}
 .hplay{appearance:none;border:1px solid rgba(233,180,76,.4);background:var(--accent-soft);color:var(--accent);
   border-radius:var(--r-btn);padding:9px 13px;font:500 12px/1 "Geist Mono",monospace;letter-spacing:.03em;
@@ -226,6 +227,7 @@ nav{
 .playmark{width:7px;height:7px;background:currentColor;clip-path:polygon(0 0,100% 50%,0 100%);}
 .hplay[aria-pressed="true"] .playmark{clip-path:none;box-shadow:5px 0 0 currentColor;width:2px;}
 .scroll-hint{font:400 10px/1.4 "Geist Mono",monospace;color:var(--text-3);letter-spacing:.08em;}
+.hint-tap{display:none;}
 .hsteps{list-style:none;margin:0;padding:0;border-top:1px solid var(--line);max-width:340px;}
 .hsteps li{border-bottom:1px solid var(--line);}
 .hstep{appearance:none;width:100%;border:0;background:none;color:var(--text-3);padding:6px 2px;
@@ -334,7 +336,82 @@ nav{
 .ship-decision strong{font:600 18px/1 "Geist",sans-serif;color:var(--text);}.ship-decision span{font:500 10px/1 "Geist Mono",monospace;color:var(--accent);letter-spacing:.12em;}
 .scene-count{position:absolute;right:24px;bottom:18px;font:500 42px/1 "Geist Mono",monospace;color:rgba(255,255,255,.035);letter-spacing:-.08em;pointer-events:none;}
 
-@media(max-width:1050px){
+/* Collection-tour scenes share the walkthrough shell but visualize moving data. */
+.collection-tour{background:
+  radial-gradient(76% 48% at 75% 28%,rgba(127,160,183,.09),transparent 70%),
+  radial-gradient(50% 34% at 14% 78%,rgba(233,180,76,.055),transparent 72%),var(--bg-1);}
+.collect-source-list{display:grid;gap:8px;}
+.collect-source{display:grid;grid-template-columns:105px 1fr 46px;gap:10px;align-items:center;font-size:11px;color:var(--text-2);}
+.collect-source .source-track{height:8px;border-radius:3px;background:var(--bg-3);overflow:hidden;}
+.collect-source .source-fill{display:block;width:var(--w);height:100%;border-radius:3px;background:linear-gradient(90deg,rgba(127,160,183,.45),var(--diag));transform:scaleX(0);transform-origin:left;}
+.collect-source:first-child .source-fill{background:linear-gradient(90deg,rgba(233,180,76,.48),var(--accent));}
+.collect-source .source-n{text-align:right;font:500 10px/1 "Geist Mono",monospace;color:var(--text);}
+.hscene.active .source-fill{animation:collectFill .72s var(--ease) forwards;animation-delay:calc(var(--i) * 75ms);}
+@keyframes collectFill{to{transform:scaleX(1)}}
+.collection-total{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
+.collection-total strong{font:500 1.65rem/1 "Geist Mono",monospace;}.collection-total span{font-size:11px;color:var(--text-3);}
+
+.record-stack{display:grid;gap:8px;}
+.record-row{display:grid;grid-template-columns:78px 1fr auto;gap:11px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg-1);opacity:.22;transform:translateX(-12px);}
+.record-row .rid{font:500 9px/1 "Geist Mono",monospace;color:var(--accent);}.record-row .rpath{font:400 10px/1.3 "Geist Mono",monospace;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.record-row .rhash{font:400 9px/1 "Geist Mono",monospace;color:var(--text-3);}
+.hscene.active .record-row{animation:recordIn .45s var(--ease) forwards;animation-delay:calc(var(--i) * 110ms);}
+@keyframes recordIn{to{opacity:1;transform:none}}
+.dedupe-meter{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-top:16px;font:500 12px/1 "Geist Mono",monospace;}
+.dedupe-meter .drop-line{height:1px;background:var(--line-2);position:relative;overflow:visible;}
+.dedupe-meter .drop-line::after{content:"455 exact duplicates";position:absolute;left:50%;top:7px;transform:translateX(-50%);font-size:8px;color:var(--reject);white-space:nowrap;}
+
+.format-flow{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:center;}
+.format-stack{display:grid;gap:7px;}.format-tag{padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--bg-1);font:500 10px/1 "Geist Mono",monospace;color:var(--text-2);opacity:.28;transform:translateX(-10px);}
+.hscene.active .format-tag{animation:recordIn .4s var(--ease) forwards;animation-delay:calc(var(--i) * 100ms);}
+.format-arrow{font:500 10px/1.7 "Geist Mono",monospace;color:var(--accent);text-align:center;}
+.canonical-card{border:1px solid rgba(233,180,76,.3);border-radius:11px;padding:17px;background:rgba(233,180,76,.045);text-align:center;}
+.canonical-card .cube-mini{max-width:150px;margin:-16px auto -8px;}
+
+.tier-list{display:grid;gap:10px;}.tier-row{display:grid;grid-template-columns:92px 1fr 56px;gap:12px;align-items:center;}
+.tier-name{font:500 10px/1 "Geist Mono",monospace;color:var(--text-2);}.tier-track{height:34px;border-radius:7px;background:var(--bg-3);overflow:hidden;}
+.tier-fill{display:block;width:var(--w);height:100%;transform:scaleX(0);transform-origin:left;border-radius:7px;}
+.tier-row.gold .tier-fill{background:var(--gold)}.tier-row.diag .tier-fill{background:var(--diag)}.tier-row.reject .tier-fill{background:var(--reject)}
+.tier-count{text-align:right;font:500 11px/1 "Geist Mono",monospace;color:var(--text);}.hscene.active .tier-fill{animation:collectFill .8s var(--ease) forwards;animation-delay:calc(var(--i) * 130ms);}
+.gate-readout{display:flex;gap:8px;flex-wrap:wrap;margin-top:17px;}
+
+.collection-segments{height:56px;display:flex;overflow:hidden;border:1px solid var(--line-2);border-radius:10px;margin:18px 0;}
+.collection-segments i{width:var(--w);height:100%;transform:scaleX(0);transform-origin:left;display:grid;place-items:center;font:500 9px/1 "Geist Mono",monospace;color:var(--on-accent);}
+.collection-segments i:nth-child(1){background:var(--accent)}.collection-segments i:nth-child(2){background:var(--diag)}.collection-segments i:nth-child(3){background:#5c7080}.collection-segments i:nth-child(4){background:#3f4b56}
+.hscene.active .collection-segments i{animation:collectFill .65s var(--ease) forwards;animation-delay:calc(var(--i) * 120ms);}
+.cluster-line{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border:1px solid var(--line);border-radius:9px;background:var(--bg-1);font-size:12px;color:var(--text-2);}
+.cluster-line strong{font:500 1.35rem/1 "Geist Mono",monospace;color:var(--text);}.cluster-line em{font-style:normal;color:var(--accent);font:500 10px/1 "Geist Mono",monospace;}
+
+.instruction-pair{display:grid;grid-template-columns:1.15fr .85fr;gap:12px;}.instruction-card{border:1px solid var(--line);border-radius:11px;padding:16px;background:var(--bg-1);}
+.behavior-trace{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:13px;}.behavior-trace i{height:24px;border-radius:4px;background:var(--bg-3);position:relative;overflow:hidden;}
+.behavior-trace i::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--h);background:var(--accent);transform:translateY(100%);}
+.hscene.active .behavior-trace i::after{animation:traceRise .55s var(--ease) forwards;animation-delay:calc(var(--i) * 90ms);}@keyframes traceRise{to{transform:none}}
+.boundary-total{display:grid;place-items:center;text-align:center;border-color:rgba(127,160,183,.28);}.boundary-total strong{font:500 2rem/1 "Geist Mono",monospace;color:var(--diag);}.boundary-total span{font-size:11px;color:var(--text-3);margin-top:7px;}
+
+.quota-list{display:grid;gap:9px;}.quota-row{display:grid;grid-template-columns:105px 1fr 45px;gap:10px;align-items:center;font-size:11px;color:var(--text-2);}
+.quota-track{height:18px;border-radius:5px;background:var(--bg-3);overflow:hidden;}.quota-fill{height:100%;width:var(--w);background:linear-gradient(90deg,rgba(233,180,76,.4),var(--accent));transform:scaleX(0);transform-origin:left;}
+.hscene.active .quota-fill{animation:collectFill .65s var(--ease) forwards;animation-delay:calc(var(--i) * 90ms);}.quota-row b{font:500 10px/1 "Geist Mono",monospace;text-align:right;color:var(--text);}
+.active-lock{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:15px 16px;border:1px solid rgba(233,180,76,.3);border-radius:10px;background:var(--accent-soft);}.active-lock strong{font:500 1.45rem/1 "Geist Mono",monospace;}.active-lock span{font:500 9px/1 "Geist Mono",monospace;color:var(--accent);letter-spacing:.1em;}
+
+.shard-stack{display:grid;gap:8px;}.shard-row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg-1);opacity:.25;transform:translateY(9px);}
+.shard-row span{font:400 10px/1 "Geist Mono",monospace;color:var(--text-2);}.shard-row b{font:500 9px/1 "Geist Mono",monospace;color:var(--accent);}
+.hscene.active .shard-row{animation:shardIn .45s var(--ease) forwards;animation-delay:calc(var(--i) * 105ms);}@keyframes shardIn{to{opacity:1;transform:none}}
+.publish-line{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-top:16px;font:500 9px/1 "Geist Mono",monospace;color:var(--text-3);}.publish-line i{height:1px;background:linear-gradient(90deg,var(--accent),var(--diag));position:relative;}.publish-line i::after{content:"";position:absolute;top:-3px;left:0;width:7px;height:7px;border-radius:50%;background:var(--accent);}
+.hscene.active .publish-line i::after{animation:packetTravel 1.5s var(--ease) infinite;}@keyframes packetTravel{to{left:calc(100% - 7px)}}
+
+@media(max-width:1050px) and (min-width:761px){
+  .harness-shell{grid-template-columns:clamp(178px,24vw,210px) minmax(0,1fr);gap:18px;padding-block:14px 12px;}
+  .harness-copy h2{font-size:2rem;max-width:10ch;margin:9px 0 12px;}
+  .harness-copy>.lede{display:none;}
+  .harness-compact-note{display:block;color:var(--text-3);font-size:.76rem;line-height:1.45;max-width:25ch;margin:0;}
+  .harness-controls{align-items:flex-start;flex-direction:column;gap:7px;margin:14px 0 10px;}
+  .hsteps{max-width:none;}
+  .hstep{grid-template-columns:25px 1fr;padding:5px 1px;}.hstep .hlayer{display:none;}
+  .hstep[aria-selected="true"]{transform:translateX(4px);}
+  .harness-console{height:min(580px,calc(100dvh - 88px));min-height:500px;}
+  .scene-head p{font-size:11.5px;max-width:25ch;}
+}
+@media(max-width:760px){
   .harness-tour{min-height:auto;padding-block:72px;}
   .harness-shell{position:relative;top:auto;min-height:0;display:block;padding-block:0;}
   .harness-copy h2{max-width:13ch;}.harness-copy>.lede{max-width:62ch;}
@@ -342,6 +419,7 @@ nav{
   .hsteps li{border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
   .hstep{grid-template-columns:22px 1fr;padding:11px 10px;}.hstep .hlayer{display:none}.hstep[aria-selected="true"]{transform:none;background:var(--accent-soft);}
   .hstep::after{display:none}.harness-console{height:610px;min-height:0;}
+  .hint-scroll{display:none;}.hint-tap{display:inline;}
 }
 @media(max-width:680px){
   .harness-tour{padding-block:58px;}.hsteps{grid-template-columns:repeat(2,1fr);}
@@ -350,6 +428,8 @@ nav{
   .scene-grid{grid-template-columns:1fr;}.microcard.wide{grid-column:auto}.branch{grid-template-columns:1fr;}.branch-arrow{transform:rotate(90deg);height:20px;}
   .decode-flow{grid-template-columns:1fr;gap:8px}.decode-arrow{transform:rotate(90deg);}.cube-mini{max-width:190px;margin:0 auto;}
   .ci-row{grid-template-columns:96px 1fr 48px;gap:9px}.scene-count{font-size:34px;}
+  .collect-source{grid-template-columns:84px 1fr 42px;}.format-flow{grid-template-columns:1fr;}.format-arrow{transform:rotate(90deg);}
+  .instruction-pair{grid-template-columns:1fr;}.quota-row{grid-template-columns:90px 1fr 38px;}.tier-row{grid-template-columns:72px 1fr 46px;}
 }
 
 /* ---------- Overview funnel ---------- */
@@ -570,13 +650,11 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
   html{scroll-behavior:auto;}
   .reveal{opacity:1;transform:none;transition:none;}
   .cubegrid span,.tokgrid i{transform:scale(1);transition:none;}
-  .harness-tour{min-height:auto;padding-block:72px;}
-  .harness-shell{position:relative;top:auto;min-height:0;}
   .mini-tokens i,.cube-mini i{transform:scale(1);}
   .hgate{opacity:1;transform:none;}
   .ci-track i{transform:translate(-50%,-50%) scale(1);}
   .terminal .cursor{opacity:1;}
-  *{animation-duration:0.001ms !important;transition-duration:0.001ms !important;}
+  *{animation-duration:0.001ms !important;animation-delay:0s !important;transition-duration:0.001ms !important;transition-delay:0s !important;}
 }
 </style>
 </head>
@@ -593,9 +671,9 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
     LUT dataset <small>/ methodology</small>
   </a>
   <div class="navlinks">
-    <a href="#harness">Eval tour</a>
+    <a href="#data-live">Data run</a>
     <a href="#overview">Dataset</a>
-    <a href="#gates">Quality gates</a>
+    <a href="#harness">Eval harness</a>
     <a href="#instructions">Boundaries</a>
     <a href="#delivery">Delivery</a>
     <a href="#glossary">Glossary</a>
@@ -608,13 +686,13 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
     <div>
       <span class="eyebrow">Prompt-to-LUT &middot; dataset + evaluation</span>
       <h1>One color model. Every decision, <span class="hl">measured</span>.</h1>
-      <p class="lede">Follow one frozen row through generation, strict parsing, LUT decoding, deterministic color checks, confidence intervals, and a final ship decision&mdash;then see how its dataset is built.</p>
+      <p class="lede">Follow raw color transforms from source registration to verified shards, then watch one frozen row move through deterministic evaluation and a final ship decision.</p>
       <div class="hero-cta">
-        <a class="btn btn-primary" href="#harness">
-          Run the eval tour
+        <a class="btn btn-primary" href="#data-live">
+          Watch data collection
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
-        <a class="btn btn-ghost" href="#overview">Trace the dataset</a>
+        <a class="btn btn-ghost" href="#harness">Run the eval harness</a>
       </div>
     </div>
 
@@ -659,173 +737,167 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
   </div>
 </div>
 
-<!-- EVAL HARNESS: SCROLL-SCRUBBED END-TO-END RUN -->
-<section class="harness-tour" id="harness" tabindex="-1" aria-labelledby="harness-title">
+<!-- DATA COLLECTION: SCROLL-SCRUBBED SOURCE-TO-SHARD RUN -->
+<section class="harness-tour collection-tour" id="data-live" tabindex="-1" aria-labelledby="collection-tour-title"
+  data-process-tour data-tour-labels="reading inventory|registering provenance|canonicalizing luts|running quality gates|freezing splits|writing instructions|selecting active set|packing shards">
   <div class="harness-shell wrap">
     <div class="harness-copy">
-      <div class="sec-flag"><span class="ln"></span><span class="eyebrow">Live harness walkthrough</span></div>
-      <h2 id="harness-title">From frozen row to ship decision.</h2>
-      <p class="lede">The same row, contract, and thresholds follow every checkpoint. Scroll to scrub the run, select a stage, or replay it end to end. Values shown in the run are illustrative; the contracts and artifacts match the implementation.</p>
+      <div class="sec-flag"><span class="ln"></span><span class="eyebrow">Live data collection</span></div>
+      <h2 id="collection-tour-title">From scattered sources to a certified corpus.</h2>
+      <p class="lede">Watch 7,760 real color transforms move through provenance, deduplication, canonicalization, quality gates, leakage-safe splits, instruction authoring, selection, and verified delivery.</p>
+      <p class="harness-compact-note">Scroll from source inventory to verified shards. Every count matches the current corpus manifests.</p>
       <div class="harness-controls">
-        <button class="hplay" id="harnessPlay" type="button" aria-pressed="false"><span class="playmark" aria-hidden="true"></span><span id="harnessPlayLabel">Replay full run</span></button>
-        <span class="scroll-hint">scroll to scrub &darr;</span>
+        <button class="hplay" id="collectionPlay" type="button" aria-pressed="false"><span class="playmark" aria-hidden="true"></span><span class="play-label">Replay collection</span></button>
+        <span class="scroll-hint"><span class="hint-scroll">scroll to scrub &darr;</span><span class="hint-tap">tap a stage</span></span>
       </div>
-      <ol class="hsteps" role="tablist" aria-label="Eval harness stages">
-        <li><button class="hstep" id="hstep-0" role="tab" aria-selected="true" aria-controls="hscene-0" data-hstep="0"><span class="hn">00</span><b>Bind inputs</b><span class="hlayer">CONFIG</span></button></li>
-        <li><button class="hstep" id="hstep-1" role="tab" aria-selected="false" aria-controls="hscene-1" data-hstep="1"><span class="hn">01</span><b>Generate twice</b><span class="hlayer">MODES</span></button></li>
-        <li><button class="hstep" id="hstep-2" role="tab" aria-selected="false" aria-controls="hscene-2" data-hstep="2"><span class="hn">02</span><b>Enforce contract</b><span class="hlayer">L0&ndash;L1</span></button></li>
-        <li><button class="hstep" id="hstep-3" role="tab" aria-selected="false" aria-controls="hscene-3" data-hstep="3"><span class="hn">03</span><b>Decode the LUT</b><span class="hlayer">L2&ndash;L3</span></button></li>
-        <li><button class="hstep" id="hstep-4" role="tab" aria-selected="false" aria-controls="hscene-4" data-hstep="4"><span class="hn">04</span><b>Measure color</b><span class="hlayer">L4&ndash;L7</span></button></li>
-        <li><button class="hstep" id="hstep-5" role="tab" aria-selected="false" aria-controls="hscene-5" data-hstep="5"><span class="hn">05</span><b>Record judgment</b><span class="hlayer">L8</span></button></li>
-        <li><button class="hstep" id="hstep-6" role="tab" aria-selected="false" aria-controls="hscene-6" data-hstep="6"><span class="hn">06</span><b>Prove the delta</b><span class="hlayer">STATS</span></button></li>
-        <li><button class="hstep" id="hstep-7" role="tab" aria-selected="false" aria-controls="hscene-7" data-hstep="7"><span class="hn">07</span><b>Write the record</b><span class="hlayer">REPORT</span></button></li>
+      <ol class="hsteps" role="tablist" aria-label="Data collection stages">
+        <li><button class="hstep" id="cstep-0" role="tab" aria-selected="true" aria-controls="cscene-0"><span class="hn">00</span><b>Read sources</b><span class="hlayer">7 FEEDS</span></button></li>
+        <li><button class="hstep" id="cstep-1" role="tab" aria-selected="false" aria-controls="cscene-1"><span class="hn">01</span><b>Register + dedupe</b><span class="hlayer">SHA256</span></button></li>
+        <li><button class="hstep" id="cstep-2" role="tab" aria-selected="false" aria-controls="cscene-2"><span class="hn">02</span><b>Canonicalize</b><span class="hlayer">17&sup3;</span></button></li>
+        <li><button class="hstep" id="cstep-3" role="tab" aria-selected="false" aria-controls="cscene-3"><span class="hn">03</span><b>Gate quality</b><span class="hlayer">3 TIERS</span></button></li>
+        <li><button class="hstep" id="cstep-4" role="tab" aria-selected="false" aria-controls="cscene-4"><span class="hn">04</span><b>Freeze splits</b><span class="hlayer">NO LEAK</span></button></li>
+        <li><button class="hstep" id="cstep-5" role="tab" aria-selected="false" aria-controls="cscene-5"><span class="hn">05</span><b>Write instructions</b><span class="hlayer">BOUNDARY</span></button></li>
+        <li><button class="hstep" id="cstep-6" role="tab" aria-selected="false" aria-controls="cscene-6"><span class="hn">06</span><b>Select active set</b><span class="hlayer">QUOTAS</span></button></li>
+        <li><button class="hstep" id="cstep-7" role="tab" aria-selected="false" aria-controls="cscene-7"><span class="hn">07</span><b>Pack + verify</b><span class="hlayer">DELIVER</span></button></li>
       </ol>
     </div>
 
-    <div class="harness-console" aria-label="Animated evaluation run">
+    <div class="harness-console" aria-label="Animated data collection run">
       <div class="hconsole-top">
-        <div class="hconsole-id"><span class="runlights" aria-hidden="true"><i></i><i></i><i></i></span><span>illustrative_run / candidate_042</span></div>
-        <span class="hconsole-status" id="harnessStatus" aria-live="polite">binding inputs</span>
+        <div class="hconsole-id"><span class="runlights" aria-hidden="true"><i></i><i></i><i></i></span><span>collection_run / corpus_current</span></div>
+        <span class="hconsole-status" aria-live="polite">reading inventory</span>
       </div>
-      <div class="hrun-meter" aria-hidden="true"><span id="harnessMeter"></span></div>
+      <div class="hrun-meter" aria-hidden="true"><span></span></div>
       <div class="hscene-view">
-        <article class="hscene active" id="hscene-0" role="tabpanel" aria-labelledby="hstep-0" aria-hidden="false" data-scene="0">
+        <article class="hscene active" id="cscene-0" role="tabpanel" aria-labelledby="cstep-0" aria-hidden="false">
           <div class="scene-head">
-            <div><div class="scene-k">00 &middot; immutable inputs</div><h3>Bind the contract</h3></div>
-            <p>A run starts from frozen rows, a pinned checkpoint, two decode modes, and recorded seeds. No threshold moves after seeing an output.</p>
+            <div><div class="scene-k">00 &middot; declared inputs</div><h3>Open the source inventory</h3></div>
+            <p>Every candidate starts with a named family, access path, and acquisition policy. Nothing enters from an unknown origin.</p>
           </div>
-          <div class="scene-grid">
-            <div class="microcard gold">
-              <div class="micro-k">Frozen eval row</div>
-              <div class="micro-v">eval_seen_000184</div>
-              <div class="hchips"><span class="hchip ok">headline</span><span class="hchip">gold</span><span class="hchip">exact_target</span></div>
-              <div class="micro-note">&ldquo;Make the image warmer with softer contrast.&rdquo;</div>
-            </div>
-            <div class="microcard">
-              <div class="micro-k">Run binding</div>
-              <div class="micro-v">checkpoint_candidate_042</div>
-              <div class="hchips"><span class="hchip">seeds 11 / 29 / 47</span><span class="hchip">config v1</span></div>
-              <div class="micro-note">Versions, hashes, and slice policy travel with the result.</div>
-            </div>
-            <div class="terminal wide"><span class="prompt">$</span> python -m eval.run_eval <span class="dim">\</span><br>&nbsp;&nbsp;--rows frozen_eval.jsonl --modes free_generation,runtime_constrained <span class="dim">\</span><br>&nbsp;&nbsp;--seeds 11,29,47 --run-id candidate_042 <span class="cursor" aria-hidden="true"></span></div>
+          <div class="collect-source-list">
+            <div class="collect-source"><span>PPR10K experts</span><span class="source-track"><i class="source-fill" style="--w:100%;--i:0"></i></span><span class="source-n">4,055</span></div>
+            <div class="collect-source"><span>Scraped web</span><span class="source-track"><i class="source-fill" style="--w:41.8%;--i:1"></i></span><span class="source-n">1,695</span></div>
+            <div class="collect-source"><span>FiveK experts</span><span class="source-track"><i class="source-fill" style="--w:19.7%;--i:2"></i></span><span class="source-n">800</span></div>
+            <div class="collect-source"><span>FreshLUTs</span><span class="source-track"><i class="source-fill" style="--w:17.9%;--i:3"></i></span><span class="source-n">727</span></div>
+            <div class="collect-source"><span>HaldCLUT film</span><span class="source-track"><i class="source-fill" style="--w:8.5%;--i:4"></i></span><span class="source-n">344</span></div>
+            <div class="collect-source"><span>ON1 pack</span><span class="source-track"><i class="source-fill" style="--w:2.2%;--i:5"></i></span><span class="source-n">89</span></div>
+            <div class="collect-source"><span>Procedural</span><span class="source-track"><i class="source-fill" style="--w:1.2%;--i:6"></i></span><span class="source-n">50</span></div>
           </div>
+          <div class="collection-total"><span>raw candidates admitted to registration</span><strong>7,760</strong></div>
           <span class="scene-count" aria-hidden="true">00</span>
         </article>
 
-        <article class="hscene" id="hscene-1" role="tabpanel" aria-labelledby="hstep-1" aria-hidden="true" data-scene="1">
+        <article class="hscene" id="cscene-1" role="tabpanel" aria-labelledby="cstep-1" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">01 &middot; model invocation</div><h3>Generate in both modes</h3></div>
-            <p>Free generation tests what the model learned. Runtime constrained generation applies the product grammar mask.</p>
+            <div><div class="scene-k">01 &middot; provenance registry</div><h3>Give every item a traceable identity</h3></div>
+            <p>Path, family, access method, and content hash land in one machine-readable row before any transform is trusted.</p>
           </div>
-          <div class="mode-lane">
-            <div class="mode-head"><span>free_generation_eval</span><em>learned syntax</em></div>
-            <div class="tokenstream js-tokenstream" aria-label="Generated LUT token sequence"></div>
-            <div class="micro-note">Greedy decode &middot; no grammar mask &middot; valid-token rate is measured here</div>
+          <div class="record-stack">
+            <div class="record-row" style="--i:0"><span class="rid">src_000184</span><span class="rpath">ppr10k/expert_a/184.cube</span><span class="rhash">b671&hellip;9fd2</span></div>
+            <div class="record-row" style="--i:1"><span class="rid">src_003912</span><span class="rpath">web/film_warm_07.cube</span><span class="rhash">4e20&hellip;ba11</span></div>
+            <div class="record-row" style="--i:2"><span class="rid">src_005507</span><span class="rpath">fivek/expert_c/507.pair</span><span class="rhash">9a0c&hellip;71f8</span></div>
+            <div class="record-row" style="--i:3"><span class="rid">src_007741</span><span class="rpath">haldclut/film/retro_12.png</span><span class="rhash">c381&hellip;ea04</span></div>
           </div>
-          <div class="mode-lane live">
-            <div class="mode-head"><span>runtime_constrained_eval</span><em>product path</em></div>
-            <div class="tokenstream js-tokenstream" aria-label="Grammar-constrained LUT token sequence"></div>
-            <div class="micro-note">Only <span class="mono">&lt;unsupported&gt;</span> or BOS + 64 code ids + EOS can be emitted</div>
-          </div>
+          <div class="dedupe-meter"><strong>3,321</strong><span class="drop-line"></span><strong style="color:var(--accent)">2,866 distinct</strong></div>
           <span class="scene-count" aria-hidden="true">01</span>
         </article>
 
-        <article class="hscene" id="hscene-2" role="tabpanel" aria-labelledby="hstep-2" aria-hidden="true" data-scene="2">
+        <article class="hscene" id="cscene-2" role="tabpanel" aria-labelledby="cstep-2" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">02 &middot; deterministic contract</div><h3>Split at the boundary</h3></div>
-            <p>The support label never steers generation. It only scores the output after the model commits.</p>
+            <div><div class="scene-k">02 &middot; one color contract</div><h3>Normalize the container, preserve the look</h3></div>
+            <p>Files and expert image pairs converge on one comparable representation before any gate computes a score.</p>
           </div>
-          <div class="branch">
-            <div class="branch-card pass">
-              <div class="micro-k">Supported row</div>
-              <div class="branch-output">&lt;lut_bos&gt; &lt;lut_042&gt; &hellip; &times;64 &lt;lut_eos&gt;</div>
-              <div class="passline"><i>&#10003;</i><span>L0 non-refusal</span></div>
-              <div class="passline"><i>&#10003;</i><span>L1 exact grammar</span></div>
+          <div class="format-flow">
+            <div class="format-stack">
+              <div class="format-tag" style="--i:0">HaldCLUT image</div>
+              <div class="format-tag" style="--i:1">expert before / after pair</div>
+              <div class="format-tag" style="--i:2">mixed-grid .cube</div>
+              <div class="format-tag" style="--i:3">wider color space</div>
             </div>
-            <div class="branch-arrow" aria-hidden="true">&harr;</div>
-            <div class="branch-card refuse">
-              <div class="micro-k">Unsupported row</div>
-              <div class="branch-output">&lt;unsupported&gt;</div>
-              <div class="passline"><i>&#10003;</i><span>Exact refusal only</span></div>
-              <div class="passline"><i>&#10003;</i><span>No prose or silent identity LUT</span></div>
+            <div class="format-arrow">resample<br>&amp; manage<br>&rarr;</div>
+            <div class="canonical-card">
+              <div class="cube-mini js-cube-mini" aria-hidden="true"></div>
+              <div class="micro-v">17&sup3; canonical .cube</div>
+              <div class="micro-note">sRGB &middot; D65 &middot; trilinear &middot; 4,913 nodes</div>
             </div>
           </div>
-          <div class="terminal" style="margin-top:12px;"><span class="dim">parser</span> &nbsp;kind=lut_tokens &nbsp;token_count=64 &nbsp;<span class="prompt">syntax_pass=true</span></div>
           <span class="scene-count" aria-hidden="true">02</span>
         </article>
 
-        <article class="hscene" id="hscene-3" role="tabpanel" aria-labelledby="hstep-3" aria-hidden="true" data-scene="3">
+        <article class="hscene" id="cscene-3" role="tabpanel" aria-labelledby="cstep-3" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">03 &middot; canonical decode</div><h3>Turn 64 ids into color</h3></div>
-            <p>The frozen codebook expands tokens into a finite 17&times;17&times;17 residual LUT, then exports a pinned <span class="mono">.cube</span>.</p>
+            <div><div class="scene-k">03 &middot; representability + safety</div><h3>Sort by what one global LUT can prove</h3></div>
+            <p>Color error, support, clipping, smoothness, neutral drift, and skin-locus checks produce the tier.</p>
           </div>
-          <div class="decode-flow">
-            <div><div class="mini-tokens" id="harnessTokens" aria-hidden="true"></div><div class="micro-note">64 code ids &middot; vocabulary 256</div></div>
-            <div class="decode-arrow">VQ decode<br>&rarr;</div>
-            <div><div class="cube-mini" id="harnessCube" aria-hidden="true"></div><div class="micro-note">4,913 nodes &middot; sRGB D65 &middot; trilinear</div></div>
+          <div class="tier-list">
+            <div class="tier-row gold"><span class="tier-name">Gold</span><span class="tier-track"><i class="tier-fill" style="--w:2.6%;--i:0"></i></span><span class="tier-count">204</span></div>
+            <div class="tier-row diag"><span class="tier-name">Diagnostic</span><span class="tier-track"><i class="tier-fill" style="--w:56.9%;--i:1"></i></span><span class="tier-count">4,416</span></div>
+            <div class="tier-row reject"><span class="tier-name">Rejected</span><span class="tier-track"><i class="tier-fill" style="--w:40.5%;--i:2"></i></span><span class="tier-count">3,140</span></div>
           </div>
-          <div class="hchips" style="justify-content:center;margin-top:18px;"><span class="hchip ok">L2 decode pass</span><span class="hchip ok">L3 tokenizer gate pass</span><span class="hchip">hashes match</span></div>
+          <div class="gate-readout"><span class="hchip">&Delta;E00 &le; 3.0</span><span class="hchip">support &ge; .98</span><span class="hchip">clip &le; .5%</span><span class="hchip ok">4,620 survive</span></div>
           <span class="scene-count" aria-hidden="true">03</span>
         </article>
 
-        <article class="hscene" id="hscene-4" role="tabpanel" aria-labelledby="hstep-4" aria-hidden="true" data-scene="4">
+        <article class="hscene" id="cscene-4" role="tabpanel" aria-labelledby="cstep-4" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">04 &middot; deterministic color stack</div><h3>Measure the promise</h3></div>
-            <p>A pretty image is not enough. Every explicit instruction attribute and every safety boundary must pass.</p>
+            <div><div class="scene-k">04 &middot; geometry-aware reserve</div><h3>Keep near-identical LUTs together</h3></div>
+            <p>Similarity groups become indivisible split units, preventing a near-clone from appearing in both train and evaluation.</p>
           </div>
-          <div class="gate-stack">
-            <div class="hgate" style="--i:0"><span class="layer">L4</span><b>Direction</b><span class="metric">b* +2.3 <span class="tick">&#10003;</span></span></div>
-            <div class="hgate" style="--i:1"><span class="layer">L5</span><b>Target fidelity</b><span class="metric">&Delta;E00 1.84 <span class="tick">&#10003;</span></span></div>
-            <div class="hgate" style="--i:2"><span class="layer">L6</span><b>LUT safety + skin locus</b><span class="metric">clip 0.12% <span class="tick">&#10003;</span></span></div>
-            <div class="hgate" style="--i:3"><span class="layer">L7</span><b>Style recipe</b><span class="metric">4 / 4 windows <span class="tick">&#10003;</span></span></div>
+          <div class="collection-segments" aria-label="Train 80 percent, evaluation 10 percent, diagnostic 7 percent, qualitative 3 percent">
+            <i style="--w:80%;--i:0">train 80%</i><i style="--w:10%;--i:1">eval</i><i style="--w:7%;--i:2"></i><i style="--w:3%;--i:3"></i>
           </div>
-          <div class="terminal" style="margin-top:12px;"><span class="prompt">supported_pass =</span> boundary &and; syntax &and; decode &and; direction &and; fidelity &and; safety &and; style</div>
+          <div class="cluster-line"><span>leakage-safe split units</span><strong>2,804</strong><em>&#10003; CHECK PASS</em></div>
+          <div class="terminal" style="margin-top:12px;"><span class="dim">split_id</span> split_43e6cd41 &nbsp; <span class="prompt">seed=frozen</span> &nbsp; near_neighbor_crossings=0</div>
           <span class="scene-count" aria-hidden="true">04</span>
         </article>
 
-        <article class="hscene" id="hscene-5" role="tabpanel" aria-labelledby="hstep-5" aria-hidden="true" data-scene="5">
+        <article class="hscene" id="cscene-5" role="tabpanel" aria-labelledby="cstep-5" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">05 &middot; advisory layer</div><h3>Record, never overrule</h3></div>
-            <p>The judge can describe quality and oddities. It cannot turn a deterministic failure into a pass.</p>
+            <div><div class="scene-k">05 &middot; behavior-grounded language</div><h3>Write what the transform actually does</h3></div>
+            <p>Measured deltas set the facts. A teacher writes the instruction; a verifier checks every claim and the refusal boundary.</p>
           </div>
-          <div class="judge-lock">L8<br>4.6 / 5</div>
-          <p class="judge-rule"><b>Deterministic checks remain authoritative.</b><br>The LLM/VLM judge score is archived beside L0&ndash;L7 for diagnosis and qualitative review.</p>
-          <div class="hchips" style="justify-content:center;margin-top:22px;"><span class="hchip">advisory</span><span class="hchip">non-gating</span><span class="hchip ok">recorded</span></div>
+          <div class="instruction-pair">
+            <div class="instruction-card">
+              <div class="micro-k">Measured behavior &rarr; supported instruction</div>
+              <div class="micro-v">&ldquo;Warm the image and soften contrast while lifting the shadows.&rdquo;</div>
+              <div class="behavior-trace" aria-hidden="true"><i style="--h:72%;--i:0"></i><i style="--h:42%;--i:1"></i><i style="--h:61%;--i:2"></i><i style="--h:28%;--i:3"></i></div>
+              <div class="hchips"><span class="hchip ok">2,761 supported</span><span class="hchip">claims verified</span></div>
+            </div>
+            <div class="instruction-card boundary-total"><strong>272</strong><span>unsupported and mixed prompts<br>teach an exact refusal</span><div class="hchip" style="margin-top:12px">&lt;unsupported&gt;</div></div>
+          </div>
           <span class="scene-count" aria-hidden="true">05</span>
         </article>
 
-        <article class="hscene" id="hscene-6" role="tabpanel" aria-labelledby="hstep-6" aria-hidden="true" data-scene="6">
+        <article class="hscene" id="cscene-6" role="tabpanel" aria-labelledby="cstep-6" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">06 &middot; aggregate + compare</div><h3>Prove the improvement</h3></div>
-            <p>Seeds, sample floors, paired rows, and confidence bounds decide whether a visible gain is real enough to ship.</p>
+            <div><div class="scene-k">06 &middot; quota-aware selection</div><h3>Choose for coverage, not just volume</h3></div>
+            <p>Source, style, and scene quotas keep one family from dominating the final supervised set.</p>
           </div>
-          <div class="microcard wide">
-            <div class="micro-k">Illustrative headline pass rate &middot; 95% confidence intervals</div>
-            <div class="ci-row"><span class="ci-name">det. renderer</span><span class="ci-track" style="--lo:28%;--mid:36%;--hi:45%;"><i style="--i:0"></i></span><span class="ci-val">36.2%</span></div>
-            <div class="ci-row"><span class="ci-name">base model</span><span class="ci-track" style="--lo:38%;--mid:47%;--hi:55%;"><i style="--i:1"></i></span><span class="ci-val">46.8%</span></div>
-            <div class="ci-row"><span class="ci-name">candidate_042</span><span class="ci-track" style="--lo:57%;--mid:65%;--hi:73%;"><i style="--i:2"></i></span><span class="ci-val">64.7%</span></div>
+          <div class="quota-list">
+            <div class="quota-row"><span>PPR10K</span><span class="quota-track"><i class="quota-fill" style="--w:100%;--i:0"></i></span><b>956</b></div>
+            <div class="quota-row"><span>Scraped web</span><span class="quota-track"><i class="quota-fill" style="--w:83.6%;--i:1"></i></span><b>799</b></div>
+            <div class="quota-row"><span>FiveK</span><span class="quota-track"><i class="quota-fill" style="--w:56.3%;--i:2"></i></span><b>538</b></div>
+            <div class="quota-row"><span>FreshLUTs</span><span class="quota-track"><i class="quota-fill" style="--w:20.6%;--i:3"></i></span><b>197</b></div>
+            <div class="quota-row"><span>HaldCLUT</span><span class="quota-track"><i class="quota-fill" style="--w:20%;--i:4"></i></span><b>191</b></div>
           </div>
-          <div class="hchips"><span class="hchip ok">paired bootstrap lower bound +12.1pp</span><span class="hchip">min N met</span><span class="hchip">3 seeds</span><span class="hchip">Holm corrected</span></div>
+          <div class="active-lock"><span>ACTIVE SET &middot; QUOTAS PASS</span><strong>3,033 rows</strong></div>
           <span class="scene-count" aria-hidden="true">06</span>
         </article>
 
-        <article class="hscene" id="hscene-7" role="tabpanel" aria-labelledby="hstep-7" aria-hidden="true" data-scene="7">
+        <article class="hscene" id="cscene-7" role="tabpanel" aria-labelledby="cstep-7" aria-hidden="true">
           <div class="scene-head">
-            <div><div class="scene-k">07 &middot; auditable output</div><h3>Write the full record</h3></div>
-            <p>Every row, parse, failure, metric, version, and decision lands in one replayable run directory.</p>
+            <div><div class="scene-k">07 &middot; durable handoff</div><h3>Pack, publish, and verify byte for byte</h3></div>
+            <p>Structure-preserving shards, manifests, and hashes turn the corpus into a resumable training input.</p>
           </div>
-          <div class="scene-grid">
-            <div class="microcard">
-              <div class="artifact-tree"><span class="folder">eval_runs/candidate_042/</span><span class="file">overall_results.csv</span><span class="file">gate_results.csv</span><span class="file">baseline_delta.csv</span><span class="file">metrics_by_row.parquet</span><span class="file">failure_manifest.jsonl</span></div>
-            </div>
-            <div class="microcard steel">
-              <div class="micro-k">Decision record</div>
-              <div class="micro-v">all required gates evaluable</div>
-              <div class="micro-note">Checkpoint, tokenizer, config, parser, FSM, decoder, and color-pipeline versions are pinned.</div>
-              <div class="hchips"><span class="hchip ok">replayable</span><span class="hchip ok">auditable</span></div>
-            </div>
+          <div class="shard-stack">
+            <div class="shard-row" style="--i:0"><span>corpus-raw.tar</span><b>SHA256 &#10003;</b></div>
+            <div class="shard-row" style="--i:1"><span>corpus-canonical.tar</span><b>SHA256 &#10003;</b></div>
+            <div class="shard-row" style="--i:2"><span>corpus-active-sft.tar</span><b>SHA256 &#10003;</b></div>
+            <div class="shard-row" style="--i:3"><span>corpus-eval-reserve.tar</span><b>SHA256 &#10003;</b></div>
+            <div class="shard-row" style="--i:4"><span>corpus-tokenizer.tar</span><b>SHA256 &#10003;</b></div>
           </div>
-          <div class="ship-decision"><strong>Candidate clears the illustrative gate</strong><span>SHIP &middot; PASS</span></div>
+          <div class="publish-line"><span>5 shards &middot; ~9.85 GB</span><i></i><span>private durable root</span></div>
+          <div class="ship-decision"><strong>Corpus is staged for training</strong><span>VERIFIED</span></div>
           <span class="scene-count" aria-hidden="true">07</span>
         </article>
       </div>
@@ -1215,6 +1287,182 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
   </div>
 </section>
 
+<!-- EVAL HARNESS: SCROLL-SCRUBBED END-TO-END RUN -->
+<section class="harness-tour" id="harness" tabindex="-1" aria-labelledby="harness-title"
+  data-process-tour data-tour-labels="binding inputs|generating outputs|checking boundary|decoding lut|running l4–l7|recording l8|computing intervals|writing reports">
+  <div class="harness-shell wrap">
+    <div class="harness-copy">
+      <div class="sec-flag"><span class="ln"></span><span class="eyebrow">Live harness walkthrough</span></div>
+      <h2 id="harness-title">From frozen row to ship decision.</h2>
+      <p class="lede">The same row, contract, and thresholds follow every checkpoint. Scroll to scrub the run, select a stage, or replay it end to end. Values shown in the run are illustrative; the contracts and artifacts match the implementation.</p>
+      <p class="harness-compact-note">Scroll to scrub the full run. Values are illustrative; the flow and artifacts match the implementation.</p>
+      <div class="harness-controls">
+        <button class="hplay" id="harnessPlay" type="button" aria-pressed="false"><span class="playmark" aria-hidden="true"></span><span class="play-label">Replay full run</span></button>
+        <span class="scroll-hint"><span class="hint-scroll">scroll to scrub &darr;</span><span class="hint-tap">tap a stage</span></span>
+      </div>
+      <ol class="hsteps" role="tablist" aria-label="Eval harness stages">
+        <li><button class="hstep" id="hstep-0" role="tab" aria-selected="true" aria-controls="hscene-0" data-hstep="0"><span class="hn">00</span><b>Bind inputs</b><span class="hlayer">CONFIG</span></button></li>
+        <li><button class="hstep" id="hstep-1" role="tab" aria-selected="false" aria-controls="hscene-1" data-hstep="1"><span class="hn">01</span><b>Generate twice</b><span class="hlayer">MODES</span></button></li>
+        <li><button class="hstep" id="hstep-2" role="tab" aria-selected="false" aria-controls="hscene-2" data-hstep="2"><span class="hn">02</span><b>Enforce contract</b><span class="hlayer">L0&ndash;L1</span></button></li>
+        <li><button class="hstep" id="hstep-3" role="tab" aria-selected="false" aria-controls="hscene-3" data-hstep="3"><span class="hn">03</span><b>Decode the LUT</b><span class="hlayer">L2&ndash;L3</span></button></li>
+        <li><button class="hstep" id="hstep-4" role="tab" aria-selected="false" aria-controls="hscene-4" data-hstep="4"><span class="hn">04</span><b>Measure color</b><span class="hlayer">L4&ndash;L7</span></button></li>
+        <li><button class="hstep" id="hstep-5" role="tab" aria-selected="false" aria-controls="hscene-5" data-hstep="5"><span class="hn">05</span><b>Record judgment</b><span class="hlayer">L8</span></button></li>
+        <li><button class="hstep" id="hstep-6" role="tab" aria-selected="false" aria-controls="hscene-6" data-hstep="6"><span class="hn">06</span><b>Prove the delta</b><span class="hlayer">STATS</span></button></li>
+        <li><button class="hstep" id="hstep-7" role="tab" aria-selected="false" aria-controls="hscene-7" data-hstep="7"><span class="hn">07</span><b>Write the record</b><span class="hlayer">REPORT</span></button></li>
+      </ol>
+    </div>
+
+    <div class="harness-console" aria-label="Animated evaluation run">
+      <div class="hconsole-top">
+        <div class="hconsole-id"><span class="runlights" aria-hidden="true"><i></i><i></i><i></i></span><span>illustrative_run / candidate_042</span></div>
+        <span class="hconsole-status" id="harnessStatus" aria-live="polite">binding inputs</span>
+      </div>
+      <div class="hrun-meter" aria-hidden="true"><span id="harnessMeter"></span></div>
+      <div class="hscene-view">
+        <article class="hscene active" id="hscene-0" role="tabpanel" aria-labelledby="hstep-0" aria-hidden="false" data-scene="0">
+          <div class="scene-head">
+            <div><div class="scene-k">00 &middot; immutable inputs</div><h3>Bind the contract</h3></div>
+            <p>A run starts from frozen rows, a pinned checkpoint, two decode modes, and recorded seeds. No threshold moves after seeing an output.</p>
+          </div>
+          <div class="scene-grid">
+            <div class="microcard gold">
+              <div class="micro-k">Frozen eval row</div>
+              <div class="micro-v">eval_seen_000184</div>
+              <div class="hchips"><span class="hchip ok">headline</span><span class="hchip">gold</span><span class="hchip">exact_target</span></div>
+              <div class="micro-note">&ldquo;Make the image warmer with softer contrast.&rdquo;</div>
+            </div>
+            <div class="microcard">
+              <div class="micro-k">Run binding</div>
+              <div class="micro-v">checkpoint_candidate_042</div>
+              <div class="hchips"><span class="hchip">seeds 11 / 29 / 47</span><span class="hchip">config v1</span></div>
+              <div class="micro-note">Versions, hashes, and slice policy travel with the result.</div>
+            </div>
+            <div class="terminal wide"><span class="prompt">$</span> python -m eval.run_eval <span class="dim">\</span><br>&nbsp;&nbsp;--rows frozen_eval.jsonl --modes free_generation,runtime_constrained <span class="dim">\</span><br>&nbsp;&nbsp;--seeds 11,29,47 --run-id candidate_042 <span class="cursor" aria-hidden="true"></span></div>
+          </div>
+          <span class="scene-count" aria-hidden="true">00</span>
+        </article>
+
+        <article class="hscene" id="hscene-1" role="tabpanel" aria-labelledby="hstep-1" aria-hidden="true" data-scene="1">
+          <div class="scene-head">
+            <div><div class="scene-k">01 &middot; model invocation</div><h3>Generate in both modes</h3></div>
+            <p>Free generation tests what the model learned. Runtime constrained generation applies the product grammar mask.</p>
+          </div>
+          <div class="mode-lane">
+            <div class="mode-head"><span>free_generation_eval</span><em>learned syntax</em></div>
+            <div class="tokenstream js-tokenstream" aria-label="Generated LUT token sequence"></div>
+            <div class="micro-note">Greedy decode &middot; no grammar mask &middot; valid-token rate is measured here</div>
+          </div>
+          <div class="mode-lane live">
+            <div class="mode-head"><span>runtime_constrained_eval</span><em>product path</em></div>
+            <div class="tokenstream js-tokenstream" aria-label="Grammar-constrained LUT token sequence"></div>
+            <div class="micro-note">Only <span class="mono">&lt;unsupported&gt;</span> or BOS + 64 code ids + EOS can be emitted</div>
+          </div>
+          <span class="scene-count" aria-hidden="true">01</span>
+        </article>
+
+        <article class="hscene" id="hscene-2" role="tabpanel" aria-labelledby="hstep-2" aria-hidden="true" data-scene="2">
+          <div class="scene-head">
+            <div><div class="scene-k">02 &middot; deterministic contract</div><h3>Split at the boundary</h3></div>
+            <p>The support label never steers generation. It only scores the output after the model commits.</p>
+          </div>
+          <div class="branch">
+            <div class="branch-card pass">
+              <div class="micro-k">Supported row</div>
+              <div class="branch-output">&lt;lut_bos&gt; &lt;lut_042&gt; &hellip; &times;64 &lt;lut_eos&gt;</div>
+              <div class="passline"><i>&#10003;</i><span>L0 non-refusal</span></div>
+              <div class="passline"><i>&#10003;</i><span>L1 exact grammar</span></div>
+            </div>
+            <div class="branch-arrow" aria-hidden="true">&harr;</div>
+            <div class="branch-card refuse">
+              <div class="micro-k">Unsupported row</div>
+              <div class="branch-output">&lt;unsupported&gt;</div>
+              <div class="passline"><i>&#10003;</i><span>Exact refusal only</span></div>
+              <div class="passline"><i>&#10003;</i><span>No prose or silent identity LUT</span></div>
+            </div>
+          </div>
+          <div class="terminal" style="margin-top:12px;"><span class="dim">parser</span> &nbsp;kind=lut_tokens &nbsp;token_count=64 &nbsp;<span class="prompt">syntax_pass=true</span></div>
+          <span class="scene-count" aria-hidden="true">02</span>
+        </article>
+
+        <article class="hscene" id="hscene-3" role="tabpanel" aria-labelledby="hstep-3" aria-hidden="true" data-scene="3">
+          <div class="scene-head">
+            <div><div class="scene-k">03 &middot; canonical decode</div><h3>Turn 64 ids into color</h3></div>
+            <p>The frozen codebook expands tokens into a finite 17&times;17&times;17 residual LUT, then exports a pinned <span class="mono">.cube</span>.</p>
+          </div>
+          <div class="decode-flow">
+            <div><div class="mini-tokens" id="harnessTokens" aria-hidden="true"></div><div class="micro-note">64 code ids &middot; vocabulary 256</div></div>
+            <div class="decode-arrow">VQ decode<br>&rarr;</div>
+            <div><div class="cube-mini js-cube-mini" id="harnessCube" aria-hidden="true"></div><div class="micro-note">4,913 nodes &middot; sRGB D65 &middot; trilinear</div></div>
+          </div>
+          <div class="hchips" style="justify-content:center;margin-top:18px;"><span class="hchip ok">L2 decode pass</span><span class="hchip ok">L3 tokenizer gate pass</span><span class="hchip">hashes match</span></div>
+          <span class="scene-count" aria-hidden="true">03</span>
+        </article>
+
+        <article class="hscene" id="hscene-4" role="tabpanel" aria-labelledby="hstep-4" aria-hidden="true" data-scene="4">
+          <div class="scene-head">
+            <div><div class="scene-k">04 &middot; deterministic color stack</div><h3>Measure the promise</h3></div>
+            <p>A pretty image is not enough. Every explicit instruction attribute and every safety boundary must pass.</p>
+          </div>
+          <div class="gate-stack">
+            <div class="hgate" style="--i:0"><span class="layer">L4</span><b>Direction</b><span class="metric">b* +2.3 <span class="tick">&#10003;</span></span></div>
+            <div class="hgate" style="--i:1"><span class="layer">L5</span><b>Target fidelity</b><span class="metric">&Delta;E00 1.84 <span class="tick">&#10003;</span></span></div>
+            <div class="hgate" style="--i:2"><span class="layer">L6</span><b>LUT safety + skin locus</b><span class="metric">clip 0.12% <span class="tick">&#10003;</span></span></div>
+            <div class="hgate" style="--i:3"><span class="layer">L7</span><b>Style recipe</b><span class="metric">4 / 4 windows <span class="tick">&#10003;</span></span></div>
+          </div>
+          <div class="terminal" style="margin-top:12px;"><span class="prompt">supported_pass =</span> boundary &and; syntax &and; decode &and; direction &and; fidelity &and; safety &and; style</div>
+          <span class="scene-count" aria-hidden="true">04</span>
+        </article>
+
+        <article class="hscene" id="hscene-5" role="tabpanel" aria-labelledby="hstep-5" aria-hidden="true" data-scene="5">
+          <div class="scene-head">
+            <div><div class="scene-k">05 &middot; advisory layer</div><h3>Record, never overrule</h3></div>
+            <p>The judge can describe quality and oddities. It cannot turn a deterministic failure into a pass.</p>
+          </div>
+          <div class="judge-lock">L8<br>4.6 / 5</div>
+          <p class="judge-rule"><b>Deterministic checks remain authoritative.</b><br>The LLM/VLM judge score is archived beside L0&ndash;L7 for diagnosis and qualitative review.</p>
+          <div class="hchips" style="justify-content:center;margin-top:22px;"><span class="hchip">advisory</span><span class="hchip">non-gating</span><span class="hchip ok">recorded</span></div>
+          <span class="scene-count" aria-hidden="true">05</span>
+        </article>
+
+        <article class="hscene" id="hscene-6" role="tabpanel" aria-labelledby="hstep-6" aria-hidden="true" data-scene="6">
+          <div class="scene-head">
+            <div><div class="scene-k">06 &middot; aggregate + compare</div><h3>Prove the improvement</h3></div>
+            <p>Seeds, sample floors, paired rows, and confidence bounds decide whether a visible gain is real enough to ship.</p>
+          </div>
+          <div class="microcard wide">
+            <div class="micro-k">Illustrative headline pass rate &middot; 95% confidence intervals</div>
+            <div class="ci-row"><span class="ci-name">det. renderer</span><span class="ci-track" style="--lo:28%;--mid:36%;--hi:45%;"><i style="--i:0"></i></span><span class="ci-val">36.2%</span></div>
+            <div class="ci-row"><span class="ci-name">base model</span><span class="ci-track" style="--lo:38%;--mid:47%;--hi:55%;"><i style="--i:1"></i></span><span class="ci-val">46.8%</span></div>
+            <div class="ci-row"><span class="ci-name">candidate_042</span><span class="ci-track" style="--lo:57%;--mid:65%;--hi:73%;"><i style="--i:2"></i></span><span class="ci-val">64.7%</span></div>
+          </div>
+          <div class="hchips"><span class="hchip ok">paired bootstrap lower bound +12.1pp</span><span class="hchip">min N met</span><span class="hchip">3 seeds</span><span class="hchip">Holm corrected</span></div>
+          <span class="scene-count" aria-hidden="true">06</span>
+        </article>
+
+        <article class="hscene" id="hscene-7" role="tabpanel" aria-labelledby="hstep-7" aria-hidden="true" data-scene="7">
+          <div class="scene-head">
+            <div><div class="scene-k">07 &middot; auditable output</div><h3>Write the full record</h3></div>
+            <p>Every row, parse, failure, metric, version, and decision lands in one replayable run directory.</p>
+          </div>
+          <div class="scene-grid">
+            <div class="microcard">
+              <div class="artifact-tree"><span class="folder">eval_runs/candidate_042/</span><span class="file">overall_results.csv</span><span class="file">gate_results.csv</span><span class="file">baseline_delta.csv</span><span class="file">metrics_by_row.parquet</span><span class="file">failure_manifest.jsonl</span></div>
+            </div>
+            <div class="microcard steel">
+              <div class="micro-k">Decision record</div>
+              <div class="micro-v">all required gates evaluable</div>
+              <div class="micro-note">Checkpoint, tokenizer, config, parser, FSM, decoder, and color-pipeline versions are pinned.</div>
+              <div class="hchips"><span class="hchip ok">replayable</span><span class="hchip ok">auditable</span></div>
+            </div>
+          </div>
+          <div class="ship-decision"><strong>Candidate clears the illustrative gate</strong><span>SHIP &middot; PASS</span></div>
+          <span class="scene-count" aria-hidden="true">07</span>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- GLOSSARY -->
 <section class="sec wrap" id="glossary">
   <div class="sec-head reveal">
@@ -1384,98 +1632,106 @@ footer{border-top:1px solid var(--line);padding:48px 0 60px;color:var(--text-3);
       harnessTokens.appendChild(hti);
     }
   }
-  var harnessCube=document.getElementById("harnessCube");
-  if(harnessCube){
+  document.querySelectorAll(".js-cube-mini").forEach(function(grid){
     for(var hc=0;hc<49;hc++){
       var hci=document.createElement("i");
       hci.style.setProperty("--i",hc);
-      harnessCube.appendChild(hci);
+      grid.appendChild(hci);
     }
-  }
-
-  var harnessTour=document.getElementById("harness");
-  var harnessShell=document.querySelector(".harness-shell");
-  var harnessSteps=Array.prototype.slice.call(document.querySelectorAll(".hstep"));
-  var harnessScenes=Array.prototype.slice.call(document.querySelectorAll(".hscene"));
-  var harnessMeter=document.getElementById("harnessMeter");
-  var harnessStatus=document.getElementById("harnessStatus");
-  var harnessPlay=document.getElementById("harnessPlay");
-  var harnessPlayLabel=document.getElementById("harnessPlayLabel");
-  var harnessLabels=["binding inputs","generating outputs","checking boundary","decoding lut","running l4–l7","recording l8","computing intervals","writing reports"];
-  var harnessIndex=0, harnessTimer=null, harnessPlaying=false, harnessPlayed=false, harnessRaf=false;
-
-  function setHarnessStage(next){
-    if(!harnessSteps.length) return;
-    next=Math.max(0,Math.min(harnessSteps.length-1,next));
-    harnessIndex=next;
-    harnessSteps.forEach(function(step,i){ step.setAttribute("aria-selected",i===next?"true":"false"); });
-    harnessScenes.forEach(function(scene,i){
-      scene.classList.toggle("active",i===next);
-      scene.setAttribute("aria-hidden",i===next?"false":"true");
-    });
-    if(harnessMeter) harnessMeter.style.width=((next+1)/harnessSteps.length*100)+"%";
-    if(harnessStatus) harnessStatus.textContent=harnessLabels[next];
-  }
-  function stopHarnessPlayback(){
-    if(harnessTimer){ window.clearInterval(harnessTimer); harnessTimer=null; }
-    harnessPlaying=false;
-    if(harnessPlay) harnessPlay.setAttribute("aria-pressed","false");
-    if(harnessPlayLabel) harnessPlayLabel.textContent="Replay full run";
-  }
-  function playHarness(){
-    stopHarnessPlayback();
-    harnessPlaying=true; harnessPlayed=true;
-    if(harnessPlay) harnessPlay.setAttribute("aria-pressed","true");
-    if(harnessPlayLabel) harnessPlayLabel.textContent="Pause run";
-    setHarnessStage(0);
-    harnessTimer=window.setInterval(function(){
-      if(harnessIndex>=harnessSteps.length-1){ stopHarnessPlayback(); return; }
-      setHarnessStage(harnessIndex+1);
-    },1850);
-  }
-  if(harnessPlay){
-    harnessPlay.addEventListener("click",function(){ harnessPlaying?stopHarnessPlayback():playHarness(); });
-  }
-  harnessSteps.forEach(function(step,i){
-    step.addEventListener("click",function(){ stopHarnessPlayback(); setHarnessStage(i); });
-    step.addEventListener("keydown",function(e){
-      if(e.key!=="ArrowDown" && e.key!=="ArrowRight" && e.key!=="ArrowUp" && e.key!=="ArrowLeft" && e.key!=="Home" && e.key!=="End") return;
-      e.preventDefault(); stopHarnessPlayback();
-      var ni=i;
-      if(e.key==="ArrowDown" || e.key==="ArrowRight") ni=(i+1)%harnessSteps.length;
-      if(e.key==="ArrowUp" || e.key==="ArrowLeft") ni=(i-1+harnessSteps.length)%harnessSteps.length;
-      if(e.key==="Home") ni=0;
-      if(e.key==="End") ni=harnessSteps.length-1;
-      setHarnessStage(ni); harnessSteps[ni].focus();
-    });
   });
-  function syncHarnessToScroll(){
-    harnessRaf=false;
-    if(!harnessTour || harnessPlaying || window.innerWidth<=1050) return;
-    var rect=harnessTour.getBoundingClientRect();
-    if(rect.top>=window.innerHeight || rect.bottom<=0) return;
-    var travel=Math.max(1,harnessTour.offsetHeight-window.innerHeight);
-    var hp=Math.max(0,Math.min(1,-rect.top/travel));
-    setHarnessStage(Math.round(hp*(harnessSteps.length-1)));
-  }
-  if(harnessTour){
+
+  /* Both live tours use the same scoped, independently scrollable controller. */
+  function initProcessTour(root){
+    var shell=root.querySelector(".harness-shell");
+    var steps=Array.prototype.slice.call(root.querySelectorAll(".hstep"));
+    var scenes=Array.prototype.slice.call(root.querySelectorAll(".hscene"));
+    var meter=root.querySelector(".hrun-meter span");
+    var status=root.querySelector(".hconsole-status");
+    var play=root.querySelector(".hplay");
+    var playLabel=play ? play.querySelector(".play-label") : null;
+    var replayText=playLabel ? playLabel.textContent : "Replay";
+    var pauseText=root.id==="data-live" ? "Pause collection" : "Pause run";
+    var labels=(root.getAttribute("data-tour-labels")||"").split("|");
+    var index=0, timer=null, playing=false, played=false, rafPending=false, scrollWithReplay=false;
+
+    function setStage(next){
+      if(!steps.length) return;
+      next=Math.max(0,Math.min(steps.length-1,next));
+      index=next;
+      steps.forEach(function(step,i){ step.setAttribute("aria-selected",i===next?"true":"false"); });
+      scenes.forEach(function(scene,i){
+        scene.classList.toggle("active",i===next);
+        scene.setAttribute("aria-hidden",i===next?"false":"true");
+      });
+      if(meter) meter.style.width=((next+1)/steps.length*100)+"%";
+      if(status) status.textContent=labels[next]||steps[next].innerText.trim();
+    }
+    function scrollToStage(next,smooth){
+      if(window.innerWidth<=760 || steps.length<2) return;
+      var rootTop=root.getBoundingClientRect().top+window.scrollY;
+      var travel=Math.max(1,root.offsetHeight-window.innerHeight);
+      window.scrollTo({top:rootTop+(next/(steps.length-1))*travel,behavior:smooth&&!reduce?"smooth":"auto"});
+    }
+    function stopPlayback(){
+      if(timer){ window.clearInterval(timer); timer=null; }
+      playing=false; scrollWithReplay=false;
+      if(play) play.setAttribute("aria-pressed","false");
+      if(playLabel) playLabel.textContent=replayText;
+    }
+    function playTour(syncScroll){
+      stopPlayback();
+      playing=true; played=true; scrollWithReplay=!!syncScroll;
+      if(play) play.setAttribute("aria-pressed","true");
+      if(playLabel) playLabel.textContent=pauseText;
+      setStage(0);
+      if(scrollWithReplay) scrollToStage(0,true);
+      timer=window.setInterval(function(){
+        if(index>=steps.length-1){ stopPlayback(); return; }
+        setStage(index+1);
+        if(scrollWithReplay) scrollToStage(index,true);
+      },1850);
+    }
+    if(play){ play.addEventListener("click",function(){ playing?stopPlayback():playTour(true); }); }
+    steps.forEach(function(step,i){
+      step.addEventListener("click",function(){ stopPlayback(); setStage(i); scrollToStage(i,true); });
+      step.addEventListener("keydown",function(e){
+        if(e.key!=="ArrowDown" && e.key!=="ArrowRight" && e.key!=="ArrowUp" && e.key!=="ArrowLeft" && e.key!=="Home" && e.key!=="End") return;
+        e.preventDefault(); stopPlayback();
+        var ni=i;
+        if(e.key==="ArrowDown" || e.key==="ArrowRight") ni=(i+1)%steps.length;
+        if(e.key==="ArrowUp" || e.key==="ArrowLeft") ni=(i-1+steps.length)%steps.length;
+        if(e.key==="Home") ni=0;
+        if(e.key==="End") ni=steps.length-1;
+        setStage(ni); scrollToStage(ni,true); steps[ni].focus();
+      });
+    });
+    function syncToScroll(){
+      rafPending=false;
+      if(playing || window.innerWidth<=760) return;
+      var rect=root.getBoundingClientRect();
+      if(rect.top>=window.innerHeight || rect.bottom<=0) return;
+      var travel=Math.max(1,root.offsetHeight-window.innerHeight);
+      var progress=Math.max(0,Math.min(1,-rect.top/travel));
+      setStage(Math.round(progress*(steps.length-1)));
+    }
     window.addEventListener("scroll",function(){
-      if(!harnessRaf){ harnessRaf=true; window.requestAnimationFrame(syncHarnessToScroll); }
+      if(!rafPending){ rafPending=true; window.requestAnimationFrame(syncToScroll); }
     },{passive:true});
     ["wheel","touchstart"].forEach(function(evt){
-      harnessTour.addEventListener(evt,function(){ if(harnessPlaying) stopHarnessPlayback(); },{passive:true});
+      root.addEventListener(evt,function(){ if(playing) stopPlayback(); },{passive:true});
     });
-    if(!reduce && harnessShell){
-      var harnessObserver=new IntersectionObserver(function(entries){
+    if(!reduce && shell){
+      var observer=new IntersectionObserver(function(entries){
         entries.forEach(function(entry){
-          if(entry.isIntersecting && entry.intersectionRatio>.55 && !harnessPlayed){ playHarness(); }
-          if(!entry.isIntersecting && harnessPlaying){ stopHarnessPlayback(); }
+          if(entry.isIntersecting && entry.intersectionRatio>.55 && !played){ playTour(false); }
+          if(!entry.isIntersecting && playing){ stopPlayback(); }
         });
       },{threshold:[0,.55,.8]});
-      harnessObserver.observe(harnessShell);
+      observer.observe(shell);
     }
+    setStage(0);
   }
-  setHarnessStage(0);
+  document.querySelectorAll("[data-process-tour]").forEach(initProcessTour);
 
   /* ---- Before/after grade viewer ---- */
   var viewer=document.getElementById("viewer");
