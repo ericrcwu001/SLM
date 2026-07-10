@@ -58,6 +58,10 @@ class SftRow:
     unsupported_category: Optional[str] = None
     unsupported_components: list = field(default_factory=list)
     mixed_prompt: bool = False
+    # route taxonomy (ADR 0021/0023): interpreter route {grade, clarify, refuse}; refuse_kind is
+    # {out_of_scope, out_of_gamut} when route==refuse. Supported rows are implicitly route=grade.
+    route: Optional[str] = None
+    refuse_kind: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)

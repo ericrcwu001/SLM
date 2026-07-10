@@ -7,7 +7,10 @@ data_collection_plan.md "Prompt Difficulty Mix": unsupported = 5-10% of the acti
 Pipeline:
   1. Build a leakage-safe image pool: source images NOT used by any supported active row, split
      disjointly into an eval-reserved slice and a train slice (one unique image per row).
-  2. Deterministic balanced plan: round-robin over the 11 pure categories + 6 mixed families.
+  2. Deterministic balanced plan: round-robin over the 11 out_of_scope categories + 3 out_of_gamut
+     categories (ADR 0023) + 6 mixed families. All are refuse rows; rows carry route=refuse and a
+     refuse_kind of out_of_scope/out_of_gamut. Image paths are stored RELATIVE (portable) so the
+     refusal rows resolve against $SLM_ARTIFACT_ROOT on Colab and train (AUDIT F2 fix).
   3. Teacher phrases each request (:class:`UnsupportedTeacherClient`); a deterministic validator
      (:func:`validate_unsupported_prompt`) rejects any phrasing that lost its category cue.
   4. Idempotently assemble rows: write ``unsupported_rows.jsonl`` (all) + manifest, append train
@@ -40,11 +43,37 @@ from data_pipeline.unsupported_gen import (
     UnsupportedTeacherClient,
     validate_unsupported_prompt,
 )
+from eval.refuse_taxonomy import (
+    OUT_OF_GAMUT_CATEGORIES,
+    REFUSE_OUT_OF_SCOPE,
+    ROUTE_REFUSE,
+    refuse_kind_for_category,
+)
 
 _ACTIVE_ROWS = "data/active_sft/active_rows.jsonl"
 _SEED = 20260709
 # token/tokenizer fields are not applicable to a refusal row (target is the literal <unsupported>).
 _NA = "not_applicable"
+
+
+def to_portable_image_path(path: str) -> str:
+    """Return a corpus-relative (portable) image path — the fix for AUDIT F2 (ADR 0023).
+
+    The unsupported rows previously stored ABSOLUTE paths (``/Users/.../luts/raw/...``) which fail to
+    resolve on Colab (``sft.example.resolve_image`` returns an absolute path unchanged, so the file
+    is missing and every refusal row is skipped every epoch). Supported rows store repo-relative
+    paths like ``luts/raw/...`` that resolve against ``$SLM_ARTIFACT_ROOT`` (the staged corpus). We
+    anchor on the ``luts/`` corpus root so the result is identical to the supported-row convention
+    regardless of the machine's repo location. Already-relative paths pass through normalized.
+    """
+    p = str(path).replace(os.sep, "/")
+    marker = "/luts/"
+    idx = p.find(marker)
+    if idx != -1:
+        return p[idx + 1:]          # from "luts/..." onward (drop the leading slash)
+    if p.startswith("luts/"):
+        return p
+    return os.path.relpath(p, os.getcwd()).replace(os.sep, "/") if os.path.isabs(p) else p
 
 
 def _supported_images() -> set[str]:
@@ -88,7 +117,10 @@ def build_plan(n_train: int, n_eval: int) -> list[dict]:
     rng.shuffle(free)
     eval_imgs, train_imgs = free[:n_eval], free[n_eval:n_eval + n_train]
 
+    # Refuse buckets, round-robin balanced: out_of_scope pure + out_of_gamut (ADR 0023) + mixed.
+    # All are refuse rows (target <unsupported>); refuse_kind distinguishes out_of_scope/out_of_gamut.
     buckets = [("pure", c) for c in PURE_CATEGORIES] + \
+              [("gamut", c) for c in OUT_OF_GAMUT_CATEGORIES] + \
               [("mixed", i) for i in range(len(MIXED_FAMILIES))]
 
     def _items(n: int, split: str, imgs: list[str], headline: bool) -> list[dict]:
@@ -96,10 +128,11 @@ def build_plan(n_train: int, n_eval: int) -> list[dict]:
         for i in range(n):
             kind, key = buckets[i % len(buckets)]
             item = {"image_path": imgs[i], "split": split, "headline_eligible": headline,
-                    "split_unit_id": _split_unit(imgs[i])}
-            if kind == "pure":
+                    "split_unit_id": _split_unit(imgs[i]), "route": ROUTE_REFUSE}
+            if kind in ("pure", "gamut"):
                 item.update(mixed=False, category=key,
-                            unsupported_components=[key], supported_components=[])
+                            unsupported_components=[key], supported_components=[],
+                            refuse_kind=refuse_kind_for_category(key))
             else:
                 fam = MIXED_FAMILIES[key]
                 attr_pair = SUPPORTED_ATTRS[i % len(SUPPORTED_ATTRS)]
@@ -107,7 +140,8 @@ def build_plan(n_train: int, n_eval: int) -> list[dict]:
                             component_category=fam["component_category"],
                             unsupported_components=[fam["unsupported_component"]],
                             supported_components=[attr_pair[0]],
-                            supported_attr=attr_pair[0], _attr_pair=attr_pair)
+                            supported_attr=attr_pair[0], _attr_pair=attr_pair,
+                            refuse_kind=REFUSE_OUT_OF_SCOPE)
             out.append(item)
         return out
 
@@ -122,7 +156,8 @@ def build_plan(n_train: int, n_eval: int) -> list[dict]:
 def _row_from(plan_item: dict, prompt: str) -> SftRow:
     return SftRow(
         id=plan_item["id"], is_supported=False, source_family="unsupported_teacher",
-        image_path=plan_item["image_path"], instruction=prompt, instruction_natural=prompt,
+        image_path=to_portable_image_path(plan_item["image_path"]),   # relative -> resolves on Colab
+        instruction=prompt, instruction_natural=prompt,
         instruction_status="teacher_generated", assistant_target="<unsupported>", target_tokens=[],
         token_status=_NA, canonical_domain_id=None, tokenizer_version=_NA,
         vq_codebook_sha256=_NA, vq_decoder_sha256=_NA,
@@ -131,6 +166,8 @@ def _row_from(plan_item: dict, prompt: str) -> SftRow:
         support_label="unsupported", unsupported_category=plan_item["category"],
         unsupported_components=list(plan_item["unsupported_components"]),
         mixed_prompt=bool(plan_item.get("mixed")),
+        route=plan_item.get("route", ROUTE_REFUSE),
+        refuse_kind=plan_item.get("refuse_kind") or refuse_kind_for_category(plan_item["category"]),
     )
 
 

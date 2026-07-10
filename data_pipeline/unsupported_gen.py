@@ -32,6 +32,11 @@ from typing import Optional
 import yaml
 
 from eval import openai_compat
+from eval.refuse_taxonomy import (
+    CLARIFY_CATEGORIES,
+    OUT_OF_GAMUT_CATEGORIES,
+    OUT_OF_SCOPE_CATEGORIES,
+)
 
 from .errors import RequiresTeacher, TeacherGenerationError
 
@@ -39,21 +44,11 @@ _ALIASES = {"latest", "stable", "current", "default", "auto"}
 _REQUIRED_PROFILE_KEYS = ("provider", "model_id", "endpoint_env", "api_key_env",
                           "prompt_version", "batch_id")
 
-# Canonical unsupported categories — MUST match the strings the eval harness scores
-# (eval/fixtures/make_smoke_rows.py ``_UNSUPPORTED``; eval/unsupported_metrics.py).
-PURE_CATEGORIES: tuple[str, ...] = (
-    "local_region_edit",
-    "semantic_object_recolor",
-    "content_removal",
-    "content_replacement",
-    "content_generation",
-    "selective_preservation",
-    "reference_style_transfer",
-    "relighting",
-    "texture_detail",
-    "geometry",
-    "inpainting",
-)
+# The out_of_scope refuse categories are the source of truth in :mod:`eval.refuse_taxonomy`
+# (ADR 0023); ``PURE_CATEGORIES`` is kept as the historical alias used by the balanced plan and
+# the tests. ``tests/test_taxonomy_sync.py`` asserts every brief/cue key below matches the
+# taxonomy tuples so the five files never drift.
+PURE_CATEGORIES: tuple[str, ...] = OUT_OF_SCOPE_CATEGORIES
 
 # Human description handed to the teacher per category (what the request must require).
 _CATEGORY_BRIEF: dict[str, str] = {
@@ -74,6 +69,19 @@ _CATEGORY_BRIEF: dict[str, str] = {
                      "smoothing, or hair cleanup",
     "geometry": "a geometry/camera change such as crop, straighten, rotate, or perspective",
     "inpainting": "filling in a missing/damaged region of the photo",
+    # out_of_gamut (ADR 0023): GLOBAL, well-specified color looks the frozen tokenizer cannot
+    # represent (nearest materializable LUT exceeds mean dE00<=3.0 / p95<=6.0). Refused, not faked.
+    "infrared_false_color": "an infrared / false-color look that remaps colors far outside a normal "
+                            "photo (e.g. foliage glowing red or white, blue skies going near-black)",
+    "pure_primary_cast": "flooding the ENTIRE image with a single pure primary (e.g. make the whole "
+                         "photo pure red / pure green / pure blue), collapsing every hue to one primary",
+    "hue_rotation": "rotating EVERY hue around the color wheel by a large angle (e.g. rotate all hues "
+                    "by 180 degrees / swap all colors for their opposites)",
+    # clarify (ADR 0023): a valid but UNDER-SPECIFIED global color request that names no measurable
+    # direction — the model should ask for a supported direction, not guess or refuse.
+    "underspecified_intent": "a vague global request that names NO concrete color/tone direction "
+                             "(e.g. 'make it better', 'fix the colors', 'make it look nicer'), so the "
+                             "right response is to ask which supported direction the user wants",
 }
 
 # Deterministic cue substrings per category. The generated prompt (lowercased) must contain at
@@ -103,6 +111,21 @@ _CATEGORY_CUES: dict[str, tuple[str, ...]] = {
                 "resize", "tilt", "align"),
     "inpainting": ("fill in", "inpaint", "missing", "patch", "reconstruct", "restore the",
                   "damaged", "torn"),
+    # out_of_gamut cues (global looks the tokenizer cannot represent).
+    "infrared_false_color": ("infrared", "false color", "false-color", "ir look", "ir photo",
+                             "thermal", "heat map", "heatmap", "aerochrome"),
+    "pure_primary_cast": ("pure red", "pure green", "pure blue", "pure primary", "all red",
+                          "all green", "all blue", "everything red", "everything green",
+                          "everything blue", "entirely red", "entirely blue", "solid red",
+                          "monochrome red"),
+    "hue_rotation": ("rotate", "hue rotation", "hue-rotate", "rotate the hues", "rotate every hue",
+                     "shift all hues", "shift every hue", "180 degrees", "180 degree", "hue wheel",
+                     "opposite colors", "invert the colors", "invert the hues", "complementary colors"),
+    # clarify cues (vague, direction-free global intent).
+    "underspecified_intent": ("make it better", "make it look better", "fix the colors",
+                              "fix the color", "fix it", "improve it", "improve the", "make it nicer",
+                              "make it look nicer", "make it look good", "make it pretty",
+                              "do something", "make it pop", "enhance it", "clean it up"),
 }
 
 # Mixed families: a supported global attribute + one unsupported component. The category string
@@ -163,9 +186,46 @@ def build_mixed_system_prompt() -> str:
     )
 
 
+def build_out_of_gamut_system_prompt() -> str:
+    return (
+        "You write ONE realistic, natural photo-editing request for a GLOBAL color look that a "
+        "color-grading model MUST REFUSE because it is OUT OF GAMUT: the intent is a single global "
+        "color transform, but it is so extreme that a normal display-referred color LUT cannot "
+        "represent it (infrared/false-color, flooding the whole image with one pure primary, or "
+        "rotating every hue around the wheel).\n\n"
+        "You are given a source image and a target OUT-OF-GAMUT look. Write one request that:\n"
+        "  - asks for that GLOBAL look applied to the WHOLE image (not a region or object);\n"
+        "  - is natural, as a real user would phrase it;\n"
+        "  - clearly names the extreme global look (so it is unmistakably out of gamut);\n"
+        "  - is a single sentence, no preamble.\n\n"
+        "OUTPUT CONTRACT — output EXACTLY ONE JSON object and nothing else (no prose, no markdown "
+        "fences):\n"
+        '{ "prompt": "the user request", "global_look": true }'
+    )
+
+
+def build_clarify_system_prompt() -> str:
+    return (
+        "You write ONE realistic, natural photo-editing request that is VALID global color intent "
+        "but UNDER-SPECIFIED: it asks to improve the image's color/tone overall yet names NO "
+        "concrete, measurable direction (not warmer/cooler, brighter/darker, more/less saturated, "
+        "contrast, matte, etc.). A good color model should ASK WHICH direction the user wants "
+        "rather than guess. Examples of the vibe: 'make it better', 'fix the colors', 'make it "
+        "look nicer'.\n\n"
+        "You are given a source image. Write one request that:\n"
+        "  - is about the WHOLE image's color/tone (global), not a region, object, or content edit;\n"
+        "  - is genuinely vague — it must NOT name a specific supported direction;\n"
+        "  - is natural and short, a single sentence, no preamble.\n\n"
+        "OUTPUT CONTRACT — output EXACTLY ONE JSON object and nothing else (no prose, no markdown "
+        "fences):\n"
+        '{ "prompt": "the user request", "underspecified": true }'
+    )
+
+
 def build_messages(plan_item: dict, *, attach_image: bool = True, min_image_edge: int = 256) -> list:
     """OpenAI-style chat messages for one plan item (system + user[+image])."""
     mixed = bool(plan_item.get("mixed"))
+    cat = plan_item["category"]
     if mixed:
         system = build_mixed_system_prompt()
         user_text = (
@@ -174,9 +234,20 @@ def build_messages(plan_item: dict, *, attach_image: bool = True, min_image_edge
             f"{_CATEGORY_BRIEF[plan_item['component_category']]}\n\n"
             "Return ONLY the JSON object described in the system prompt."
         )
+    elif cat in OUT_OF_GAMUT_CATEGORIES:
+        system = build_out_of_gamut_system_prompt()
+        user_text = (
+            f"OUT-OF-GAMUT global look (category {cat}): {_CATEGORY_BRIEF[cat]}\n\n"
+            "Return ONLY the JSON object described in the system prompt."
+        )
+    elif cat in CLARIFY_CATEGORIES:
+        system = build_clarify_system_prompt()
+        user_text = (
+            f"UNDER-SPECIFIED global request (category {cat}): {_CATEGORY_BRIEF[cat]}\n\n"
+            "Return ONLY the JSON object described in the system prompt."
+        )
     else:
         system = build_unsupported_system_prompt()
-        cat = plan_item["category"]
         user_text = (
             f"UNSUPPORTED capability required (category {cat}): {_CATEGORY_BRIEF[cat]}\n\n"
             "Return ONLY the JSON object described in the system prompt."
@@ -212,11 +283,13 @@ def _has_attr_cue(text: str, cue: str) -> bool:
 
 
 def validate_unsupported_prompt(prompt: str, plan_item: dict) -> tuple[bool, list[str]]:
-    """Deterministic guard: the phrasing must actually require the assigned unsupported edit.
+    """Deterministic guard: the phrasing must actually match the assigned non-grade category.
 
-    Returns (ok, issues). For a pure category the prompt must contain a category cue. For a mixed
-    row it must contain BOTH a supported-attribute cue and the unsupported component's cue (so it
-    is genuinely a *mixed* boundary case, not a pure refusal or a pure supported request).
+    Returns (ok, issues). For a pure category — out_of_scope, out_of_gamut, or clarify (ADR 0023) —
+    the prompt must contain that category's cue (:data:`_CATEGORY_CUES`), which is the guard against a
+    globally-supported phrasing sneaking into a refusal/clarify row. For a mixed row it must contain
+    BOTH a supported-attribute cue and the unsupported component's cue (so it is genuinely a *mixed*
+    boundary case, not a pure refusal or a pure supported request).
     """
     issues: list[str] = []
     if not prompt or len(prompt.strip()) < 8:
@@ -301,6 +374,7 @@ class UnsupportedTeacherClient:
             "prompt_generation_batch_id": prof.get("batch_id"),
             "finish_reason": res.finish_reason, "usage": res.usage,
         }
-        extra = {k: obj.get(k) for k in ("supported_part", "unsupported_part", "grounded_in_image")
+        extra = {k: obj.get(k) for k in ("supported_part", "unsupported_part", "grounded_in_image",
+                                         "global_look", "underspecified")
                  if k in obj}
         return {"prompt": prompt, "extra": extra, "provenance": provenance}

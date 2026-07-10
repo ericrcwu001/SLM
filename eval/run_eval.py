@@ -142,6 +142,8 @@ def run_single(adapter, rows, mode: str, seed: int) -> dict:
                 syntax_pass=parsed.syntax_pass,
                 mixed_prompt=bool(row.mixed_prompt),
                 boundary_pair_id=row.boundary_pair_id,
+                route=getattr(row, "route", None),
+                refuse_kind=getattr(row, "refuse_kind", None),
             )
         )
         layers = evaluate_supported_layers(row, parsed)

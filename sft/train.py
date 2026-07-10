@@ -72,7 +72,10 @@ def _load_rows(active_rows_path: str, smoke_size: int | None):
     """Load supported (materialized, holdout-EXCLUDED) + unsupported rows; take a balanced smoke subset."""
     rows = load_rows(active_rows_path)
     sup = supported_rows(rows, holdout=False)  # exclude the scored holdout slice from training
-    unsup = [r for r in rows if not r.get("is_supported") and r.get("image_path") and r.get("instruction")]
+    # Refusal rows (route=refuse -> target <unsupported>). ``clarify`` rows (ADR 0023) are an
+    # INTERPRETER route, never a generator target, so they are excluded from the generator's pool.
+    unsup = [r for r in rows if not r.get("is_supported") and r.get("image_path")
+             and r.get("instruction") and r.get("route") != "clarify"]
     if not sup:
         raise SFTError("no materialized supported rows (run scripts.materialize_target_tokens first)")
     if smoke_size:

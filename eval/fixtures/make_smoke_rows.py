@@ -1,9 +1,14 @@
-"""Generate the Stage-1 smoke eval rows (50 supported / 20 unsupported).
+"""Generate the Stage-1 smoke eval rows (50 supported / 26 refuse / 4 clarify).
 
 These are **eval fixtures**, not the data-gen pipeline. Rows are written in the Eval
 Unit schema with real instructions + gold_tags + support labels; ``target_tokens`` is
 empty (there is no frozen tokenizer to produce 64 ids yet, and L2-L7 are disabled).
 Tiny synthetic PNGs are generated so ``image_path`` / ``image_sha256`` resolve.
+
+The refuse slice now spans both refuse kinds (ADR 0023): out_of_scope + mixed and NEW
+out_of_gamut (infrared / pure-primary / hue-rotation), plus a small clarify slice
+(under-specified global intent). Categories/routes come from :mod:`eval.refuse_taxonomy`
+(the single source of truth); ``tests/test_taxonomy_sync.py`` asserts they stay in sync.
 
 A companion ``mock_outputs.jsonl`` supplies a realistic mix of model outputs (valid
 64-token, over-refusal, invalid, correct/incorrect refusal) so the mock-replay baseline
@@ -18,6 +23,7 @@ import json
 import os
 
 from ..output_parsers import format_tokens
+from ..refuse_taxonomy import ROUTE_CLARIFY, ROUTE_REFUSE, refuse_kind_for_category
 from ..schemas import CANONICAL_DOMAIN_ID, EvalRow, write_rows
 from ..vocab import UNSUPPORTED
 
@@ -91,6 +97,27 @@ _UNSUPPORTED = [
      "mixed_partial_supported_plus_content_generation", ["content_generation"], ["darker", "muted"], True),
 ]
 
+# out_of_gamut (ADR 0023): GLOBAL, well-specified looks the frozen tokenizer cannot represent.
+# They are refusals (route=refuse) but with refuse_kind=out_of_gamut, distinct from out_of_scope.
+_OUT_OF_GAMUT = [
+    ("Give the whole photo an infrared false-color look.", "infrared_false_color"),
+    ("Turn the entire image pure red.", "pure_primary_cast"),
+    ("Rotate every hue by 180 degrees.", "hue_rotation"),
+    ("Make it look like a thermal heatmap.", "infrared_false_color"),
+    ("Flood everything with pure blue.", "pure_primary_cast"),
+    ("Invert the hues across the whole image.", "hue_rotation"),
+]
+
+# clarify (ADR 0023): valid but UNDER-SPECIFIED global intent -> ask for a supported direction
+# (route=clarify). These are neither gradeable targets nor refusals, so they are scored on their
+# own clarify_over_refusal_rate and excluded from the binary boundary metrics.
+_CLARIFY = [
+    ("Make it better.", "underspecified_intent"),
+    ("Can you fix the colors?", "underspecified_intent"),
+    ("Just make it look nicer.", "underspecified_intent"),
+    ("Do something to improve it.", "underspecified_intent"),
+]
+
 
 def _synth_png(path: str, seed: int, size: int = 32) -> None:
     from PIL import Image
@@ -151,7 +178,9 @@ def _build_unsupported(images_dir: str) -> list[EvalRow]:
         items.append(_UNSUPPORTED[i % len(_UNSUPPORTED)])
         i += 1
     items = items[:20]
-    for idx, (instr, cat, unsup_c, sup_c, mixed) in enumerate(items, start=1):
+    # out_of_gamut rows carry (instr, cat) only; normalize to the 5-tuple shape.
+    gamut_items = [(instr, cat, [cat], [], False) for instr, cat in _OUT_OF_GAMUT]
+    for idx, (instr, cat, unsup_c, sup_c, mixed) in enumerate(items + gamut_items, start=1):
         rid = f"eval_unsup_{idx:06d}"
         img_path = os.path.join(images_dir, f"{rid}.png")
         _synth_png(img_path, seed=1000 + idx)
@@ -160,6 +189,24 @@ def _build_unsupported(images_dir: str) -> list[EvalRow]:
             image_path=img_path, image_sha256=_sha256_file(img_path),
             unsupported_category=cat, unsupported_components=list(unsup_c),
             supported_components=list(sup_c), mixed_prompt=bool(mixed),
+            route=ROUTE_REFUSE, refuse_kind=refuse_kind_for_category(cat),
+            canonical_domain_id=CANONICAL_DOMAIN_ID, split="smoke",
+            target_tokens=[], usage_weight=1.0, headline_eligible=False,
+        ))
+    return rows
+
+
+def _build_clarify(images_dir: str) -> list[EvalRow]:
+    """Under-specified global-intent rows (route=clarify, ADR 0023)."""
+    rows: list[EvalRow] = []
+    for idx, (instr, cat) in enumerate(_CLARIFY, start=1):
+        rid = f"eval_clarify_{idx:06d}"
+        img_path = os.path.join(images_dir, f"{rid}.png")
+        _synth_png(img_path, seed=2000 + idx)
+        rows.append(EvalRow(
+            id=rid, instruction=instr, is_supported=False, support_label="clarify",
+            image_path=img_path, image_sha256=_sha256_file(img_path),
+            unsupported_category=cat, route=ROUTE_CLARIFY,
             canonical_domain_id=CANONICAL_DOMAIN_ID, split="smoke",
             target_tokens=[], usage_weight=1.0, headline_eligible=False,
         ))
@@ -185,6 +232,10 @@ def _valid_line(offset: int) -> str:
 
 def _mock_output_for(row: EvalRow, idx: int) -> str:
     """Deterministic model-output mix for the mock-replay baseline."""
+    if getattr(row, "route", None) == ROUTE_CLARIFY:
+        # A clarify prompt is a valid request; the mock "handles" it (does not refuse) so the
+        # smoke exercises clarify_over_refusal_rate == 0 (the good case).
+        return _valid_line(idx)
     if row.is_supported:
         if idx % 10 == 0:
             return UNSUPPORTED             # over-refusal
@@ -205,8 +256,9 @@ def generate(out_dir: str) -> tuple[str, str]:
 
     supported = _build_supported(images_dir)
     unsupported = _build_unsupported(images_dir)
+    clarify = _build_clarify(images_dir)
     _link_boundary_pairs(supported, unsupported)
-    rows = supported + unsupported
+    rows = supported + unsupported + clarify
 
     rows_path = os.path.join(out_dir, "smoke_rows.jsonl")
     write_rows(rows_path, rows)
@@ -217,7 +269,7 @@ def generate(out_dir: str) -> tuple[str, str]:
             fh.write(json.dumps({"row_id": row.id, "text": _mock_output_for(row, i)}) + "\n")
 
     print(f"[make_smoke_rows] wrote {len(supported)} supported + {len(unsupported)} "
-          f"unsupported rows -> {rows_path}")
+          f"unsupported ({len(_OUT_OF_GAMUT)} out_of_gamut) + {len(clarify)} clarify rows -> {rows_path}")
     print(f"[make_smoke_rows] wrote mock outputs -> {mock_path}")
     print(f"[make_smoke_rows] wrote {len(rows)} synthetic images -> {images_dir}")
     return rows_path, mock_path

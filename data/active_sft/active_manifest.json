@@ -64,7 +64,7 @@
     },
     "overall": "pass"
   },
-  "active_set_version": "active_set_pending_freeze",
+  "active_set_version": "active_set_v2_portable_unsup",
   "counts": {
     "supported": 2761,
     "total": 3033,
@@ -88,6 +88,29 @@
     },
     "tokenizer_version": "vq_v2_srgbres_17to4_cb256_t64__w91cffdd2c82f",
     "unresolved_rows": 0
+  },
+  "portable_unsupported_migration": {
+    "adr": "0023",
+    "audit_finding": "F2",
+    "files": {
+      "data/active_sft/active_rows.jsonl": {
+        "changed": 272,
+        "rows": 3033,
+        "unresolved": 0
+      },
+      "data/active_sft/unsupported_eval_rows.jsonl": {
+        "changed": 235,
+        "rows": 235,
+        "unresolved": 0
+      },
+      "data/active_sft/unsupported_rows.jsonl": {
+        "changed": 507,
+        "rows": 507,
+        "unresolved": 0
+      }
+    },
+    "note": "unsupported rows: absolute -> corpus-relative image_path; route/refuse_kind backfilled",
+    "prior_active_set_version": "active_set_pending_freeze"
   },
   "regenerated_from": "active_rows.jsonl (post instruction-gen + unsupported append + dedupe)",
   "regeneration_notes": [

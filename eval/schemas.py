@@ -88,6 +88,7 @@ _EVALROW_FIELDS = {
     "procedural_filler", "usage_weight", "split", "measured_behavior",
     "derived_lut_quality", "unsupported_category", "unsupported_components",
     "supported_components", "mixed_prompt", "boundary_pair_id", "boundary_pair_role",
+    "route", "refuse_kind",
     "source_family", "source_lut_id",
     # strata fields referenced by gating_slice_registry.yaml (audit E1)
     "style_bucket", "usage_prior_bucket", "magnitude_bucket", "behavior_bucket",
@@ -127,6 +128,9 @@ class EvalRow:
     unsupported_components: list[str] = field(default_factory=list)
     supported_components: list[str] = field(default_factory=list)
     mixed_prompt: bool = False
+    # route taxonomy (ADR 0021/0023): {grade, clarify, refuse} + refuse subtype.
+    route: Optional[str] = None
+    refuse_kind: Optional[str] = None
     boundary_pair_id: Optional[str] = None
     boundary_pair_role: Optional[str] = None
     source_family: Optional[str] = None
