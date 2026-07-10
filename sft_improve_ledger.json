@@ -1,0 +1,34 @@
+[
+  {
+    "iter": 1,
+    "params": {
+      "learning_rate_lora": 0.0002,
+      "lora_r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "warmup_ratio": 0.03,
+      "max_grad_norm": 1.0,
+      "weight_decay": 0.0,
+      "max_pixels": 200704
+    },
+    "metric": 0.044271,
+    "adapter": "models/sft_adapters/bl_a0ccbcff_smoke600",
+    "note": "baseline; HF pushed ericrcwu/LUT_SLM_sft_adapters/bl_a0ccbcff_smoke600"
+  },
+  {
+    "iter": 2,
+    "params": {
+      "learning_rate_lora": 0.0003,
+      "lora_r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "warmup_ratio": 0.03,
+      "max_grad_norm": 1.0,
+      "weight_decay": 0.0,
+      "max_pixels": 200704
+    },
+    "metric": null,
+    "adapter": "",
+    "note": "non-counting failed attempt: Cursor lost remote Jupyter connection; no METRIC or bridge_summary; retry once via Auto Connect"
+  }
+]
