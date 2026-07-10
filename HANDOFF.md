@@ -247,8 +247,26 @@ FAIL ⇒ the two-stage move is off; stop and report.
    holdout vs the old **0.414** on the leaked row-id holdout — the ~5pp drop is exactly the
    leakage inflation P1 predicted. 0.362 is the `eval_in_distribution_regression` baseline for P6.
 
-**Decision:** per the STOP contract, P5/P6 are NOT built. Awaiting the human's call on the
-confounded/near-tie result (see the options presented in chat). A confound-free decoder-free seam
-analysis (spec→codes injectivity / upper bound) is the recommended tiebreaker.
+**Decoder-free seam-injectivity tiebreaker (`scripts/analyze_seam_injectivity.py`, local, no GPU).**
+Removes the adapter-training confound by asking, purely information-theoretically, whether
+`attribute_spec_text` retains enough to identify the target codes:
+
+| serialization | rows | unique specs | lossy-collision rate | token-acc **upper bound** |
+| --- | --- | --- | --- | --- |
+| **behavior_v2** (full corpus) | 2761 | 98.6% | **0.000** | **1.0000** |
+| behavior_v1 (2-axis) full corpus | 2761 | 69.4% | 0.389 | 0.750 |
+| **behavior_v2** (P1 holdout) | 120 | 100% | **0.000** | **1.0000** |
+| behavior_v1 (2-axis) holdout | 120 | 95% | 0.083 | 0.959 |
+
+**Conclusion — the behavior_v2 seam is NOT lossy.** `attribute_spec_text` uniquely identifies the
+target codes (0 lossy collisions; a perfect spec-mapper's ceiling is **100%**, vs the current
+adapter's 0.35). The audit's "many LUTs share a summary" (AUDIT §9/F1) was a **behavior_v1**
+problem — the 2-axis spec collided on **38.9%** of rows with a 0.75 ceiling; **P3's behavior_v2
+fixed it**. So the oracle gate's marginal fail is the **confound** (instruction-trained adapter can't
+yet read the spec format), not information loss. The two-stage is information-viable; the true test
+is the **P6 generator retrain on `attribute_spec_text`** (honest metric ≥ 0.362 baseline).
+
+**Decision (human-in-the-loop):** _pending — recommend proceeding to P5/P6 given the seam is proven
+lossless; P6 is the real apples-to-apples validation._
 
 ---
