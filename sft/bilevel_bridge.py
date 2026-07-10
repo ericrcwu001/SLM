@@ -198,7 +198,8 @@ def main(argv=None) -> int:
     ap.add_argument("--run-id", default="bl")
     ap.add_argument("--smoke-size", type=int, default=200, help="0 = full dataset")
     ap.add_argument("--max-steps", type=int, default=None)
-    ap.add_argument("--score-limit", type=int, default=48)
+    ap.add_argument("--score-limit", type=int, default=0,
+                    help="max held-out rows to score; 0 = full slice (honest default, ADR 0024)")
     ap.add_argument("--timeout", type=int, default=3600, help="per train/score subprocess, seconds")
     ap.add_argument("--push-hf-repo", default=os.environ.get("PUSH_HF_REPO", ""),
                     help="HF model repo to upload the trained adapter to (default env PUSH_HF_REPO; "

@@ -19,8 +19,10 @@ import json
 import os
 from pathlib import Path
 
+from functools import lru_cache
+
 from data_pipeline.errors import SFTError
-from sft.holdout import is_holdout
+from sft.holdout import is_holdout_row
 
 
 def artifact_root() -> Path:
@@ -53,15 +55,37 @@ def supported_rows(rows: list[dict], *, holdout: bool | None = None) -> list[dic
     """Supported+materialized rows, filtered by holdout membership.
 
     ``holdout=None`` → all supported rows; ``True`` → only the scored holdout slice;
-    ``False`` → training pool (holdout excluded). See :mod:`sft.holdout`.
+    ``False`` → training pool (holdout excluded). Holdout membership is **unit-aware**
+    (keyed on ``split_unit_id``, ADR 0024) so near-duplicate LUTs cannot straddle the boundary.
+    See :mod:`sft.holdout`.
     """
     out: list[dict] = []
     for row in rows:
         if not is_supported_materialized(row):
             continue
-        if holdout is None or is_holdout(row.get("id", "")) == holdout:
+        if holdout is None or is_holdout_row(row) == holdout:
             out.append(row)
     return out
+
+
+# The 256 VQ code-token ids in the resized vocab, cached per tokenizer. Used to assert exact-64
+# survival (below) without re-resolving 256 ids on every example build.
+@lru_cache(maxsize=4)
+def _code_token_ids(tokenizer) -> frozenset:
+    from eval.vocab import code_token
+
+    return frozenset(tokenizer.convert_tokens_to_ids(code_token(k)) for k in range(256))
+
+
+def surviving_code_positions(tokenizer, input_ids, n_prompt: int) -> int:
+    """Count VQ code tokens (``<lut_NNN>``) in the assistant span ``input_ids[0][n_prompt:]``.
+
+    The single source of truth for "how many of the 64 target codes survived tokenization +
+    end-truncation", shared by the trainer/scorer's exact-64 guard (ADR 0024, closes AUDIT F8).
+    """
+    code_ids = _code_token_ids(tokenizer)
+    span = input_ids[0][n_prompt:].tolist()
+    return sum(1 for t in span if t in code_ids)
 
 
 def build_supervised_example(processor, row: dict, cfg, *, device=None) -> dict:
@@ -98,6 +122,19 @@ def build_supervised_example(processor, row: dict, cfg, *, device=None) -> dict:
         raise SFTError(
             f"row {row.get('id')}: prompt ({n_prompt}) >= full ({full_len}) after truncation — the "
             f"assistant target was cut (raise max_seq_len or lower max_pixels)")
+
+    # Exact-64 guard (ADR 0024, closes AUDIT F8): a supported row's assistant span must retain ALL
+    # of its target code positions. The complete-loss guard above only catches TOTAL truncation;
+    # this catches PARTIAL truncation (some of the 64 <lut_NNN> silently dropped near the seq/pixel
+    # limit). Raising here makes the trainer/scorer skip+count the row rather than train/score a
+    # truncated target.
+    if row.get("is_supported"):
+        expected = len(row.get("target_tokens") or [])
+        n_code = surviving_code_positions(processor.tokenizer, full["input_ids"], n_prompt)
+        if n_code != expected:
+            raise SFTError(
+                f"row {row.get('id')}: {n_code} code positions survived != expected {expected} "
+                f"(partial truncation of the 64 target codes — lower max_pixels or raise max_seq_len)")
 
     labels = full["input_ids"].clone()
     labels[:, :n_prompt] = -100  # assistant-only loss

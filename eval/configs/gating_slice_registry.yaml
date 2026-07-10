@@ -225,3 +225,143 @@ entries:
     CI_method: wilson_95
     ship_gate_family: diagnostic
     underpowered_behavior: diagnostic-unless-target-quality-gate-predeclared
+
+  # ============================================================================================
+  # ADR 0024 — decoder-free OOD / refuse / interpreter slices (SCAFFOLD, provisional)
+  # ============================================================================================
+  # These are the AUDIT §11 decoder-free slices the eval-honesty contract makes contractual
+  # (unseen-wording, named/nonce concept, counterfactual-ranking, paraphrase-consistency, refuse
+  # {out-of-scope, out-of-gamut}, in-distribution regression) + the interpreter metrics
+  # (attribute-F1, route-accuracy, over-refusal). tier=NOW means SLM/interpreter forward pass only
+  # (no frozen decoder). They are declared here now so every later change is falsifiable, but the
+  # DATASETS that back them are built in later phases and the slices are NOT ship-gated until
+  # frozen: true is set at eval-set freeze:
+  #   * refuse_* / mixed          -> P2 (portable unsupported staging + out_of_gamut/clarify taxonomy)
+  #   * attribute_f1/route/over   -> P5 (interpreter distillation + decoder-free adapter)
+  #   * wording/concept/cf/parap  -> P5/P7 (held-out concept suites + two-stage integration)
+  # Build order (AUDIT §11): in_distribution_regression -> unseen_wording -> named+nonce concept
+  # -> counterfactual_ranking -> paraphrase_consistency. Leakage controls: group/hold out by
+  # split_unit_id & LUT-neighbor, source pack, image identity, prompt template, teacher model,
+  # generation batch, concept/title family, procedural generator family.
+
+  - split: eval_in_distribution_regression
+    metric: holdout_token_accuracy
+    gate: "unit-clustered bootstrap 95% lower bound within -2pp of the frozen baseline"
+    min_N: 100
+    strata: [source_family]
+    MDE_pp: 2
+    CI_method: unit_clustered_bootstrap_95
+    tier: NOW
+    ship_gate_family: sft_ship
+    status: scaffold          # baseline frozen once the unit-aware holdout is scored on Colab (P1)
+    data_source: "sft.score_tokens overall micro accuracy on the unit-aware holdout (ADR 0024)"
+
+  - split: eval_unseen_wording
+    metric: unseen_wording_valid_token_rate
+    gate: "Wilson 95% lower bound >= 85% AND >= in-distribution accuracy - 5pp"
+    min_N: 100
+    strata: [generator_family, wording_family, source_family]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P5/P7: paraphrase set, generator+wording family held out
+
+  - split: eval_named_concept
+    metric: named_concept_component_match_rate
+    gate: "Wilson 95% lower bound >= 70% (component attributes present, concept term absent from SFT)"
+    min_N: 100
+    strata: [concept_family, source_family]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P7: Mars / sodium-vapor / oxidized-copper style held-out concepts
+
+  - split: eval_nonce_concept
+    metric: nonce_concept_component_match_rate
+    gate: "Wilson 95% lower bound >= 70% (invented term defined in-context; tests decomposition vs recall)"
+    min_N: 100
+    strata: [concept_family]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P7: 'Varellian = muted violet shadows + amber highlights' style probes
+
+  - split: eval_counterfactual_ranking
+    metric: counterfactual_ranking_margin
+    gate: "paired-bootstrap 95% lower bound > 0 (correct-target NLL < structured-wrong-target NLL)"
+    min_paired_N: 100
+    strata: [counterfactual_type, source_family]
+    MDE_pp: 0
+    CI_method: paired_bootstrap_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P5/P7: opposite-sign / missing-component / excess-magnitude negatives
+
+  - split: eval_paraphrase_consistency
+    metric: paraphrase_group_consistency
+    gate: "Wilson 95% lower bound >= 80% (same behavior/LUT invariant across wordings)"
+    min_N: 100
+    strata: [paraphrase_group_id, source_family]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P5/P7: grouped by LUT unit, split by generator/template/lexicon
+
+  - split: eval_refuse_out_of_scope
+    metric: refuse_out_of_scope_recall
+    gate: "Wilson 95% lower bound >= 80% (non-global/local/content requests refused, not silently graded)"
+    min_N: 200
+    strata: [unsupported_category, prompt_family]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: sft_ship
+    status: scaffold          # P2: portable unsupported staging so the 272 refusal rows train
+
+  - split: eval_refuse_out_of_gamut
+    metric: refuse_out_of_gamut_recall
+    gate: "Wilson 95% lower bound >= 80% (infrared / pure-primary / large-hue-rotation refused per the materialization gate)"
+    min_N: 100
+    strata: [out_of_gamut_kind]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: sft_ship
+    status: scaffold          # P2: out_of_gamut refuse_reason mirrors materialize_target_tokens gate
+
+  - split: eval_interpreter
+    metric: attribute_f1
+    gate: "macro attribute-F1 >= 0.70 (requested axes vs measured behavior_v2 axes)"
+    min_N: 150
+    strata: [axis_group, route]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P5: interpreter distillation eval (attribute-set F1)
+
+  - split: eval_interpreter
+    metric: route_accuracy
+    gate: "Wilson 95% lower bound >= 85% over {grade, clarify, refuse}"
+    min_N: 150
+    strata: [route]
+    MDE_pp: 5
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P5: route classification accuracy
+
+  - split: eval_interpreter
+    metric: interpreter_over_refusal_rate
+    gate: "Wilson 95% upper bound <= 10% (in-scope, representable requests not spuriously refused)"
+    min_N: 150
+    strata: [source_family]
+    MDE_pp: 6
+    CI_method: wilson_95
+    tier: NOW
+    ship_gate_family: diagnostic
+    status: scaffold          # P5: over-refusal on supported/representable prompts
