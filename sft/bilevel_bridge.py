@@ -16,6 +16,9 @@ Contract (mode ``colab``):
   output : a ``{"bridge_summary": {...}}`` JSON line, then exactly ONE final ``METRIC=<accuracy>``
            line (direction=MAX). Exit non-zero (no METRIC) on any hard failure, so the engine records
            a clean discard instead of a fabricated improvement.
+  upload : if ``--push-hf-repo`` (or env ``PUSH_HF_REPO``) is set, the trained adapter is uploaded to
+           that HF MODEL repo under a per-config subfolder using ``HF_WRITE_TOKEN`` (read-only
+           ``HF_TOKEN`` 403s). Best-effort: a push failure warns but keeps the (valid) metric.
 
 Pure orchestration (no torch import here) — it shells out to :mod:`sft.train` and
 :mod:`sft.score_tokens`, so it is import-safe without the ``sft`` extra.
@@ -24,6 +27,7 @@ Pure orchestration (no torch import here) — it shells out to :mod:`sft.train` 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -88,12 +92,35 @@ def _run(cmd: list[str], *, cwd: Path, env: dict, timeout: int) -> subprocess.Co
         raise
 
 
+def _push_to_hf(adapter_dir: str, repo_id: str, path_in_repo: str, token: str | None) -> dict:
+    """Upload a trained adapter dir to an HF MODEL repo (created if missing). Best-effort: a push
+    failure is reported but does NOT discard the (valid) metric."""
+    if not repo_id:
+        return {"pushed": False, "skipped": "no PUSH_HF_REPO / --push-hf-repo set"}
+    if not token:
+        return {"pushed": False, "error": "no HF WRITE token (set HF_WRITE_TOKEN; read-only HF_TOKEN 403s)"}
+    try:
+        from huggingface_hub import HfApi, create_repo
+    except Exception as exc:  # noqa: BLE001
+        return {"pushed": False, "error": f"huggingface_hub unavailable: {exc}"}
+    try:
+        create_repo(repo_id, repo_type="model", private=True, exist_ok=True, token=token)
+        HfApi().upload_folder(folder_path=adapter_dir, repo_id=repo_id, repo_type="model",
+                              path_in_repo=path_in_repo, token=token,
+                              commit_message=f"sft adapter {path_in_repo}")
+        return {"pushed": True, "repo": repo_id, "path": path_in_repo}
+    except Exception as exc:  # noqa: BLE001
+        return {"pushed": False, "error": str(exc)}
+
+
 def run_colab(config_path: str, *, repo_root: str, artifact_root: str, resized_model: str,
               base_config: str, out_dir: str, run_id: str, smoke_size: int, max_steps: int | None,
-              score_limit: int, timeout: int) -> dict:
+              score_limit: int, timeout: int, push_hf_repo: str = "", hf_token: str | None = None) -> dict:
     params = _candidate_params(config_path)
     merged = _merged_config(base_config, params)
     _validate(merged)
+    # Distinct adapter + HF subfolder per distinct config (so runs never overwrite each other).
+    eff_run_id = f"{run_id}_{hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:8]}"
 
     repo = Path(repo_root)
     env = dict(os.environ)
@@ -105,7 +132,7 @@ def run_colab(config_path: str, *, repo_root: str, artifact_root: str, resized_m
         merged_cfg = fh.name
 
     smoke_tag = str(smoke_size) if smoke_size else "full"
-    adapter_dir = str(Path(out_dir) / f"{run_id}_smoke{smoke_tag}")
+    adapter_dir = str(Path(out_dir) / f"{eff_run_id}_smoke{smoke_tag}")
 
     # --- serialize the single A100 across concurrent bridge invocations (best-effort flock) ---
     lock_fh = open("/tmp/slm_gpu.lock", "w")
@@ -118,7 +145,7 @@ def run_colab(config_path: str, *, repo_root: str, artifact_root: str, resized_m
     try:
         train_cmd = [sys.executable, "-m", "sft.train", "--config", merged_cfg,
                      "--resized-model", resized_model, "--smoke-size", str(smoke_size),
-                     "--out", out_dir, "--run-id", run_id]
+                     "--out", out_dir, "--run-id", eff_run_id]
         if max_steps:
             train_cmd += ["--max-steps", str(max_steps)]
         train = _run(train_cmd, cwd=repo, env=env, timeout=timeout)
@@ -145,14 +172,17 @@ def run_colab(config_path: str, *, repo_root: str, artifact_root: str, resized_m
         if not metrics:
             raise RuntimeError("scorer emitted no METRIC= line")
         metric = float(metrics[-1])
+        push = _push_to_hf(adapter_dir, push_hf_repo, f"{eff_run_id}_smoke{smoke_tag}", hf_token)
+        if push.get("error"):
+            sys.stdout.write(f"[bridge][warn] HF upload failed: {push['error']}\n")
     finally:
         try:
             lock_fh.close()
         except Exception:  # noqa: BLE001
             pass
 
-    return {"metric": metric, "adapter": adapter_dir, "train_summary": summary,
-            "smoke_size": smoke_size, "params": params}
+    return {"metric": metric, "run_id": eff_run_id, "adapter": adapter_dir, "hf_push": push,
+            "train_summary": summary, "smoke_size": smoke_size, "params": params}
 
 
 def main(argv=None) -> int:
@@ -170,13 +200,18 @@ def main(argv=None) -> int:
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--score-limit", type=int, default=48)
     ap.add_argument("--timeout", type=int, default=3600, help="per train/score subprocess, seconds")
+    ap.add_argument("--push-hf-repo", default=os.environ.get("PUSH_HF_REPO", ""),
+                    help="HF model repo to upload the trained adapter to (default env PUSH_HF_REPO; "
+                         "empty = no upload). Needs a WRITE token in HF_WRITE_TOKEN.")
     args = ap.parse_args(argv)
+    hf_token = os.environ.get("HF_WRITE_TOKEN") or os.environ.get("HF_TOKEN")
 
     try:
         rep = run_colab(args.config, repo_root=args.repo_root, artifact_root=args.artifact_root,
                         resized_model=args.resized_model, base_config=args.base_config,
                         out_dir=args.out, run_id=args.run_id, smoke_size=args.smoke_size,
-                        max_steps=args.max_steps, score_limit=args.score_limit, timeout=args.timeout)
+                        max_steps=args.max_steps, score_limit=args.score_limit, timeout=args.timeout,
+                        push_hf_repo=args.push_hf_repo, hf_token=hf_token)
     except (ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(json.dumps({"bridge_summary": {"error": str(exc)}}))
         print(f"[bridge][ABORT] {exc}")
