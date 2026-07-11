@@ -1,0 +1,20 @@
+# Stage-1 interpreter (text-only) training config — loaded by interpreter.config.load_config.
+# STANDALONE: not the generator's locked SFTConfig (no epochs==2 / num_new_tokens / image knobs).
+base_model_id: Qwen/Qwen2.5-0.5B-Instruct
+tuning_mode: full                 # a 0.5B model needs no QLoRA; "lora" is available (needs peft)
+epochs: 3
+learning_rate: 1.0e-5
+per_device_batch_size: 4
+gradient_accumulation_steps: 8    # effective batch 32
+max_seq_len: 256
+warmup_ratio: 0.03
+scheduler: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+gradient_checkpointing: false
+seed: 0
+holdout_frac: 0.06                # same leakage-safe fraction as the generator
+corpus_path: data/interpreter/interpreter_rows.jsonl
+out_dir: models/interpreter
+upsample_nongrade: 4              # repeat refuse/clarify rows 4x (grade dominates ~27-50:1)
+max_new_tokens: 64

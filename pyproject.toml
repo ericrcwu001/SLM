@@ -61,6 +61,7 @@ packages = [
     "data_pipeline.staging",
     "tokenizer", "tokenizer.mlx",
     "sft",
+    "interpreter",
 ]
 
 [tool.setuptools.package-data]

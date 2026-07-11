@@ -21,8 +21,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as futures
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -73,6 +75,24 @@ class CaptionTeacherClient:
         if not prof or any(not prof.get(k) for k in _REQUIRED_PROFILE_KEYS):
             return False
         return str(prof.get("model_id", "")).lower() not in _ALIASES
+
+    def endpoint_ready(self) -> tuple[bool, str]:
+        """True iff the profile is available AND its credentials actually resolve in this env.
+
+        ``is_available`` only inspects the YAML profile; it returns True even when
+        ``TFY_BASE_URL`` / ``TFY_API_KEY`` are unset. That gap is the resume-poisoning landmine:
+        a run with the profile pinned but env vars missing would ``resolve_endpoint``-fail on
+        every LUT, write a ``status:"error"`` record for each, and then permanently skip them.
+        Calling this before the run lets us hand off cleanly (write nothing) instead.
+        """
+        if not self.is_available():
+            return False, "teacher_primary profile missing/aliased in config"
+        prof = self._profile() or {}
+        try:
+            openai_compat.resolve_endpoint(prof)
+        except openai_compat.OpenAICompatError as exc:
+            return False, str(exc)
+        return True, ""
 
     def build_messages(self, row: dict, styles: tuple[str, ...]) -> list:
         mb = row.get("measured_behavior") or {}
@@ -130,13 +150,20 @@ def _supported_rows(path: str) -> list[dict]:
 
 
 def _load_done(path: str) -> dict:
+    """Load only SUCCESSFULLY-generated cache records, keyed by ``lut_id``.
+
+    Only ``status=="generated"`` rows count as done. Error/partial rows are intentionally NOT
+    loaded, so a resume re-attempts them (fixes the poisoning where a cred-less first run wrote
+    an error record for every LUT that then blocked all retries). The append-only cache may hold
+    both an old error line and a later generated line for the same id; last generated wins.
+    """
     done: dict[str, dict] = {}
     if os.path.exists(path):
         for line in open(path, encoding="utf-8"):
             line = line.strip()
             if line:
                 r = json.loads(line)
-                if r.get("lut_id"):
+                if r.get("lut_id") and r.get("status") == "generated":
                     done[r["lut_id"]] = r
     return done
 
@@ -160,51 +187,72 @@ def _caption_rows_from(cache: dict) -> list[dict]:
     return out
 
 
+def _caption_one(teacher: CaptionTeacherClient, row: dict) -> dict:
+    """Caption a single LUT row → a cache record (``generated`` or ``error``). Thread-safe:
+    ``teacher.generate`` builds its own client per call, so this holds no shared mutable state."""
+    lut_id = row.get("source_lut_id") or row.get("id")
+    try:
+        gen = teacher.generate(row)
+        return {"lut_id": lut_id, "status": "generated", "captions": gen["captions"],
+                "attribute_spec_text": caption_target_text(row["measured_behavior"]),
+                "provenance": gen["provenance"]}
+    except Exception as exc:  # noqa: BLE001
+        return {"lut_id": lut_id, "status": "error", "error": f"{type(exc).__name__}: {exc}"}
+
+
 def run(active_rows: str, out: str, cache_path: str, config: str, limit: Optional[int],
-        attach_image: bool, dry_run: bool) -> int:
+        attach_image: bool, dry_run: bool, workers: int = 1) -> int:
     rows = _supported_rows(active_rows)
     if limit is not None:
         rows = rows[:limit]
     teacher = CaptionTeacherClient(config, attach_image=attach_image)
-    if not dry_run and not teacher.is_available():
-        print(f"[caption] teacher_primary not available in {config}; pass --dry-run to inspect. "
-              f"(Set TFY_BASE_URL + TFY_API_KEY to run, or HAND OFF.)")
-        return 2
+    if not dry_run:
+        ready, why = teacher.endpoint_ready()
+        if not ready:
+            print(f"[caption] teacher not ready: {why}. Set TFY_BASE_URL + TFY_API_KEY to run, "
+                  f"or HAND OFF (--dry-run to inspect). No rows written.")
+            return 2
 
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     cache = {} if dry_run else _load_done(cache_path)
     if cache:
         print(f"[caption] resuming: {len(cache)} LUTs already captioned in {cache_path}")
-    sink = None if dry_run else open(cache_path, "a", encoding="utf-8")
     tally = {"generated": 0, "error": 0, "skipped": 0, "dry_run": 0}
 
-    for row in rows:
-        lut_id = row.get("source_lut_id") or row.get("id")
-        if lut_id in cache:
-            tally["skipped"] += 1
-            continue
-        if dry_run:
+    pending = [r for r in rows if (r.get("source_lut_id") or r.get("id")) not in cache]
+    tally["skipped"] = len(rows) - len(pending)
+
+    if dry_run:
+        for row in pending:
+            lut_id = row.get("source_lut_id") or row.get("id")
             msgs = teacher.build_messages(row, CAPTION_STYLES)
             print(f"\n===== {lut_id} =====")
             print("SYSTEM:", msgs[0]["content"][:160], "...")
             print("USER:", [p for p in msgs[1]["content"] if p.get("type") == "text"][0]["text"][:400])
             tally["dry_run"] += 1
-            continue
-        try:
-            gen = teacher.generate(row)
-            rec = {"lut_id": lut_id, "status": "generated", "captions": gen["captions"],
-                   "attribute_spec_text": caption_target_text(row["measured_behavior"]),
-                   "provenance": gen["provenance"]}
-            tally["generated"] += 1
-        except Exception as exc:  # noqa: BLE001
-            rec = {"lut_id": lut_id, "status": "error", "error": f"{type(exc).__name__}: {exc}"}
-            tally["error"] += 1
-        cache[lut_id] = rec
-        sink.write(json.dumps(rec, sort_keys=True) + "\n")
-        sink.flush()
-        print(f"  {lut_id}: {rec['status']} {list((rec.get('captions') or {}).keys())}")
-    if sink:
-        sink.close()
+        print(f"[caption] {tally}")
+        return 0
+
+    sink = open(cache_path, "a", encoding="utf-8")
+    lock = threading.Lock()
+
+    def _emit(rec: dict) -> None:
+        # Serialize the cache write + tally + print across worker threads.
+        with lock:
+            cache[rec["lut_id"]] = rec
+            sink.write(json.dumps(rec, sort_keys=True) + "\n")
+            sink.flush()
+            tally[rec["status"]] += 1
+            print(f"  {rec['lut_id']}: {rec['status']} {list((rec.get('captions') or {}).keys())}")
+
+    if workers > 1:
+        with futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            for rec in ex.map(lambda r: _caption_one(teacher, r), pending):
+                _emit(rec)
+    else:
+        for row in pending:
+            _emit(_caption_one(teacher, row))
+    sink.close()
 
     print(f"[caption] {tally}")
     if dry_run:
@@ -229,9 +277,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--limit", type=int, default=None, help="first N supported LUTs (resumable)")
     ap.add_argument("--no-image", action="store_true", help="text-only teacher (skip source image)")
     ap.add_argument("--dry-run", action="store_true", help="print prompts, no API call")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="concurrent teacher calls (independent per-LUT; keep low for rate limits)")
     args = ap.parse_args(argv)
     return run(args.active_rows, args.out, args.cache, args.config, args.limit,
-               attach_image=not args.no_image, dry_run=args.dry_run)
+               attach_image=not args.no_image, dry_run=args.dry_run, workers=max(1, args.workers))
 
 
 if __name__ == "__main__":
