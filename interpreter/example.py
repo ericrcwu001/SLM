@@ -38,10 +38,17 @@ def assemble_example(prompt_ids: list[int], target_ids: list[int], eos_id: int,
 
 def build_prompt_ids(tokenizer, text: str) -> list[int]:
     """Tokenize the (system + user) chat prompt with the generation cue appended (shared by train
-    and score). Qwen2.5-Instruct ships a chat template; we never blind-call it on a base model."""
+    and score). Qwen2.5-Instruct ships a chat template; we never blind-call it on a base model.
+
+    Render to a string first, then tokenize — ``apply_chat_template(tokenize=True)`` returns a
+    ``BatchEncoding`` (whose elements are ``tokenizers.Encoding``) in transformers 5.x, which breaks
+    ``torch.tensor``; the two-step form is an unambiguous ``list[int]`` across versions. The template
+    emits the special tokens as text, so ``add_special_tokens=False`` avoids double BOS/EOS while the
+    template's own markers still encode to their ids."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": text or ""}]
-    return tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+    rendered = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    return tokenizer(rendered, add_special_tokens=False)["input_ids"]
 
 
 def build_supervised_example(tokenizer, row: dict, max_seq_len: int) -> dict:
