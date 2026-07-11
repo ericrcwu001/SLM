@@ -48,18 +48,26 @@ def score_row_samples(codes_list, spec_text, target_codes) -> list[dict]:
     return recs
 
 
+def _measurable(recs: list[dict]) -> list[dict]:
+    """Samples with a real (non-None) fidelity. Refusals score 0.0 (a real miss, kept); a valid sample
+    with None fidelity means the spec asserts no measurable axis — EXCLUDED, matching summarize_fidelity
+    (counting None as 0.0 would silently deflate the coverage gate)."""
+    return [r for r in recs if r.get("behavioral_fidelity") is not None]
+
+
 def oracle_and_best(recs_by_row: list[list[dict]], ks=DEFAULT_KS) -> dict:
     """Aggregate per-row sample records into the oracle@k curve + best-of-N (pure numpy)."""
     rows = [recs for recs in recs_by_row if recs]
     out: dict = {"rows": len(recs_by_row), "scored_rows": len(rows)}
     for k in ks:
-        vals = [max((r.get("behavioral_fidelity") or 0.0) for r in recs[:k]) for recs in rows]
+        vals = [max(r["behavioral_fidelity"] for r in m)
+                for recs in rows if (m := _measurable(recs[:k]))]
         out[f"oracle@{k}"] = float(np.mean(vals)) if vals else None
-    best = [(max(recs, key=rerank_key).get("behavioral_fidelity") or 0.0) for recs in rows]
-    out["best_of_N"] = float(np.mean(best)) if best else None
+    picks = [max(m, key=rerank_key) for recs in rows if (m := _measurable(recs))]
+    out["best_of_N"] = float(np.mean([p["behavioral_fidelity"] for p in picks])) if picks else None
     # collapse rate of the reranker's picks — a healthy pick should rarely be collapsed
-    picks_collapsed = [1.0 if max(recs, key=rerank_key).get("collapsed") else 0.0 for recs in rows]
-    out["best_pick_collapse_rate"] = float(np.mean(picks_collapsed)) if picks_collapsed else None
+    out["best_pick_collapse_rate"] = (
+        float(np.mean([1.0 if p.get("collapsed") else 0.0 for p in picks])) if picks else None)
     return out
 
 

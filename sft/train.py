@@ -157,12 +157,28 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
 
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     model.train()
-    step = micro = 0
-    running = 0.0
-    loss_sum = 0.0        # cumulative mean-loss numerator over every micro-step (for the summary line)
-    n_seen = 0            # micro-steps that actually produced a loss (rows trained)
-    skipped = 0           # rows dropped by _example (bad image path / truncation)
+    step = micro = n_seen = skipped = 0
+    running = loss_sum = 0.0   # running: 10-step print window; loss_sum: mean-loss over every micro-step
+    accum = cfg.gradient_accumulation_steps
+
+    def _optim_step():
+        """Apply one accumulated optimizer step (LR schedule + clip + step + zero)."""
+        nonlocal step, running
+        for g in opt.param_groups:
+            g["lr"] = _lr(step)
+        torch.nn.utils.clip_grad_norm_(trainable, cfg.max_grad_norm)
+        opt.step()
+        opt.zero_grad()
+        step += 1
+        if step % 10 == 0:
+            print(f"[sft] epoch{epoch} step{step}/{total_steps} lr={_lr(step):.2e} "
+                  f"loss={running / (10 * accum):.4f}")
+            running = 0.0
+
+    opt.zero_grad()      # start from clean gradients
+    stop = False
     for epoch in range(cfg.epochs):
+        acc = 0          # per-epoch accumulation window — never spans the epoch boundary
         for row in rows:
             try:
                 batch = build_supervised_example(processor, row, cfg, device=model.device,
@@ -174,27 +190,25 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
             if soft_loss_fn is not None:
                 logits = model(**batch).logits
                 loss = soft_loss_fn(logits, batch["labels"], code_token_ids, soft_targets,
-                                    weight=cfg.soft_label_weight) / cfg.gradient_accumulation_steps
+                                    weight=cfg.soft_label_weight) / accum
             else:
-                loss = model(**batch).loss / cfg.gradient_accumulation_steps
+                loss = model(**batch).loss / accum
             loss.backward()
-            running += float(loss) * cfg.gradient_accumulation_steps
-            loss_sum += float(loss) * cfg.gradient_accumulation_steps
+            running += float(loss) * accum
+            loss_sum += float(loss) * accum
             micro += 1
             n_seen += 1
-            if micro % cfg.gradient_accumulation_steps == 0:
-                for g in opt.param_groups:
-                    g["lr"] = _lr(step)
-                torch.nn.utils.clip_grad_norm_(trainable, cfg.max_grad_norm)
-                opt.step(); opt.zero_grad()
-                step += 1
-                if step % 10 == 0:
-                    print(f"[sft] epoch{epoch} step{step}/{total_steps} lr={_lr(step):.2e} "
-                          f"loss={running / (10 * cfg.gradient_accumulation_steps):.4f}")
-                    running = 0.0
+            acc += 1
+            if acc % accum == 0:
+                _optim_step()
                 if max_steps and step >= max_steps:
+                    stop = True
                     break
-        if max_steps and step >= max_steps:
+        # Flush a trailing partial window so its gradients are APPLIED (not silently discarded) and
+        # never mixed into the next epoch's first window. Skip when aborting on max_steps.
+        if not stop and acc % accum != 0:
+            _optim_step()
+        if stop:
             break
 
     mean_loss = (loss_sum / n_seen) if n_seen else None

@@ -28,10 +28,10 @@ from .constants import (
 from .eval_sets import EvalCandidate, build_eval_sets
 from .instruction_gen import TeacherClient
 from .paths import artifact_paths
-from .registry import RegistryStore
+from .registry import RegistryStore, validate_row
 from .representability import assess_direct_lut, assess_pair_fit
 from .selection import SelectionCandidate, select_active
-from .sources.derive import cube_bytes_to_lut, fit_global_lut, haldclut_png_to_lut
+from .sources.derive import cube_bytes_to_lut, fit_global_lut, haldclut_png_to_lut, parse_xmp
 from .splits import SplitCandidate, build_split_manifest
 from .warmup import materialize_warmup, write_warmup
 
@@ -94,6 +94,18 @@ def _derive_lut(row: dict) -> Optional[np.ndarray]:
             arr = np.asarray(Image.open(row["derivation_path"]).convert("RGB"))
             return haldclut_png_to_lut(arr, target_size=None)
         if method == "pair_fit":
+            # XMP hard-reject: a pair edited with LOCAL tools (masks/brushes/gradients) cannot be
+            # represented by a GLOBAL LUT, so it must not be pair-fit into one (data_collection_plan
+            # "XMP hard-reject fields"). Record the parse for audit; reject on CONFIRMED local edits
+            # (an unparseable XMP falls through to the downstream spatial-structure gate).
+            xmp_p = row.get("raw_edit_metadata_path")
+            if xmp_p and Path(xmp_p).is_file():
+                xr = parse_xmp(Path(xmp_p).read_text(encoding="utf-8", errors="ignore"))
+                row["xmp_parse_status"] = xr.parse_status
+                row["xmp_local_tool_count"] = xr.local_tool_count
+                row["xmp_rejected_fields"] = xr.rejected_fields
+                if xr.local_tool_count > 0:
+                    return None
             src = _load_image(row.get("source_image_path"))
             tgt = _load_image(row.get("target_image_path"))
             if src is None or tgt is None or src.shape != tgt.shape:
@@ -227,9 +239,11 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
         if row.get("derivation_method") == "pair_fit":
             src = _load_image(row.get("source_image_path"))
             tgt = _load_image(row.get("target_image_path"))
-            rep = assess_pair_fit(can.absolute, src, tgt, tinted=tinted, smoothness_override=nat_smooth)
+            rep = assess_pair_fit(can.absolute, src, tgt, tinted=tinted, smoothness_override=nat_smooth,
+                                  pre_clamp=can.pre_clamp_absolute)
         else:
-            rep = assess_direct_lut(can.absolute, tinted=tinted, smoothness_override=nat_smooth)
+            rep = assess_direct_lut(can.absolute, tinted=tinted, smoothness_override=nat_smooth,
+                                    pre_clamp=can.pre_clamp_absolute)
         row["representability_tier"] = rep.tier
         row["representability_status"] = rep.status
         row["derived_lut_quality"] = {
@@ -250,6 +264,15 @@ def run_pipeline(config_path: Optional[str] = None, out_root: Optional[str] = No
 
     (paths.raw_registry / "derivation_attrition.json").write_text(
         json.dumps(attrition, indent=2), encoding="utf-8")
+    # Enforce the registry contract (validate_row was previously never called) on the rows we ADMIT.
+    # Rejected rows are provenance-only (incomplete by design) and skipped; an invalid ACCEPTED row is
+    # a real defect and fails loud rather than being silently persisted.
+    for _r in enriched:
+        if _r.get("representability_tier") == "rejected":
+            continue
+        _errs = validate_row(_row_obj(_r))
+        if _errs:
+            raise ValueError(f"invalid accepted provenance row {_r.get('file_hash')}: {_errs}")
     store.write_all([_row_obj(r) for r in enriched])
     summary["stages"]["4_5_derive_filter"] = attrition
 

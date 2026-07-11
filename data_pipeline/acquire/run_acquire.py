@@ -40,6 +40,11 @@ CONNECTORS = {
     "public_lut_packs_misc": [PublicPacksConnector],
 }
 
+# Packs whose extra connectors are FALLBACKS (only run if the primary acquires nothing), NOT additive
+# mirrors. Without this, both FiveK connectors run and DOUBLE-INGEST the same dataset. Additive packs
+# (e.g. gmic_rawtherapee_haldclut, which sets secondary_max_items) are intentionally NOT listed here.
+FALLBACK_SOURCES = {"fivek_expert_abcde"}
+
 # Bounded, ToS-respecting defaults. FreshLUTs uncapped per user permission.
 DEFAULT_ACQUIRE = {
     "procedural_fillers_v1": {"enabled": True, "max_items": None},
@@ -110,6 +115,10 @@ def run_acquire(config_path: str | None = None, out_root: str | None = None,
             for art in report.artifacts:
                 store.add(art.to_registry_row())
             emit(report)
+            # Fallback packs: once the primary connector acquires anything, do NOT run the remaining
+            # (fallback) connectors — they are mirrors of the same dataset, not additive sources.
+            if pack_id in FALLBACK_SOURCES and report.acquired > 0:
+                break
 
     summary = {
         "artifact_root": str(paths.root),

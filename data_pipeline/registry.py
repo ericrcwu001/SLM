@@ -9,6 +9,7 @@ nested dicts. ``RegistryStore`` persists rows as JSONL (+ optional parquet) unde
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Optional
@@ -178,6 +179,9 @@ class ProvenanceRow:
     # --- operational (working paths for derivation; not part of the spec record set) ---
     source_image_path: Optional[str] = None
     target_image_path: Optional[str] = None
+    # --- derived-LUT quality blob (must round-trip: consumed by active_dataset + run_pipeline; a
+    # real field so from_dict/asdict preserve it on a RESUMED run instead of silently dropping it) ---
+    derived_lut_quality: dict = field(default_factory=dict)
     # --- registry bookkeeping ---
     registry_schema_version: str = REGISTRY_SCHEMA_VERSION
 
@@ -228,13 +232,20 @@ class RegistryStore:
         self.path = self.dir / filename
 
     def add(self, row: ProvenanceRow) -> None:
+        # NOTE: no validate_row here — rows are INCOMPLETE at acquire time (canonical_domain_id and
+        # tier are stamped later during canonicalization/derivation). The registry contract is
+        # enforced on the fully-formed ADMITTED rows in run_pipeline before write_all.
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row.to_dict(), sort_keys=True) + "\n")
 
     def write_all(self, rows: list[ProvenanceRow]) -> None:
-        with open(self.path, "w", encoding="utf-8") as fh:
+        # Write to a temp file then atomically replace, so a crash mid-write cannot corrupt/truncate
+        # the live provenance registry (this rewrites the whole file on every pipeline pass).
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
             for row in rows:
                 fh.write(json.dumps(row.to_dict(), sort_keys=True) + "\n")
+        os.replace(tmp, self.path)
 
     def load(self) -> list[ProvenanceRow]:
         if not self.path.exists():

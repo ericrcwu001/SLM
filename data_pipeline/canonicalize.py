@@ -51,6 +51,9 @@ class CanonicalResult:
     normalization_warnings: list = field(default_factory=list)
     rejected: bool = False
     reject_reason: str | None = None
+    # Authored LUT values BEFORE the [0,1] clip — the out-of-gamut/pre-clamp quality gate needs these,
+    # since after clipping the gate would only ever see in-gamut data and could never fire.
+    pre_clamp_absolute: np.ndarray | None = None
 
 
 def _residual_hash(residual: np.ndarray) -> str:
@@ -80,6 +83,7 @@ def canonicalize_lut(
         warnings.append(f"assumed_srgb:{dom}")
 
     arr = np.asarray(lut_tensor, dtype=np.float64)
+    pre_clamp = arr.copy()   # capture authored values before clipping (for the out-of-gamut gate)
     if arr.min() < 0.0 or arr.max() > 1.0:
         warnings.append("clipped_out_of_range")
     arr = np.clip(arr, 0.0, 1.0)
@@ -100,6 +104,7 @@ def canonicalize_lut(
         canonical_absolute_lut_hash=cube_bytes_hash(absolute),
         canonical_residual_lut_hash=_residual_hash(residual),
         normalization_warnings=warnings,
+        pre_clamp_absolute=pre_clamp,
     )
 
 

@@ -147,7 +147,8 @@ def _spatial_residual(residual_map: np.ndarray, source_luma: np.ndarray) -> dict
 
 def assess_pair_fit(lut_abs: np.ndarray, source_img: np.ndarray, target_img: np.ndarray,
                     held_out_stride: int = 4, tinted: bool = False,
-                    smoothness_override: float | None = None) -> RepresentabilityResult:
+                    smoothness_override: float | None = None,
+                    pre_clamp: np.ndarray | None = None) -> RepresentabilityResult:
     src = np.clip(np.asarray(source_img, dtype=np.float64), 0, 1)
     tgt = np.clip(np.asarray(target_img, dtype=np.float64), 0, 1)
     if src.shape != tgt.shape or src.ndim != 3:
@@ -170,12 +171,16 @@ def assess_pair_fit(lut_abs: np.ndarray, source_img: np.ndarray, target_img: np.
     # Hard rejects: the fitted global LUT fails to *reproduce* the target (magnitude / support)
     # or a whole region is badly off (tile / connected high-residual component). These mean the
     # LUT is not a usable global approximation at all.
+    # Gate on the HELD-OUT fit (fit_val), not the in-sample fit_all. A global LUT is massively
+    # over-determined so fit_val ≈ fit_all, but fit_val is the honest generalization number the
+    # "held-out CIEDE2000" gate was meant to use. (A train-only refit would make it strictly
+    # held-out; here the LUT is still fit on all pixels upstream — documented follow-on.)
     hard_reasons: list[str] = []
-    if fit_all["mean"] > PAIR_FIT["mean_accept"]:
+    if fit_val["mean"] > PAIR_FIT["mean_accept"]:
         hard_reasons.append("fit_mean_exceeded")
-    if fit_all["p95"] > PAIR_FIT["p95_accept"]:
+    if fit_val["p95"] > PAIR_FIT["p95_accept"]:
         hard_reasons.append("fit_p95_exceeded")
-    if fit_all["p99"] > PAIR_FIT["p99_accept"]:
+    if fit_val["p99"] > PAIR_FIT["p99_accept"]:
         hard_reasons.append("fit_p99_exceeded")
     if support["input_pixel_supported_rate"] < PAIR_FIT["support_accept"]:
         hard_reasons.append("input_support_low")
@@ -210,7 +215,8 @@ def assess_pair_fit(lut_abs: np.ndarray, source_img: np.ndarray, target_img: np.
         or spatial["residual_edge_corr"] > PAIR_FIT["edge_corr_gold_max"]
     )
 
-    quality = assess_quality(lut_abs, tinted=tinted, smoothness_override=smoothness_override)
+    quality = assess_quality(lut_abs, tinted=tinted, smoothness_override=smoothness_override,
+                             pre_clamp=pre_clamp)
     # core-safety failures are hard rejects; skin-only + diagnostic-cap (moderate smoothness)
     # failures cap the tier at diagnostic.
     hard_reasons.extend(f"quality:{r}" for r in quality.safety_reasons)
@@ -220,7 +226,7 @@ def assess_pair_fit(lut_abs: np.ndarray, source_img: np.ndarray, target_img: np.
     if hard_reasons:
         tier, status = TIER_REJECTED, "rejected"
         reasons = hard_reasons + structure_reasons + skin_reasons + cap_reasons
-    elif (fit_all["mean"] <= PAIR_FIT["mean_gold"]
+    elif (fit_val["mean"] <= PAIR_FIT["mean_gold"]
           and support["input_pixel_supported_rate"] >= PAIR_FIT["support_gold"]
           and quality.skin_pass and not severe_structure and not quality.cap_reasons):
         tier, status, reasons = TIER_GOLD, "accepted", []
@@ -237,14 +243,15 @@ def assess_pair_fit(lut_abs: np.ndarray, source_img: np.ndarray, target_img: np.
 
 def assess_direct_lut(lut_abs: np.ndarray, tinted: bool = False,
                       quality: QualityResult | None = None,
-                      smoothness_override: float | None = None) -> RepresentabilityResult:
+                      smoothness_override: float | None = None,
+                      pre_clamp: np.ndarray | None = None) -> RepresentabilityResult:
     """A directly-provided global LUT (HaldCLUT/procedural/pack): tier follows quality/safety.
 
     Skin-locus and diagnostic-cap reasons (moderate smoothness) cap the tier at diagnostic;
     only core-safety failures reject.
     """
     q = quality if quality is not None else assess_quality(
-        lut_abs, tinted=tinted, smoothness_override=smoothness_override)
+        lut_abs, tinted=tinted, smoothness_override=smoothness_override, pre_clamp=pre_clamp)
     if q.safety_pass and q.skin_pass and not q.cap_reasons:
         tier, status, reasons = TIER_GOLD, "accepted", []
     elif q.safety_pass:

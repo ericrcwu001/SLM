@@ -22,7 +22,7 @@ def test_stamp_handles_missing_measured_behavior():
 def test_run_recommendation_pass_when_oracle_ge_baseline(monkeypatch):
     calls = {}
 
-    def fake_score(cfg, resized, adapter, limit, *, input_field="instruction", prep_row=None):
+    def fake_score(cfg, resized, adapter, limit, *, input_field="instruction", prep_row=None, behavioral=True, **kw):
         calls[input_field] = True
         acc = 0.55 if input_field == "attribute_spec_text" else 0.50
         return {"metric": acc, "overall_ci_low": acc - 0.02, "overall_ci_high": acc + 0.02,
@@ -36,7 +36,7 @@ def test_run_recommendation_pass_when_oracle_ge_baseline(monkeypatch):
 
 
 def test_run_recommendation_fail_when_oracle_lt_baseline(monkeypatch):
-    def fake_score(cfg, resized, adapter, limit, *, input_field="instruction", prep_row=None):
+    def fake_score(cfg, resized, adapter, limit, *, input_field="instruction", prep_row=None, behavioral=True, **kw):
         acc = 0.40 if input_field == "attribute_spec_text" else 0.50
         return {"metric": acc, "overall_ci_low": None, "overall_ci_high": None,
                 "scored_rows": 120, "scored_units": 120}

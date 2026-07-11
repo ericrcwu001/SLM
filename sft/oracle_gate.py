@@ -54,10 +54,12 @@ def _stamp_attribute_spec_text(row: dict) -> None:
 
 def run(cfg: SFTConfig, resized_model: str, adapter: str, limit: int) -> dict:
     # Baseline: the one-stage generator conditioned on the free-text instruction.
-    base = score(cfg, resized_model, adapter, limit, input_field="instruction")
+    # behavioral=False: the gate only reads the teacher-forced token-accuracy METRIC, so the slow
+    # free-running behavioral pass would be pure waste (run twice, discarded) — skip it.
+    base = score(cfg, resized_model, adapter, limit, input_field="instruction", behavioral=False)
     # Oracle: the SAME adapter conditioned on the ground-truth attribute_spec_text.
     oracle = score(cfg, resized_model, adapter, limit, input_field="attribute_spec_text",
-                   prep_row=_stamp_attribute_spec_text)
+                   prep_row=_stamp_attribute_spec_text, behavioral=False)
 
     b_acc, o_acc = base["metric"], oracle["metric"]
     delta = o_acc - b_acc

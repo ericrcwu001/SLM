@@ -35,6 +35,22 @@ def test_oracle_ignores_empty_rows():
     assert s["oracle@1"] == pytest.approx(0.5)
 
 
+def test_oracle_excludes_none_fidelity_not_coerced_to_zero():
+    # A row whose valid samples are all None (spec asserts no measurable axis) is EXCLUDED, not
+    # counted as 0.0 — matching summarize_fidelity, so the gate isn't silently deflated.
+    recs_by_row = [
+        [{"behavioral_fidelity": None}, {"behavioral_fidelity": None}],   # unmeasurable -> excluded
+        [{"behavioral_fidelity": 0.4, "collapsed": False}],               # measurable
+    ]
+    s = O.oracle_and_best(recs_by_row, ks=(1, 4))
+    assert s["oracle@1"] == pytest.approx(0.4)   # NOT (0.0 + 0.4)/2 = 0.2
+    assert s["best_of_N"] == pytest.approx(0.4)
+    # a refusal (0.0) is a real miss and IS kept
+    s2 = O.oracle_and_best([[{"behavioral_fidelity": 0.0, "collapsed": True},
+                             {"behavioral_fidelity": 0.6, "collapsed": False}]], ks=(2,))
+    assert s2["oracle@2"] == pytest.approx(0.6)
+
+
 def test_score_row_samples_refusal_and_short(monkeypatch):
     # valid 64-code sample -> routed through score_generation (stubbed); None/short -> 0.0 miss.
     monkeypatch.setattr(O, "score_generation",
