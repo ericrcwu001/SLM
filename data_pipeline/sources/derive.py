@@ -43,15 +43,17 @@ def haldclut_png_to_lut(png: np.ndarray, target_size: int | None = GRID_SIZE) ->
 
 
 # --- XMP (PPR10K / Lightroom crs) -------------------------------------------------
-# Local / non-LUT tools -> hard reject (data_collection_plan.md "XMP hard-reject fields").
+# TRUE local-region editors (masks / brush / gradient / retouch): a global RGB LUT cannot represent
+# these, so a pair carrying an ACTIVE one is hard-rejected (data_collection_plan.md "XMP hard-reject").
+# Restricted to genuine local-region CONTAINERS. Global/default fields (Sharpness, LuminanceSmoothing,
+# ColorNoiseReduction, Texture, Clarity, Dehaze, LensProfileEnable, AutoLateralCA,
+# PostCropVignetteAmount) and geometry (Crop*, Perspective*) are deliberately NOT here: Lightroom
+# writes them as defaults in ~every XMP, so substring-matching them tripped the reject on ~100% of
+# PPR10K. Their residual is handled by the representability spatial gate / pair-fit magnitude gate.
 _XMP_LOCAL_TOOL_MARKERS = (
     "crs:MaskGroup", "crs:Masks", "crs:PaintBasedCorrections", "crs:PaintCorrection",
     "crs:CircularGradientBasedCorrections", "crs:GradientBasedCorrections",
     "crs:RetouchAreas", "crs:RetouchInfo", "crs:RedEyeInfo", "crs:DustSpots",
-    "crs:PerspectiveVertical", "crs:PerspectiveHorizontal", "crs:CropTop", "crs:CropLeft",
-    "crs:LensProfileEnable", "crs:AutoLateralCA", "crs:PostCropVignetteAmount",
-    "crs:Sharpness", "crs:LuminanceSmoothing", "crs:ColorNoiseReduction",
-    "crs:Texture", "crs:Clarity", "crs:Dehaze",
 )
 # Accepted global tone/color fields (allowlist).
 _XMP_GLOBAL_FIELDS = (
@@ -83,14 +85,23 @@ def _find_field(text: str, name: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _local_edit_active(text: str, marker: str) -> bool:
+    """A local-region editor counts only if its bag is actually POPULATED. An empty/self-closed
+    placeholder (``<crs:Masks/>``, written by default) does not — matching the intended "active list
+    bag" semantics and avoiding the false-positive where merely declaring the schema tripped a reject.
+    """
+    if marker not in text:
+        return False
+    return re.search(rf"{re.escape(marker)}\s*/>", text) is None   # skip empty self-closed tag
+
+
 def parse_xmp(text: str) -> XmpResult:
     if not text or "crs:" not in text and "<x:xmpmeta" not in text:
         return XmpResult(parse_status="unknown_schema")
     local = 0
     rejected: list[str] = []
     for marker in _XMP_LOCAL_TOOL_MARKERS:
-        if marker in text:
-            # count only "active" local edits: a list bag or a non-zero scalar
+        if _local_edit_active(text, marker):
             local += 1
             rejected.append(marker.split(":", 1)[-1])
     values: dict[str, float] = {}

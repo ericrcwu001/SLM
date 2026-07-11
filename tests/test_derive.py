@@ -41,6 +41,24 @@ def test_xmp_local_tools_rejected():
     assert any("Mask" in f or "Paint" in f for f in r.rejected_fields)
 
 
+# Lightroom writes these GLOBAL/default fields (+ an empty mask placeholder) in ~every raw XMP;
+# counting them as "local edits" would hard-reject ~100% of PPR10K on a rebuild (audit finding).
+_XMP_DEFAULTS = """<x:xmpmeta xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/">
+  <rdf:Description crs:Temperature="5500" crs:Sharpness="40" crs:LuminanceSmoothing="0"
+    crs:Clarity="0" crs:Dehaze="0" crs:Texture="0" crs:LensProfileEnable="1"
+    crs:PerspectiveVertical="0" crs:CropTop="0" crs:CropLeft="0">
+    <crs:Masks/>
+  </rdf:Description>
+</x:xmpmeta>"""
+
+
+def test_xmp_default_global_fields_are_not_local_edits():
+    r = parse_xmp(_XMP_DEFAULTS)
+    assert r.parse_status == "parsed"
+    assert r.local_tool_count == 0     # sharpen/lens/clarity=0/empty-mask defaults must not reject
+    assert r.accepted is True
+
+
 def test_xmp_unknown_schema():
     assert parse_xmp("not xmp at all").parse_status == "unknown_schema"
 
