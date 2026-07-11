@@ -180,6 +180,59 @@ def serialize(spec: AttributeSpec) -> str:
     return " | ".join(parts)
 
 
+# --- bucketized (ordinal) rendering: GENERATOR-INPUT ONLY -------------------------------------
+# Raw signed floats (``warmer=+2.4``) get shredded by Qwen's BPE into ``+``,``2``,``.``,``4``.
+# Ordinal buckets tokenize as one stable word and generalize better. This is a LOSSY, input-only
+# rendering: it is NOT the canonical grammar, has no ``parse`` inverse, and never touches
+# ``serialize``/``parse`` (the interpreter↔LUT round-trip the oracle gate + tests depend on).
+# Magnitude bands are Lab units; the emit thresholds (_MAG_EPS etc.) still gate what appears.
+_MAG_BUCKETS: tuple[tuple[float, str], ...] = (
+    (1.5, "slight"), (3.0, "moderate"), (6.0, "strong"),
+)
+
+
+def _bucket_mag(v: float) -> str:
+    a = abs(float(v))
+    for hi, label in _MAG_BUCKETS:
+        if a < hi:
+            return label
+    return "extreme"
+
+
+def serialize_bucketed(spec: AttributeSpec) -> str:
+    """Render a spec with ordinal magnitude buckets instead of floats (generator input only).
+
+    Parallel to :func:`serialize` (same keys, order, and route handling) but each magnitude
+    becomes ``slight|moderate|strong|extreme``. Hue angles stay integer degrees (already discrete
+    and BPE-clean); per-hue-sat keeps a leading ``+``/``-`` sign word-free of the decimal. Lossy
+    and one-way by design; confidence is dropped (not present on ground-truth specs).
+    """
+    emitted: dict[str, str] = {}
+    for fld, (pos, neg) in _BIPOLAR.items():
+        if fld in spec.axes:
+            v = spec.axes[fld]
+            tag = pos if v >= 0 else neg
+            emitted[tag] = f"{tag}={_bucket_mag(v)}"
+    for key, fld in _UNIPOLAR.items():
+        if fld in spec.axes:
+            emitted[key] = f"{key}={_bucket_mag(spec.axes[fld])}"
+    for key, (hue_fld, _gate) in _HUE.items():
+        if hue_fld in spec.axes:
+            emitted[key] = f"{key}={int(spec.axes[hue_fld])}"
+    for sector in HUE_SECTORS:
+        if sector in spec.sat:
+            v = spec.sat[sector]
+            emitted[f"sat_{sector}"] = f"sat_{sector}={'+' if v >= 0 else '-'}{_bucket_mag(v)}"
+    axis_str = " ".join(emitted[k] for k in _ORDER if k in emitted)
+
+    parts = [f"route={spec.route}"]
+    if spec.route == ROUTE_REFUSE:
+        parts.append(f"refuse={spec.refuse_reason}" if spec.refuse_reason else "refuse=out_of_scope")
+    else:
+        parts.append(axis_str)
+    return " | ".join(parts)
+
+
 _KV_RE = re.compile(r"^([a-z_]+)=(.+)$")
 
 
@@ -230,20 +283,23 @@ def measured_behavior_to_text(mb: dict, *, route: str = ROUTE_GRADE,
     return serialize(from_measured_behavior(mb, route=route, confidence=confidence))
 
 
-def ground_truth_attribute_spec_text(row: dict) -> str:
+def ground_truth_attribute_spec_text(row: dict, *, bucketize: bool = False) -> str:
     """The GROUND-TRUTH ``attribute_spec_text`` for a corpus row — the best-possible interpreter output.
 
     Used to condition the Generator during the P6 retrain and the oracle gate (no interpreter needed):
       * a supported (grade) row → its measured LUT behavior serialized as a grade spec;
       * a refuse row → a refuse spec carrying its ``refuse_kind`` (out_of_scope / out_of_gamut).
 
+    ``bucketize=True`` renders magnitudes as ordinal buckets (:func:`serialize_bucketed`) for the
+    generator INPUT; the default (canonical :func:`serialize`) is what agreement is measured against.
     Clarify rows are interpreter-only and never reach the generator (filtered in ``sft.train``), so
     they are not handled here.
     """
+    ser = serialize_bucketed if bucketize else serialize
     if row.get("is_supported"):
-        return measured_behavior_to_text(row.get("measured_behavior") or {})
+        return ser(from_measured_behavior(row.get("measured_behavior") or {}))
     reason = row.get("refuse_kind") or REFUSE_OUT_OF_SCOPE
-    return serialize(AttributeSpec(route=ROUTE_REFUSE, refuse_reason=reason))
+    return ser(AttributeSpec(route=ROUTE_REFUSE, refuse_reason=reason))
 
 
 def is_backed(spec: AttributeSpec, mb: dict, *, tol: float = 1.0) -> tuple[bool, list[str]]:
@@ -265,9 +321,56 @@ def is_backed(spec: AttributeSpec, mb: dict, *, tol: float = 1.0) -> tuple[bool,
     phs = mb.get("per_hue_saturation") or {}
     for sector, v in spec.sat.items():
         m = float(phs.get(sector, 0.0) or 0.0)
-        if v * m <= 0 and abs(v) >= _SAT_EPS:
+        if v * m <= 0 and abs(v) >= _SAT_EPS:      # sign disagreement (or measured ~0)
             issues.append(f"unbacked_sat_sign:{sector}")
+        elif abs(v - m) > max(tol, 0.25 * abs(v)):  # magnitude far from measured
+            issues.append(f"unbacked_sat_magnitude:{sector}")
     return (len(issues) == 0), issues
+
+
+def augment_spec(spec: AttributeSpec, rng, *, jitter: float = 0.3) -> AttributeSpec:
+    """Sign-preserving magnitude jitter for TRAIN-ONLY input augmentation (Phase 3 D).
+
+    Nudges each asserted magnitude by ``±jitter`` (Lab units), clamped to keep its sign and stay
+    above the emit threshold so the axis still renders. Hue angles are left unchanged. The TARGET
+    codes are NOT affected (this only perturbs the conditioning text), so the model learns that
+    near-identical specs map to the same LUT — smoothing the learned function. ``rng`` is a
+    ``random.Random`` for determinism.
+    """
+    axes: dict[str, float] = {}
+    for fld, v in spec.axes.items():
+        if fld.endswith("_hue_deg"):
+            axes[fld] = v
+            continue
+        nv = float(v) + rng.uniform(-jitter, jitter)
+        if v > 0:
+            nv = max(nv, _MAG_EPS)
+        elif v < 0:
+            nv = min(nv, -_MAG_EPS)
+        axes[fld] = _round_mag(nv)
+    sat: dict[str, float] = {}
+    for sector, v in spec.sat.items():
+        nv = float(v) + rng.uniform(-jitter, jitter)
+        if v > 0:
+            nv = max(nv, _SAT_EPS)
+        elif v < 0:
+            nv = min(nv, -_SAT_EPS)
+        sat[sector] = _round_mag(nv)
+    return replace(spec, axes=axes, sat=sat)
+
+
+def shuffle_axis_order(spec_text: str, rng) -> str:
+    """Shuffle the space-separated axis tokens (the middle segment) — train-only input augmentation.
+
+    Order is irrelevant to meaning (``parse`` is order-insensitive), so shuffling teaches the model
+    not to over-rely on position. Works on canonical AND bucketized text; route/refuse/conf untouched.
+    """
+    parts = spec_text.split(" | ")
+    if len(parts) >= 2 and parts[1] and "=" in parts[1]:
+        toks = parts[1].split()
+        rng.shuffle(toks)
+        parts[1] = " ".join(toks)
+    return " | ".join(parts)
 
 
 def canonicalize(spec: AttributeSpec) -> AttributeSpec:

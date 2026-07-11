@@ -79,6 +79,20 @@ def test_backing_gate():
     assert not ok2 and any("unbacked_sign" in i for i in issues2)
 
 
+def test_backing_gate_per_hue_saturation_magnitude():
+    # per-hue saturation must be backed by BOTH sign AND magnitude (same as main axes).
+    mb = {"per_hue_saturation": {"red": 2.0}}
+    # correct sign, within tolerance -> backed
+    ok, issues = A.is_backed(A.AttributeSpec(sat={"red": 3.0}), mb)
+    assert ok, issues
+    # correct sign but wildly over-claimed magnitude (25x) -> unbacked
+    ok2, issues2 = A.is_backed(A.AttributeSpec(sat={"red": 50.0}), mb)
+    assert not ok2 and any("unbacked_sat_magnitude" in i for i in issues2)
+    # opposite sign is still flagged as a sign issue, not a magnitude one
+    ok3, issues3 = A.is_backed(A.AttributeSpec(sat={"red": -3.0}), mb)
+    assert not ok3 and any("unbacked_sat_sign" in i for i in issues3)
+
+
 def test_measured_behavior_to_text_matches_pipeline_field():
     mb = measure_behavior(_lut("proc_attr_warmer"))
     text = A.measured_behavior_to_text(mb, confidence=0.9)

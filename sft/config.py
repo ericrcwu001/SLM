@@ -65,10 +65,25 @@ class SFTConfig:
     # -- data / io --
     active_rows_path: str = "data/active_sft/active_rows.jsonl"
     out_dir: str = "models/sft_adapters"
-    # Generator conditioning input (ADR 0020/0021): "instruction" (one-stage) or
-    # "attribute_spec_text" (two-stage, P6). NOT a locked knob — it is the sanctioned input swap;
-    # all locked hyperparameters are unchanged when it flips.
+    # Generator conditioning input (ADR 0020/0021): "instruction" (one-stage), "attribute_spec_text"
+    # (two-stage, P6), or "instruction_and_spec" (hybrid: NL anchor + precise spec). NOT a locked knob
+    # — it is the sanctioned input swap; all locked hyperparameters are unchanged when it flips.
     input_field: str = "instruction"
+    # Render spec magnitudes as ordinal buckets (warmer=strong) on the generator INPUT instead of raw
+    # floats (canonical serialize/parse unchanged). Applies whenever the input feeds a spec
+    # (attribute_spec_text / instruction_and_spec). NOT a locked knob.
+    spec_bucketize: bool = False
+
+    # -- Phase 3 collapse fixes (methodology knobs; NOT in the locked bilevel search) --
+    # Codebook-embedding-weighted soft-target loss: auxiliary CE on code positions whose target is a
+    # softmax over codebook distances (perceptually-near codes share mass). 0.0 = OFF (identical to
+    # baseline hard-label CE). tau is the (scale-free) softmax temperature.
+    soft_label_weight: float = 0.0
+    soft_label_tau: float = 1.0
+    # Train-only spec augmentation: jitter magnitudes (sign-preserving) + shuffle axis order on the
+    # INPUT (target codes unchanged) to smooth the learned function. NEVER applied at scoring.
+    spec_augment: bool = False
+    spec_jitter: float = 0.3
 
     # -- smoke overfit sizes (Stage 5 smoke tests = the FIRST run) --
     smoke_sizes: tuple[int, ...] = (50, 200)
@@ -89,8 +104,13 @@ class SFTConfig:
             raise ValueError("projector_policy must be one of lora|full|frozen")
         if self.bnb_4bit_compute_dtype not in ("bfloat16", "float16"):
             raise ValueError("bnb_4bit_compute_dtype must be bfloat16 or float16")
-        if self.input_field not in ("instruction", "attribute_spec_text"):
-            raise ValueError("input_field must be instruction or attribute_spec_text")
+        if self.input_field not in ("instruction", "attribute_spec_text", "instruction_and_spec"):
+            raise ValueError(
+                "input_field must be instruction, attribute_spec_text, or instruction_and_spec")
+        if self.soft_label_weight < 0:
+            raise ValueError("soft_label_weight must be >= 0 (0 disables the soft-target loss)")
+        if self.soft_label_tau <= 0:
+            raise ValueError("soft_label_tau must be > 0")
 
     def to_dict(self) -> dict:
         return asdict(self)

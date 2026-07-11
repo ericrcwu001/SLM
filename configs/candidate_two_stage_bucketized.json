@@ -1,0 +1,12 @@
+{
+  "learning_rate_lora": 0.0002,
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "warmup_ratio": 0.03,
+  "max_grad_norm": 1.0,
+  "weight_decay": 0.0,
+  "max_pixels": 200704,
+  "input_field": "attribute_spec_text",
+  "spec_bucketize": true
+}

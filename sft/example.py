@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 from pathlib import Path
 
 from functools import lru_cache
@@ -105,19 +106,50 @@ def surviving_code_positions(tokenizer, input_ids, n_prompt: int) -> int:
     return sum(1 for t in span if t in code_ids)
 
 
-def input_text_for(row: dict, input_field: str) -> str:
+def _spec_text_for(row: dict, bucketize: bool, augment_rng=None, jitter: float = 0.3) -> str:
+    """Ground-truth ``attribute_spec_text`` for a row (bucketized / augmented on request).
+
+    Canonical (non-bucketized, non-augmented) prefers a pre-stamped ``attribute_spec_text``;
+    bucketized/augmented always re-render from the spec object so a pre-stamped float spec cannot
+    leak through. ``augment_rng`` (a ``random.Random``) enables TRAIN-ONLY magnitude jitter + axis
+    reorder (target codes unchanged); it is never passed at scoring time.
+    """
+    from data_pipeline.attribute_spec import (
+        augment_spec,
+        from_measured_behavior,
+        ground_truth_attribute_spec_text,
+        serialize,
+        serialize_bucketed,
+        shuffle_axis_order,
+    )
+
+    if augment_rng is not None and row.get("is_supported"):
+        spec = augment_spec(from_measured_behavior(row.get("measured_behavior") or {}),
+                            augment_rng, jitter=jitter)
+        ser = serialize_bucketed if bucketize else serialize
+        return shuffle_axis_order(ser(spec), augment_rng)
+    if not bucketize and row.get("attribute_spec_text"):
+        return row["attribute_spec_text"]
+    return ground_truth_attribute_spec_text(row, bucketize=bucketize)
+
+
+def input_text_for(row: dict, input_field: str, *, bucketize: bool = False,
+                   augment_rng=None, jitter: float = 0.3) -> str:
     """The generator's conditioning text for a row under ``input_field``.
 
     ``"instruction"`` (one-stage) returns the row's instruction. ``"attribute_spec_text"``
-    (two-stage; ADR 0021) returns a pre-stamped ``attribute_spec_text`` if present, else DERIVES the
-    ground-truth spec from the row (measured LUT behavior for grade rows; a refuse spec for refusal
-    rows) — so the P6 retrain needs no corpus rewrite. Raises if the resolved text is empty.
+    (two-stage; ADR 0021) returns the ground-truth spec (pre-stamped if present, else derived from
+    the row's measured behavior / refuse kind). ``"instruction_and_spec"`` (hybrid) returns the NL
+    instruction followed by the spec — the fluent anchor plus the precise numbers. ``bucketize``
+    renders spec magnitudes as ordinal buckets (input-only); ``augment_rng`` enables train-only spec
+    augmentation. Raises if the resolved text is empty.
     """
     if input_field == "attribute_spec_text":
-        txt = row.get("attribute_spec_text")
-        if not txt:
-            from data_pipeline.attribute_spec import ground_truth_attribute_spec_text
-            txt = ground_truth_attribute_spec_text(row)
+        txt = _spec_text_for(row, bucketize, augment_rng, jitter)
+    elif input_field == "instruction_and_spec":
+        instr = (row.get("instruction") or "").strip()
+        spec = _spec_text_for(row, bucketize, augment_rng, jitter)
+        txt = f"{instr}\n{spec}" if instr else spec
     else:
         txt = row.get(input_field)
     if not txt:
@@ -126,7 +158,7 @@ def input_text_for(row: dict, input_field: str) -> str:
 
 
 def build_supervised_example(processor, row: dict, cfg, *, device=None,
-                             input_field: str = "instruction") -> dict:
+                             input_field: str = "instruction", augment: bool = False) -> dict:
     """Build one ``(inputs, labels)`` example: assistant target un-masked, prompt masked to ``-100``.
 
     Mirrors the trainer's supervised construction so teacher-forced scoring aligns with training.
@@ -140,7 +172,10 @@ def build_supervised_example(processor, row: dict, cfg, *, device=None,
     """
     from qwen_vl_utils import process_vision_info
 
-    text = input_text_for(row, input_field)
+    # Train-only augmentation: seed the rng per-row (deterministic) so a run is reproducible.
+    aug_rng = random.Random(str(row.get("id"))) if (augment and getattr(cfg, "spec_augment", False)) else None
+    text = input_text_for(row, input_field, bucketize=getattr(cfg, "spec_bucketize", False),
+                          augment_rng=aug_rng, jitter=getattr(cfg, "spec_jitter", 0.3))
     user = {
         "role": "user",
         "content": [

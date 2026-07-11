@@ -141,6 +141,20 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
         prog = (step - warmup) / max(1, total_steps - warmup)
         return 0.5 * cfg.learning_rate_lora * (1 + math.cos(math.pi * prog))
 
+    # Soft-target loss setup (Phase 3 C) — only when enabled; weight 0 keeps the baseline path.
+    soft_loss_fn = soft_targets = code_token_ids = None
+    if getattr(cfg, "soft_label_weight", 0.0) and cfg.soft_label_weight > 0:
+        from eval.vocab import code_token
+        from sft.soft_loss import code_soft_targets, load_codebook_tensor, soft_label_loss
+        cb = load_codebook_tensor(model.device)
+        soft_targets = code_soft_targets(cb, tau=cfg.soft_label_tau)
+        code_token_ids = torch.tensor([tok.convert_tokens_to_ids(code_token(k)) for k in range(256)],
+                                      device=model.device)
+        soft_loss_fn = soft_label_loss
+        print(f"[sft] soft-target loss ON: weight={cfg.soft_label_weight} tau={cfg.soft_label_tau}")
+    if getattr(cfg, "spec_augment", False):
+        print(f"[sft] spec augmentation ON: jitter={cfg.spec_jitter} (train input only)")
+
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     model.train()
     step = micro = 0
@@ -152,12 +166,17 @@ def train(cfg: SFTConfig, resized_model: str, smoke_size: int | None, max_steps:
         for row in rows:
             try:
                 batch = build_supervised_example(processor, row, cfg, device=model.device,
-                                                 input_field=cfg.input_field)
+                                                 input_field=cfg.input_field, augment=True)
             except Exception as exc:  # noqa: BLE001 — skip a bad row rather than kill the run
                 skipped += 1
                 print(f"[sft][skip] {row.get('id')}: {type(exc).__name__}: {exc}")
                 continue
-            loss = model(**batch).loss / cfg.gradient_accumulation_steps
+            if soft_loss_fn is not None:
+                logits = model(**batch).logits
+                loss = soft_loss_fn(logits, batch["labels"], code_token_ids, soft_targets,
+                                    weight=cfg.soft_label_weight) / cfg.gradient_accumulation_steps
+            else:
+                loss = model(**batch).loss / cfg.gradient_accumulation_steps
             loss.backward()
             running += float(loss) * cfg.gradient_accumulation_steps
             loss_sum += float(loss) * cfg.gradient_accumulation_steps

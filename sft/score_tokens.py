@@ -144,12 +144,74 @@ def summarize_scores(records: list[dict], *, B: int = _CI_BOOTSTRAP_B, seed: int
     }
 
 
+def _codebook_tensor(device):
+    """The frozen ``[256,64]`` codebook as a float tensor (for embedding-distance credit), or None."""
+    import numpy as _np
+    import torch
+
+    from tokenizer.frozen import frozen_final_dir
+    try:
+        cb = _np.load(frozen_final_dir() / "codebook.npy")
+        return torch.tensor(cb, dtype=torch.float32, device=device)
+    except Exception:  # noqa: BLE001 — diagnostics only; never break the sentinel
+        try:
+            from tokenizer.frozen import load_frozen_vqvae
+            m, _ = load_frozen_vqvae()
+            return m.vq.codebook.detach().to(device=device, dtype=torch.float32)
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def _run_behavioral(model, processor, rows, *, input_field, bucketize, sampling, device):
+    """One free-running behavioral pass over ``rows`` under a given decode (``sampling`` None=greedy).
+
+    Generates each row's codes (matching the trained conditioning), decodes + re-measures behavior,
+    scores agreement vs the CANONICAL requested spec (bucketize only affects the model INPUT), and
+    aggregates. Returns the :func:`eval.behavioral_fidelity.summarize_fidelity` dict."""
+    from data_pipeline.attribute_spec import ground_truth_attribute_spec_text
+    from eval.behavioral_fidelity import score_generation, summarize_fidelity
+    from sft.generate import generate_codes_for_row
+
+    brecs: list[dict] = []
+    for row in rows:
+        spec_text = ground_truth_attribute_spec_text(row)   # what the LUT SHOULD do (canonical)
+        try:
+            codes = generate_codes_for_row(model, processor, row, input_field=input_field,
+                                           bucketize=bucketize, sampling=sampling, device=device)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[score][bhv-skip] {row.get('id')}: gen {type(exc).__name__}: {exc}")
+            continue
+        if codes is None:            # refusal on a supported row == total miss
+            brecs.append({"route": "grade", "behavioral_fidelity": 0.0, "residual_norm": 0.0,
+                          "collapsed": True, "degenerate_identity": True, "refused": True})
+            continue
+        try:
+            brecs.append(score_generation(codes, spec_text, target_codes=row.get("target_tokens")))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[score][bhv-skip] {row.get('id')}: score {type(exc).__name__}: {exc}")
+    bsum = summarize_fidelity(brecs)
+    bsum["scored"] = len(brecs)
+    bsum["refused"] = sum(1 for r in brecs if r.get("refused"))
+    return bsum
+
+
 def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int,
-          *, input_field: str = "instruction", prep_row=None) -> dict:
+          *, input_field: str = "instruction", prep_row=None,
+          behavioral: bool = True, behavioral_limit: int = 48,
+          behavioral_sampling: str = "greedy", behavioral_temperature: float = 0.7,
+          behavioral_top_p: float = 0.9) -> dict:
     """Score an adapter's held-out token accuracy. ``input_field`` selects the generator input
     (``instruction`` one-stage, or ``attribute_spec_text`` two-stage); ``prep_row`` is an optional
     callable applied to each row before example construction (used by the oracle gate to stamp
-    ``attribute_spec_text`` from ground-truth ``measured_behavior``)."""
+    ``attribute_spec_text`` from ground-truth ``measured_behavior``).
+
+    The teacher-forced ``METRIC=`` sentinel (``rep["metric"]``) is UNCHANGED — it stays the locked
+    bilevel contract. Additionally, unless ``behavioral=False``, a FREE-RUNNING pass generates each
+    row's codes (``sft.generate``), decodes + re-measures behavior, and reports behavioral fidelity
+    + collapse stats (``eval.behavioral_fidelity``) — the only metric that catches the exposure-bias
+    collapse teacher forcing is blind to. ``behavioral_limit`` caps the (slow, autoregressive) free
+    pass (0 = full holdout). Cheap teacher-forced diagnostics (top-5 code accuracy, embedding-distance
+    partial credit, per-position accuracy) are computed from the same logits as *secondary lenses*."""
     try:
         import torch
         from transformers import AutoProcessor, BitsAndBytesConfig
@@ -185,6 +247,18 @@ def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int,
         rows = rows[:limit]
     if not rows:
         raise SFTError("no held-out supported rows to score (empty holdout slice)")
+
+    # Teacher-forced diagnostics (secondary lenses; never break the sentinel): the [256,64]
+    # codebook enables embedding-distance partial credit, and dmax scales it to [0,1].
+    cb = _codebook_tensor(model.device)
+    dmax = float(torch.cdist(cb, cb).max()) if cb is not None else None
+    if not dmax:
+        dmax = None
+    pos_correct = torch.zeros(_CODES_PER_ROW, device=model.device)
+    pos_total = 0
+    tf_top5_hits = 0
+    tf_emb_credit = 0.0
+    tf_positions = 0
 
     records: list[dict] = []
     skipped = partial = 0
@@ -222,12 +296,67 @@ def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int,
             "correct": n_hit, "total": n_sel, "exact": n_hit == n_sel,
         })
 
+        # --- teacher-forced diagnostics (from the SAME forward pass; failures are non-fatal) ---
+        try:
+            sel_pos = sel[0].nonzero(as_tuple=True)[0]           # the 64 code positions (in order)
+            pred_codes = pred[0][sel_pos]
+            gold_codes = gold[0][sel_pos]
+            pos_correct += (pred_codes == gold_codes).float()    # per-position 0/1 across rows
+            pos_total += 1
+            lg = logits[0, :-1, :][sel_pos][:, code_ids]         # [64, 256] logits over codes only
+            gold_idx = (code_ids.unsqueeze(0) == gold_codes.unsqueeze(1)).int().argmax(1)  # [64]
+            top5 = lg.topk(5, dim=-1).indices
+            tf_top5_hits += int((top5 == gold_idx.unsqueeze(1)).any(1).sum())
+            if cb is not None and dmax:
+                d = (cb[lg.argmax(-1)] - cb[gold_idx]).norm(dim=-1)   # code-embedding distance
+                tf_emb_credit += float((1.0 - (d / dmax).clamp(0.0, 1.0)).sum())
+            tf_positions += _CODES_PER_ROW
+        except Exception as exc:  # noqa: BLE001
+            print(f"[score][diag-skip] {row.get('id')}: {type(exc).__name__}: {exc}")
+
     if not records:
         raise SFTError("scored 0 code positions (all held-out rows skipped — check SLM_ARTIFACT_ROOT / images)")
 
     rep = summarize_scores(records)
     rep["skipped"] = skipped
     rep["partial"] = partial
+
+    # --- teacher-forced diagnostic aggregates (secondary lenses) ---
+    if pos_total:
+        ppa = (pos_correct / pos_total).tolist()
+        rep["per_position_accuracy"] = ppa
+        rep["per_position_accuracy_min"] = float(min(ppa))
+        rep["per_position_accuracy_max"] = float(max(ppa))
+    if tf_positions:
+        rep["top5_code_accuracy"] = tf_top5_hits / tf_positions
+        if cb is not None and dmax:
+            rep["embedding_partial_credit"] = tf_emb_credit / tf_positions
+
+    # --- free-running BEHAVIORAL fidelity (the ruler that catches the collapse) ---
+    # ``behavioral_sampling``: "greedy" (default), "sample" (t=behavioral_temperature), or "both"
+    # (Phase-0 showed greedy over-commits to a dominant code while t=0.7 recovers target strength —
+    # "both" measures agreement under each so the gap is quantified in one pass).
+    if behavioral:
+        try:
+            brows = rows if not behavioral_limit else rows[:behavioral_limit]
+            bucketize = getattr(cfg, "spec_bucketize", False)
+            samp = {"temperature": behavioral_temperature, "top_p": behavioral_top_p}
+            modes = {"greedy": [("behavioral", None)],
+                     "sample": [("behavioral_sampled", samp)],
+                     "both": [("behavioral", None), ("behavioral_sampled", samp)]}[behavioral_sampling]
+            for key, sampling in modes:
+                bsum = _run_behavioral(model, processor, brows, input_field=input_field,
+                                       bucketize=bucketize, sampling=sampling, device=model.device)
+                rep[key] = bsum
+                tag = "greedy" if key == "behavioral" else f"t={behavioral_temperature}"
+                print(f"[score][behavioral:{tag}] fidelity={bsum.get('behavioral_fidelity_mean')} "
+                      f"collapse_rate={bsum.get('collapse_rate')} "
+                      f"resid_median={bsum.get('residual_norm_median')} "
+                      f"scored={bsum['scored']} refused={bsum['refused']}")
+        except Exception as exc:  # noqa: BLE001 — behavioral pass must never break the sentinel
+            rep["behavioral"] = {"error": f"{type(exc).__name__}: {exc}"}
+            print(f"[score][behavioral][ERR] {exc}")
+
     return rep
 
 
@@ -238,13 +367,25 @@ def main(argv=None) -> int:
     ap.add_argument("--adapter", required=True, help="trained adapter dir (models/sft_adapters/<run>)")
     ap.add_argument("--limit", type=int, default=0,
                     help="max held-out rows to score; 0 = full slice (honest default, ADR 0024)")
+    ap.add_argument("--no-behavioral", dest="behavioral", action="store_false",
+                    help="skip the free-running behavioral-fidelity pass (teacher-forced METRIC only)")
+    ap.add_argument("--behavioral-limit", type=int, default=48,
+                    help="cap rows in the (slow) free-running behavioral pass; 0 = full holdout")
+    ap.add_argument("--behavioral-sampling", choices=["greedy", "sample", "both"], default="greedy",
+                    help="decode for the behavioral pass; 'both' compares greedy vs sampling (Phase 0)")
+    ap.add_argument("--behavioral-temperature", type=float, default=0.7)
+    ap.add_argument("--behavioral-top-p", type=float, default=0.9)
     args = ap.parse_args(argv)
     cfg = _load_config(args.config)
     try:
         # Score with the SAME conditioning input the adapter was trained on (cfg.input_field):
         # "instruction" (one-stage) or "attribute_spec_text" (two-stage, P6). Two-stage rows derive
         # the ground-truth spec on the fly (sft.example.input_text_for), so no corpus rewrite.
-        rep = score(cfg, args.resized_model, args.adapter, args.limit, input_field=cfg.input_field)
+        rep = score(cfg, args.resized_model, args.adapter, args.limit, input_field=cfg.input_field,
+                    behavioral=args.behavioral, behavioral_limit=args.behavioral_limit,
+                    behavioral_sampling=args.behavioral_sampling,
+                    behavioral_temperature=args.behavioral_temperature,
+                    behavioral_top_p=args.behavioral_top_p)
     except SFTError as exc:
         print(json.dumps({"score_summary": {"error": str(exc)}}))
         print(f"[score][ABORT] {exc}")
