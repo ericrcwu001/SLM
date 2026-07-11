@@ -19,6 +19,7 @@ from eval.behavioral_fidelity import (
     behavioral_agreement,
     code_histogram_stats,
     decoded_delta_e,
+    rerank_key,
     score_from_lut,
     summarize_fidelity,
 )
@@ -126,6 +127,25 @@ def test_summarize_fidelity_aggregates():
     assert s["grade_rows"] == 2
     assert s["behavioral_fidelity_mean"] == pytest.approx(0.55)  # mean(0.9, 0.2)
     assert s["collapse_rate"] == pytest.approx(1 / 3)
+
+
+# --- canonical reranker (best-of-N pick order) -----------------------------------
+def test_rerank_key_order():
+    hi = {"behavioral_fidelity": 0.5}
+    lo = {"behavioral_fidelity": 0.4}
+    assert rerank_key(hi) > rerank_key(lo)                       # primary: fidelity
+    tie_collapsed = {"behavioral_fidelity": 0.5, "collapsed": True}
+    tie_ok = {"behavioral_fidelity": 0.5, "collapsed": False}
+    assert rerank_key(tie_ok) > rerank_key(tie_collapsed)        # tie -> not collapsed
+    lo_ent = {"behavioral_fidelity": 0.5, "collapsed": False, "code_stats": {"entropy_norm": 0.2}}
+    hi_ent = {"behavioral_fidelity": 0.5, "collapsed": False, "code_stats": {"entropy_norm": 0.9}}
+    assert rerank_key(hi_ent) > rerank_key(lo_ent)               # tie -> higher entropy
+    far = {"behavioral_fidelity": 0.5, "collapsed": False, "code_stats": {"entropy_norm": 0.5},
+           "decoded_delta_e": {"mean": 5.0}}
+    near = {"behavioral_fidelity": 0.5, "collapsed": False, "code_stats": {"entropy_norm": 0.5},
+            "decoded_delta_e": {"mean": 2.0}}
+    assert rerank_key(near) > rerank_key(far)                    # tie -> lower ΔE (eval only)
+    assert isinstance(rerank_key({"behavioral_fidelity": None}), tuple)  # missing fields safe
 
 
 # --- decode path (needs the frozen VQ weights; gitignored) -----------------------

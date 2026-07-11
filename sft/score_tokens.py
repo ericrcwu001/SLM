@@ -212,30 +212,10 @@ def score(cfg: SFTConfig, resized_model: str, adapter: str, limit: int,
     collapse teacher forcing is blind to. ``behavioral_limit`` caps the (slow, autoregressive) free
     pass (0 = full holdout). Cheap teacher-forced diagnostics (top-5 code accuracy, embedding-distance
     partial credit, per-position accuracy) are computed from the same logits as *secondary lenses*."""
-    try:
-        import torch
-        from transformers import AutoProcessor, BitsAndBytesConfig
-        from peft import PeftModel
-    except Exception as exc:  # noqa: BLE001
-        raise SFTError(f"QLoRA stack unavailable (install the `sft` extra): {exc}") from exc
-    try:
-        from transformers import Qwen2_5_VLForConditionalGeneration as _ModelCls
-    except Exception:  # noqa: BLE001
-        from transformers import AutoModelForVision2Seq as _ModelCls  # type: ignore
-
-    from sft.example import resolve_compute_dtype
-    compute_dtype = resolve_compute_dtype(cfg)   # bf16 on A100; auto fp16 on T4/Volta (no hw bf16)
-    processor = AutoProcessor.from_pretrained(resized_model, trust_remote_code=True,
-                                              min_pixels=cfg.min_pixels, max_pixels=cfg.max_pixels)
+    from sft.loader import load_eval_model  # shared loader (raises SFTError if the stack is missing)
+    model, processor = load_eval_model(cfg, resized_model, adapter)
+    import torch
     tok = processor.tokenizer
-
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=cfg.load_in_4bit, bnb_4bit_quant_type=cfg.bnb_4bit_quant_type,
-        bnb_4bit_use_double_quant=cfg.bnb_4bit_use_double_quant, bnb_4bit_compute_dtype=compute_dtype)
-    base = _ModelCls.from_pretrained(resized_model, quantization_config=bnb, torch_dtype=compute_dtype,
-                                     device_map="auto", trust_remote_code=True)
-    model = PeftModel.from_pretrained(base, adapter)
-    model.eval()
 
     # The 256 code-token ids in the resized vocab; accuracy is measured ONLY over these positions
     # (ignore <lut_bos>/<lut_eos>/chat-template tokens the model gets trivially).

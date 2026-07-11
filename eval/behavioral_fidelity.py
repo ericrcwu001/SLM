@@ -136,6 +136,24 @@ def behavioral_agreement(spec: AttributeSpec, mb: dict, *, tol: float = DEFAULT_
             "all_backed": bool(ok), "issues": issues, "per_axis": per_axis}
 
 
+def rerank_key(rec: dict) -> tuple:
+    """Canonical best-of-N reranker order (docs/collapse_fix) — HIGHER tuple wins under ``max``.
+
+    Primary: ``behavioral_fidelity``. Tie-breaks: not ``collapsed``; higher code ``entropy_norm``;
+    lower decoded ΔE (``decoded_delta_e.mean``) — the ΔE term is only meaningful when a target was
+    scored (eval); it defaults to a neutral 0.0 when the key is absent (deploy), so the pick never
+    depends on a target LUT that doesn't exist at inference time.
+    """
+    cs = rec.get("code_stats") or {}
+    de = rec.get("decoded_delta_e") or {}
+    return (
+        rec.get("behavioral_fidelity") or 0.0,
+        0 if rec.get("collapsed") else 1,
+        cs.get("entropy_norm", 0.0),
+        -float(de.get("mean", 0.0)),   # lower ΔE -> higher key; 0.0 (neutral) when no target scored
+    )
+
+
 def decoded_delta_e(pred_lut: np.ndarray, target_lut: np.ndarray) -> dict:
     """Node-wise CIEDE2000 between two absolute LUTs (the LUT nodes are sRGB in [0,1])."""
     a = np.clip(np.asarray(pred_lut, dtype=np.float64), 0.0, 1.0).reshape(-1, 3)

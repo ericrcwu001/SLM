@@ -112,3 +112,60 @@ def generate_codes_for_row(model, processor, row: dict, *, input_field: str = "i
     text = input_text_for(row, input_field, bucketize=bucketize)
     return generate_codes(model, processor, image=resolve_image(row["image_path"]), text=text,
                           sampling=sampling, max_new_tokens=max_new_tokens, device=device)
+
+
+def generate_codes_batch(model, processor, *, image, text, n: int, sampling: dict, chunk: int = 16,
+                         max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS, device=None) -> list[list[int] | None]:
+    """Free-running generate ``n`` samples for one (image, text) prompt, in chunks of ``chunk``.
+
+    Returns a list of length ``n``; each element is 64 codebook indices, or ``None`` for a refusal
+    (``<unsupported>``). ``sampling`` MUST enable sampling (e.g. ``{"temperature":0.7,"top_p":0.9}``);
+    greedy with ``n>1`` would return ``n`` identical rows. ``chunk`` bounds peak memory:
+    ``ceil(n/chunk)`` ``.generate`` calls, each with ``num_return_sequences <= chunk``. The grammar
+    (:func:`make_prefix_fn`) ignores ``batch_id`` and slices on a fixed prompt length, so it stays
+    correct under ``num_return_sequences`` expansion.
+    """
+    import torch
+    from qwen_vl_utils import process_vision_info
+
+    tok = processor.tokenizer
+    ids = SpecialIds(tok)
+    user = {"role": "user", "content": [{"type": "image", "image": image},
+                                        {"type": "text", "text": text}]}
+    prompt_text = processor.apply_chat_template([user], tokenize=False, add_generation_prompt=True)
+    image_inputs, video_inputs = process_vision_info([user])
+    inp = processor(text=[prompt_text], images=image_inputs, videos=video_inputs, return_tensors="pt")
+    dev = device if device is not None else getattr(model, "device", None)
+    if dev is not None:
+        inp = inp.to(dev)
+    plen = inp["input_ids"].shape[1]
+    prefix_fn = make_prefix_fn(plen, ids)
+
+    results: list[list[int] | None] = []
+    remaining = int(n)
+    with torch.no_grad():
+        while remaining > 0:
+            k = min(chunk, remaining)
+            out = model.generate(**inp, do_sample=True, num_return_sequences=k,
+                                 prefix_allowed_tokens_fn=prefix_fn,
+                                 max_new_tokens=max_new_tokens, **sampling)
+            results.extend(codes_from_output(out[i], plen, ids) for i in range(out.shape[0]))
+            remaining -= k
+    return results
+
+
+def generate_codes_for_row_batch(model, processor, row: dict, *, input_field: str = "instruction",
+                                 bucketize: bool = False, n: int, sampling: dict, chunk: int = 16,
+                                 max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS, device=None) -> list[list[int] | None]:
+    """Batched free-running generate for a corpus row, conditioned exactly as in training.
+
+    Conditioning text comes from :func:`sft.example.input_text_for` (``input_field``/``bucketize`` MUST
+    match training); the image from :func:`sft.example.resolve_image`. Scoring against the canonical
+    spec is the caller's responsibility (keep conditioning and scoring separate).
+    """
+    from sft.example import input_text_for, resolve_image
+
+    text = input_text_for(row, input_field, bucketize=bucketize)
+    return generate_codes_batch(model, processor, image=resolve_image(row["image_path"]), text=text,
+                                n=n, sampling=sampling, chunk=chunk, max_new_tokens=max_new_tokens,
+                                device=device)
