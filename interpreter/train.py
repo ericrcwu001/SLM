@@ -27,8 +27,10 @@ from eval.refuse_taxonomy import ROUTE_GRADE
 
 
 def _resolve_dtype() -> torch.dtype:
-    if torch.cuda.is_available():
-        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    # For TRAINING use bf16 (A100) or fp32 (T4/CPU) — never raw fp16: full fine-tuning in pure
+    # fp16 (no GradScaler/autocast) diverges to NaN. fp32 full-FT of a 0.5B model fits a 16GB T4.
+    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        return torch.bfloat16
     return torch.float32
 
 
