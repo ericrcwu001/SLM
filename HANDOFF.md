@@ -315,6 +315,30 @@ path + train summary).
 **Gate**: two-stage validated iff `METRIC ≥ 0.362` (one-stage baseline on the same holdout) within CI
 → proceed to P5 (interpreter) + P7. Below baseline ⇒ report + reassess before further spend.
 
-Result: _pending Colab paste._
+**Result (Colab A100, 2026-07-11) — gate NOT cleanly cleared:**
+- `METRIC` (two-stage, attribute_spec_text) = **0.329036**, CI [0.3017, 0.3550]; macro 0.289.
+- one-stage baseline (same holdout) = **0.362**, CI [0.3368, 0.3871]. Gap ≈ **−3.3pp**.
+- Adapter `p6_twostage_d0f9c744_smokefull` pushed to `hf://…/LUT_SLM_sft_adapters`.
+- **Training was clean: rows=2913 (2641 supported-train + 272 refuse), skipped=0**, loss 7.49→0.907
+  (mean 1.68), input_field=attribute_spec_text confirmed.
+
+**Wins (independent of the gate):**
+- **P2 validated on Colab: 0 skips** — all 272 refuse rows trained (portable paths + images resolved).
+- End-to-end behavior_v2 → attribute_spec_text → generator pipeline ran with no errors; adapter uploaded.
+
+**Why the comparison is confounded (a fair baseline is needed):**
+1. The 0.362 baseline adapter was trained on the OLD pre-P2 corpus (544 skipped refuse rows, different
+   holdout); P6 trained on the current post-P1/P2 corpus. Different training data.
+2. P6 spent ~9% of its steps on the 272 refuse rows (target `<unsupported>`) that the old one-stage
+   skipped — capacity the baseline instead spent on supported rows, which is exactly what the
+   supported-only holdout scores. So a fair one-stage baseline trained on the SAME current corpus
+   would likely also drop toward ~0.33.
+3. Single un-tuned run; train loss 0.907 (low) vs worse holdout hints at mild overfitting.
+- CIs overlap ([0.302,0.355] vs [0.337,0.387]) → not a dramatic/clearly-significant regression.
+
+**Decision (human-in-the-loop):** per the STOP contract the gate is not cleanly met, so P5/P7 are NOT
+built. Recommended next step: an apples-to-apples re-baseline — retrain the ONE-STAGE on the SAME
+current corpus (input_field=instruction, identical data incl. the 272 refuse rows) and compare, which
+controls for both the input format and the refuse-row training cost. _Pending human call._
 
 ---
