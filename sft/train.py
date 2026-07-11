@@ -265,8 +265,14 @@ def main(argv=None) -> int:
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--out", default="models/sft_adapters")
     ap.add_argument("--run-id", default="sft_run", help="output subdir stem (no wall-clock in-script)")
+    ap.add_argument("--no-gradient-checkpointing", dest="gradient_checkpointing", action="store_false",
+                    help="disable gradient checkpointing: ~1.5-2x faster but much more VRAM (may OOM "
+                         "on a 40GB A100). Gradients are IDENTICAL, so results are unchanged.")
     args = ap.parse_args(argv)
     cfg = _load_config(args.config)
+    if not args.gradient_checkpointing:
+        cfg = dataclasses.replace(cfg, gradient_checkpointing=False)
+        print("[sft] gradient checkpointing OFF (faster; higher VRAM)")
     smoke = args.smoke_size or None
     try:
         return train(cfg, args.resized_model, smoke, args.max_steps, args.out, args.run_id)
