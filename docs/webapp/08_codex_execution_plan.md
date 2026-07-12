@@ -28,10 +28,10 @@ Follow `00_master_plan.md` §5. Concretely:
 8. Bring up in **stub mode first**; verify the whole UX end-to-end via computer-use (doc 07). THEN set
    real models in `configs/webapp.json`, download them, flip stub off, and re-verify a real grade.
 
-**Parallelism (optional):** if you can run sub-tasks concurrently, the independent tracks are
+**Parallelism (do this):** run the independent tracks concurrently via parallel workers/subagents —
 {`lut.py`+tests} · {`terms.py`+glossary} · {`static/` SPA against a mocked API} · {reference-image
-fetch}. `server.py`/`pipeline.py` integrate them and must come after. Keep the API contract fixed so
-the tracks converge. If you cannot parallelize, the linear order above is correct.
+fetch}. `server.py`/`pipeline.py` integrate them afterward. Keep the API contract (doc 03) fixed so the
+tracks converge cleanly. Only fall back to the linear order if concurrency isn't available.
 
 ## 2. Critical correctness guardrails
 - **Stub mode is mandatory** and must fully drive the UI, so the demo is verifiable even if local
@@ -65,26 +65,51 @@ refuse states and the reference-photo gallery.
 
 ---
 
-## 5. Literal kickoff prompt to paste into Codex
+## 5. Kickoff goal to paste into Codex (autonomous + persistent)
 
-> You are implementing a local web app in the repo at `/Users/ericwu/Developer/SLM` (branch
-> `feat/two-stage`). **Read `docs/webapp/00_master_plan.md` first, then the numbered docs
-> `01`–`07` in `docs/webapp/` as you reach each build step, and follow `08_codex_execution_plan.md`.**
+Paste this as a standing **goal**, not a one-shot prompt — if your Codex/agent has a persistent
+"goal" / "keep-going" mode, use it so it runs until the goal is met or you interrupt.
+
+> **GOAL — build AND fully verify the local prompt→LUT demo website. Work autonomously and keep going
+> until every acceptance criterion in `docs/webapp/00_master_plan.md` §6 and
+> `docs/webapp/07_runbook_and_verification.md` passes end-to-end. Do NOT stop and do NOT wait for my
+> confirmation until it's done and verified, or until I interrupt you.** After each milestone: self-test,
+> fix what's broken, and continue. Aim for "perfect and verified," not merely "done."
 >
-> Build the prompt→LUT demo website exactly as specified: a FastAPI backend (reusing the repo's
-> `interpreter/`, `sft/generate.py`, `eval/best_of_n.py`, `eval/behavioral_fidelity.py`,
-> `data_pipeline/attribute_spec.py`) + a polished single-page static frontend, all under a new
-> `webapp/` package plus `configs/webapp.json`. Do NOT modify the reused modules — import them.
+> **Context & specs.** Repo `/Users/ericwu/Developer/SLM`, branch `feat/two-stage`. Read
+> `docs/webapp/00_master_plan.md` first, then the numbered docs `01`–`07` as you reach each step (`08`
+> is your execution plan). Build a FastAPI backend that REUSES (never modifies) `interpreter/`,
+> `sft/generate.py`, `eval/best_of_n.py`, `eval/behavioral_fidelity.py`, `data_pipeline/attribute_spec.py`,
+> plus a polished single-page static frontend — all under a new `webapp/` package + `configs/webapp.json`.
 >
-> Implement in the build order in doc 08 §1. Ship a `STUB_GENERATOR` mode first and verify the entire
-> UX end-to-end in the browser with computer-use (doc 08 §3: run `uvicorn webapp.server:app`, open
-> `http://127.0.0.1:8000`, exercise the grade / clarify / refuse prompts, the 6-reference gallery, the
-> `.cube` download, and the grounded hover glossary). Then wire the real models from
-> `configs/webapp.json`, download them (`HF_TOKEN` is set), and re-verify a real grade request.
+> **Work in parallel.** Spin up parallel workers/subagents and run the independent tracks concurrently:
+> (a) `lut.py` + tests, (b) `terms.py` + glossary, (c) the `static/` SPA against a mocked API, (d)
+> choosing/fetching the reference images. Integrate in `server.py`/`pipeline.py` afterward; keep the API
+> contract (doc 03) fixed so the tracks converge. Don't build serially if you can parallelize.
 >
-> Keep the UI polished (apply the design system in doc 04 — modern cinematic dark theme; no
-> default-bootstrap look). Suggested prompt-terms must be grounded (doc 05) — never invent terms.
-> Serialize inference behind one lock. When done, report which verification steps passed with
-> screenshots, and note anything that fell back to stub mode.
+> **Test relentlessly.** Write and run unit tests first (LUT identity round-trip, `.cube` validity, every
+> suggested term is grounded). Bring the app up in `STUB_GENERATOR` mode, then verify the whole UX in a
+> real browser with computer-use (doc 07): grade / clarify / refuse prompts, the reference gallery, the
+> `.cube` download, and the grounded hover glossary — capture screenshots. Then wire the real models from
+> `configs/webapp.json` (`ericrcwu/LUT_SLM_interpreter` → `interp_full/`; `ericrcwu/LUT_SLM_sft_adapters`
+> → `p6_twostage_d0f9c744_smokefull/`; `HF_TOKEN` is set) and re-verify a real grade. If anything fails,
+> fix it and re-run — iterate until everything is green.
+>
+> **You have creative freedom — use judgment, never get stuck.** Where the docs don't pin a detail,
+> decide well and keep moving. In particular, **CHOOSE the reference photos yourself** — a tasteful,
+> genuinely diverse set of neutral/ungraded images (e.g. city, landscape, portrait, close-up, food,
+> interior — swap or add if you find better ones) that show the LUT across skin tones, skies, greens,
+> neutrals, and highlight/shadow extremes. Make reasonable design and implementation calls within the
+> contract + the doc-04 design system. If something is missing, underspecified, or doesn't make sense,
+> substitute a sensible fallback (stub mode, procedurally-generated neutral test cards, a smaller
+> best-of-N, a different device) and note the deviation — do NOT halt or ask; keep driving toward a
+> working, polished, verified demo.
+>
+> **Hard constraints (do not violate):** don't modify the reused pipeline modules — import them;
+> suggested prompt-terms must be grounded (doc 05) — never invent terms; serialize inference behind one
+> lock; ship stub-mode first so the UI is verifiable without heavy local inference; keep the UI genuinely
+> polished (doc 04 — dark cinematic, no default-bootstrap look). When you believe it's complete, run the
+> full verification loop once more and report what passed, with screenshots and any fallbacks taken —
+> then keep watching/hardening until I interrupt.
 
 Adjust paths/ports if the environment differs. Everything the agent needs is in `docs/webapp/`.
