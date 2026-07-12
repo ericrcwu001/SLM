@@ -21,26 +21,37 @@ from sft.score_tokens import _load_config
 
 
 def best_of_n_codes(model, processor, *, image, cond_text, spec_text=None, n: int = 16,
-                    sampling: dict | None = None, chunk: int = 16, device=None):
+                    sampling: dict | None = None, chunk: int = 16, device=None, fast: bool = False):
     """Return ``(best_codes, best_record)``. Generate ``n`` samples CONDITIONED on ``cond_text``, score
     each against ``spec_text`` (the REQUESTED spec; defaults to ``cond_text`` — identical at deploy),
     and return the reranker-best valid candidate. Returns ``(None, {...})`` if every sample refused or
-    was malformed. No target LUT needed (fidelity is agreement with the request)."""
+    was malformed. No target LUT needed (fidelity is agreement with the request).
+
+    ``fast=True`` routes scoring through :func:`eval.fast_reward.score_batch` (one batched decode of
+    the N candidates on ``device`` + a reduced axis-subset measurement) instead of per-sample
+    :func:`score_generation`. It is parity-verified against the canonical path
+    (``tests/test_fast_reward.py``), so the reranker picks the same winner — it is purely a speed
+    lever (default off)."""
     from sft.generate import generate_codes_batch
 
     spec_text = spec_text or cond_text
     sampling = sampling or {"temperature": 0.7, "top_p": 0.9}
     cand = generate_codes_batch(model, processor, image=image, text=cond_text, n=n,
                                 sampling=sampling, chunk=chunk, device=device)
-    scored = [(codes, score_generation(codes, spec_text))
-              for codes in cand if codes is not None and len(codes) == 64]
-    if not scored:
+    valid = [codes for codes in cand if codes is not None and len(codes) == 64]
+    if not valid:
         return None, {"behavioral_fidelity": None, "refused_all": True}
+    if fast:
+        from eval.fast_reward import score_batch
+        scored = list(zip(valid, score_batch(valid, spec_text, device=device)))
+    else:
+        scored = [(codes, score_generation(codes, spec_text)) for codes in valid]
     return max(scored, key=lambda t: rerank_key(t[1]))
 
 
 def best_of_n_for_row(model, processor, row: dict, *, n: int = 16, sampling: dict | None = None,
-                      input_field: str = "attribute_spec_text", chunk: int = 16, device=None):
+                      input_field: str = "attribute_spec_text", chunk: int = 16, device=None,
+                      fast: bool = False):
     """Row convenience: CONDITION via ``input_text_for`` (matches training), SCORE via the canonical spec."""
     from sft.example import input_text_for, resolve_image
 
@@ -48,7 +59,7 @@ def best_of_n_for_row(model, processor, row: dict, *, n: int = 16, sampling: dic
         model, processor, image=resolve_image(row["image_path"]),
         cond_text=input_text_for(row, input_field),                 # conditioning (training parity)
         spec_text=ground_truth_attribute_spec_text(row),            # scoring (canonical)
-        n=n, sampling=sampling, chunk=chunk, device=device)
+        n=n, sampling=sampling, chunk=chunk, device=device, fast=fast)
 
 
 def evaluate(model, processor, cfg, *, n: int = 16, temperature: float = 1.0, top_p: float = 0.9,

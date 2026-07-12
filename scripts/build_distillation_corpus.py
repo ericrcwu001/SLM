@@ -98,7 +98,8 @@ def run(args) -> int:
                 codes, rec = best_of_n_for_row(model, processor, row, n=args.n,
                                                input_field=cfg.input_field, chunk=args.chunk,
                                                sampling={"temperature": args.temperature, "top_p": args.top_p},
-                                               device=model.device)
+                                               device=model.device,
+                                               fast=getattr(args, "fast_reward", False))
                 best_codes, best_fid = codes, (rec or {}).get("behavioral_fidelity")
                 cache_fh.write(json.dumps({"id": rid, "codes": best_codes, "fid": best_fid}) + "\n")
                 cache_fh.flush()
@@ -162,6 +163,9 @@ def main(argv=None) -> int:
     ap.add_argument("--top-p", type=float, default=0.9)
     ap.add_argument("--tau", type=float, default=0.30, help="absolute fidelity bar to accept a winner")
     ap.add_argument("--limit", type=int, default=0, help="cap TRAINING rows harvested (0=all); smoke lever")
+    ap.add_argument("--fast-reward", action="store_true",
+                    help="score best-of-N via the batched device-aware eval.fast_reward.score_batch "
+                         "(one batched GPU decode + reduced measurement; parity-verified). Default off.")
     ap.add_argument("--dry-run", action="store_true", help="harvest + report; write no corpus")
     return run(ap.parse_args(argv))
 
