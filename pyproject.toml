@@ -8,6 +8,17 @@ version = "0.1.0"
 description = "Prompt-to-LUT eval harness + data-gen pipeline (Stages 1-9 spine)."
 readme = "README.md"
 requires-python = ">=3.10"
+# --- Dependency-pinning policy (reproducibility) --------------------------------------------
+# Versions are intentionally FLOORS (">="), not exact pins, and there is no committed lockfile.
+# Rationale: the eval + data_pipeline path runs locally (macOS/Linux) on stable, broadly-
+# compatible libraries, while training runs on Colab, whose image ships very recent
+# torch/transformers — hard upper bounds here would fight that image. For a reproducible run,
+# freeze the *resolved* set at install time and re-install against it, e.g.:
+#     pip install -e ".[dev]" && pip freeze > constraints-local.txt      # local eval/data path
+#     pip install -e ".[sft,ml]" && pip freeze > constraints-colab.txt   # on the Colab A100
+#     pip install -e ".[sft,ml]" -c constraints-colab.txt                # reproduce that run
+# Commit the constraints file next to the run it pins. See the peft/trl/bitsandbytes <->
+# transformers compatibility notes in docs/runbook_cursor_colab_ext_sft_readiness.md.
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
@@ -39,6 +50,9 @@ ml = ["torch>=2.1", "transformers>=4.45", "safetensors>=0.4", "sentence-transfor
 # Colab image ships very recent transformers/torch, so pin a mutually-compatible set at install
 # time if peft/trl/bitsandbytes lag transformers (see docs/runbook_cursor_colab_ext_sft_readiness.md).
 sft = ["peft>=0.11", "trl>=0.9", "bitsandbytes>=0.43", "accelerate>=0.30", "datasets>=2.19", "qwen-vl-utils>=0.0.8"]
+# Local prompt-to-LUT demo server. Real non-CUDA generation additionally needs `ml`, peft, and
+# qwen-vl-utils; keeping those separate lets stub mode stay lean and avoids bitsandbytes on macOS.
+webapp = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
 # Apple-Silicon local GPU training accelerator for the VQ tokenizer (tokenizer/mlx). MLX
 # trains the mirror model on Metal; convert.py maps weights back to the torch VQVAE, which
 # stays the authoritative/portable path. Metal is float32-only (see tokenizer/mlx notes).
@@ -62,6 +76,7 @@ packages = [
     "tokenizer", "tokenizer.mlx",
     "sft",
     "interpreter",
+    "webapp",
 ]
 
 [tool.setuptools.package-data]

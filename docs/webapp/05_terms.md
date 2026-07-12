@@ -200,8 +200,10 @@ UI can style suggestable terms differently from merely-recognized composites.
 ```
 
 > Shape note: the base API is `[{term, axis, category, definition, example_usage}]`; we add the
-> `grounded` boolean (per §1's "mark each grounded") so the UI can gate suggestions. The
-> `suggested_terms` objects in §3 project `{term, axis, definition, example_usage, grounded}`.
+> `grounded` boolean (per §1's "mark each grounded") so the UI can gate suggestions, plus an optional
+> `sign` integer (`+1`/`-1`) on directional and saturation entries so the UI can show which way the
+> axis moves (`null`/absent on magnitude and style rows). The `suggested_terms` objects in §3 project
+> `{term, axis, definition, example_usage, grounded}`.
 
 ### 2.1 `webapp/terms.py` builder sketch
 

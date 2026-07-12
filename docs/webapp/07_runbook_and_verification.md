@@ -22,8 +22,9 @@ real models and flip `generator.stub=false`. Do **not** block UI verification on
 - The frozen VQ decoder **already ships in the working tree** at `tokenizer/final/` and **decodes on
   CPU** — verified: `eval.behavioral_fidelity.decode_codes(list(range(64)))` → a `[17,17,17,3]` LUT.
   (In a *fresh clone* the `.pt` files are gitignored → stage them, §1.6 step 4.)
-- Already importable here: `torch 2.7.1`, `transformers 5.13.0`, `numpy`, `scipy`, `pillow`.
-  **Not** present: `fastapi`, `uvicorn`, `peft`, `qwen_vl_utils`, `bitsandbytes`.
+- Already importable here: `torch 2.7.1`, `transformers 5.13.0`, `numpy`, `scipy`, `pillow`, and now
+  `fastapi`, `uvicorn`, `peft` (installed for the webapp). **Not** present: `bitsandbytes` (CUDA-only,
+  no macOS-arm64 wheel); verify `qwen_vl_utils` is installed before real-generator runs.
 
 ## 1.1 Dependency extras — CONFIRMED against `pyproject.toml`
 

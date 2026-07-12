@@ -19,16 +19,13 @@ Usage (from repo root):
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 import os
 from pathlib import Path
 
-import yaml
-
 from data_pipeline.errors import SFTError
 from eval.vocab import DEFAULT_VOCAB, NUM_SPECIAL_TOKENS, code_token
-from sft.config import DEFAULT_CONFIG, SFTConfig
+from sft.config import DEFAULT_CONFIG, SFTConfig, load_config as _load_config
 from sft.manifest import build_vocab_resize_manifest, write_manifest
 
 _DEFAULT_CFG_PATH = Path("configs/sft_default.yaml")
@@ -79,16 +76,6 @@ def _write_artifacts(out_dir: str, model, processor, tok, manifest: dict) -> Pat
         processor.image_processor.save_pretrained(out)
     write_manifest(out / "vocab_resize_manifest.json", manifest)
     return out
-
-
-def _load_config(path: str | None) -> SFTConfig:
-    p = Path(path) if path else _DEFAULT_CFG_PATH
-    overrides = {}
-    if p.exists():
-        overrides = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    fields = {f.name for f in dataclasses.fields(SFTConfig)}
-    kw = {k: (tuple(v) if isinstance(v, list) else v) for k, v in overrides.items() if k in fields}
-    return SFTConfig(**kw)
 
 
 def resize_and_preflight(cfg: SFTConfig, out_dir: str | None, preflight_only: bool = False) -> dict:

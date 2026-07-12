@@ -130,7 +130,7 @@ def train(cfg: TokenizerConfig, records, out_dir: str, device: str = "cpu",
     corpus_hash = lut_corpus_hash(records)
 
     if resuming:
-        ck = torch.load(resume, map_location=dev)
+        ck = torch.load(resume, map_location=dev, weights_only=True)
         model.load_state_dict(ck["model_state"])
         opt.load_state_dict(ck["optimizer_state"])
         start_step = int(ck["step"])

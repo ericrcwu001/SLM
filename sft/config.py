@@ -9,9 +9,14 @@ credit levers follow "Runtime And Credit Optimization". Epochs are fixed at 2 (n
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
+from pathlib import Path
+
+import yaml
 
 from eval.vocab import NUM_SPECIAL_TOKENS  # 259 = <lut_bos>/<lut_eos>/<unsupported> + <lut_000..255>
+
+DEFAULT_CONFIG_PATH = Path("configs/sft_default.yaml")
 
 # Base model + LoRA targets (model_architecture.md "Base Model" / "LoRA target modules").
 BASE_MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -117,3 +122,17 @@ class SFTConfig:
 
 
 DEFAULT_CONFIG = SFTConfig()
+
+
+def load_config(path: str | Path | None = None) -> SFTConfig:
+    """Load an :class:`SFTConfig`, applying YAML overrides for known fields only.
+
+    Shared by the trainer, scorer, oracle gate, and vocab-resize entrypoints so their
+    config parsing cannot drift apart (they must stay byte-aligned for train/score to
+    agree). List values are coerced to tuples to match the frozen dataclass fields.
+    """
+    p = Path(path) if path else DEFAULT_CONFIG_PATH
+    overrides = yaml.safe_load(p.read_text(encoding="utf-8")) or {} if p.exists() else {}
+    field_names = {f.name for f in fields(SFTConfig)}
+    kw = {k: (tuple(v) if isinstance(v, list) else v) for k, v in overrides.items() if k in field_names}
+    return SFTConfig(**kw)

@@ -1,0 +1,634 @@
+{
+  "meta": {
+    "candidate_source": "corpus_reranker_demo",
+    "reranker": "eval.behavioral_fidelity.rerank_key (behavioral fidelity + collapse/entropy/\u0394E tie-breaks; no target LUT)",
+    "decoder": "frozen VQ-VAE at tokenizer/final/",
+    "note": "Candidates are REAL LUT looks from the corpus, decoded and scored by the deployable reranker. This demonstrates the reranker + decoder + scorer on real data with no model weights. It is NOT the generator's own samples \u2014 regenerate with --from-model for the live sampled candidates."
+  },
+  "aggregate": {
+    "source": "P6 adapter (p6_twostage_d0f9c744_smokefull) on the held-out slice; notebooks/phase1_behavioral_score.ipynb (fidelity ladder, n=64) and notebooks/phase2_oracle_at_n.ipynb (oracle@N, n=32).",
+    "ladder": [
+      {
+        "label": "Teacher-forced argmax",
+        "fidelity": 0.708,
+        "collapse_rate": 0.0,
+        "kind": "mirage",
+        "note": "Optimistic ceiling \u2014 feeds the gold prefix at every step, so it never sees the model commit to its own trajectory."
+      },
+      {
+        "label": "Free-running greedy",
+        "fidelity": 0.159,
+        "collapse_rate": 0.94,
+        "kind": "baseline",
+        "note": "The shipped baseline. Over-commits to one dominant code and collapses to a low-fidelity LUT that mostly misses the request (exposure bias)."
+      },
+      {
+        "label": "Free-running sample t=0.7",
+        "fidelity": 0.091,
+        "collapse_rate": 0.14,
+        "kind": "single",
+        "note": "A single hot sample is diverse but individually often points the wrong way."
+      },
+      {
+        "label": "Best-of-N reranked (t=0.7)",
+        "fidelity": 0.287,
+        "collapse_rate": 0.03,
+        "kind": "winner",
+        "note": "Sample 32, decode + score each by behavioral fidelity, keep the best. Nearly doubles greedy."
+      },
+      {
+        "label": "Best-of-N reranked (t=1.0)",
+        "fidelity": 0.307,
+        "collapse_rate": 0.0,
+        "kind": "winner",
+        "note": "A hotter temperature covers more good trajectories; the reranker captures them."
+      },
+      {
+        "label": "Real-corpus codes",
+        "fidelity": 0.89,
+        "collapse_rate": 0.0,
+        "kind": "ceiling",
+        "note": "Fidelity of the ground-truth codes themselves \u2014 the metric's practical ceiling."
+      }
+    ],
+    "oracle_at_n": {
+      "t=0.7": {
+        "1": 0.122,
+        "4": 0.182,
+        "8": 0.217,
+        "16": 0.25,
+        "32": 0.287,
+        "best_of_N": 0.287
+      },
+      "t=1.0": {
+        "1": 0.083,
+        "4": 0.18,
+        "8": 0.23,
+        "16": 0.267,
+        "32": 0.307,
+        "best_of_N": 0.307
+      }
+    },
+    "greedy_baseline": 0.159,
+    "greedy_collapse_rate": 0.94,
+    "best_of_n_fidelity": 0.307,
+    "best_pick_collapse_rate": 0.0
+  },
+  "examples": [
+    {
+      "id": "0bb5f8cf85d4",
+      "instruction": "Make it warmer by shifting the color balance toward yellow-orange tones.",
+      "spec_text": "route=grade | warmer=+2.0 split_strength=+3.9 global_hue=90 shadow_hue=92 highlight_hue=90 sat_orange=+1.5 sat_yellow=+1.6 sat_green=+1.1 sat_blue=-2.0 sat_magenta=-1.3",
+      "hero_original_url": "best_of_n/ex0/hero_original.png",
+      "winner_cube_url": "best_of_n/ex0/winner.cube",
+      "n": 6,
+      "winner_index": 5,
+      "candidates": [
+        {
+          "index": 0,
+          "source": "corpus:alt3",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.14285714285714285,
+          "collapsed": false,
+          "entropy_norm": 0.781148177038261,
+          "dominant_share": 0.125,
+          "residual_norm": 0.051376570077069264,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex0/cand0_graded.png",
+          "codes_preview": [
+            96,
+            96,
+            30,
+            164,
+            100,
+            77,
+            30,
+            164,
+            83,
+            126,
+            229,
+            164
+          ]
+        },
+        {
+          "index": 1,
+          "source": "corpus:alt0",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.7588454194423755,
+          "dominant_share": 0.125,
+          "residual_norm": 0.029129725802530558,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex0/cand1_graded.png",
+          "codes_preview": [
+            66,
+            255,
+            88,
+            199,
+            188,
+            220,
+            40,
+            199,
+            241,
+            241,
+            199,
+            199
+          ]
+        },
+        {
+          "index": 2,
+          "source": "corpus:alt2",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.6509537314537196,
+          "dominant_share": 0.203125,
+          "residual_norm": 0.05214351431143173,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex0/cand2_graded.png",
+          "codes_preview": [
+            192,
+            102,
+            43,
+            43,
+            162,
+            84,
+            15,
+            43,
+            30,
+            30,
+            229,
+            43
+          ]
+        },
+        {
+          "index": 3,
+          "source": "corpus:alt1",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.42857142857142855,
+          "collapsed": false,
+          "entropy_norm": 0.6757187705274875,
+          "dominant_share": 0.203125,
+          "residual_norm": 0.09751483185462263,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex0/cand3_graded.png",
+          "codes_preview": [
+            115,
+            102,
+            109,
+            43,
+            215,
+            109,
+            27,
+            43,
+            30,
+            15,
+            115,
+            43
+          ]
+        },
+        {
+          "index": 4,
+          "source": "synthetic:collapse",
+          "label": "Collapse mode (illustrative)",
+          "behavioral_fidelity": 1.0,
+          "collapsed": true,
+          "entropy_norm": -0.0,
+          "dominant_share": 1.0,
+          "residual_norm": 0.011114799579733969,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex0/cand4_graded.png",
+          "codes_preview": [
+            164,
+            164,
+            164,
+            164,
+            164,
+            164,
+            164,
+            164,
+            164,
+            164,
+            164,
+            164
+          ],
+          "note": "Illustrative greedy failure mode: a single dominant code fills all 64 positions. It scores low fidelity against the request; the reranker's collapse flag is a tie-break (not a hard veto), so it also loses on ties."
+        },
+        {
+          "index": 5,
+          "source": "corpus:self",
+          "label": "On-spec look",
+          "behavioral_fidelity": 1.0,
+          "collapsed": false,
+          "entropy_norm": 0.458275505874876,
+          "dominant_share": 0.3125,
+          "residual_norm": 0.01488317521429189,
+          "is_winner": true,
+          "graded_url": "best_of_n/ex0/cand5_graded.png",
+          "codes_preview": [
+            191,
+            164,
+            229,
+            100,
+            191,
+            160,
+            229,
+            100,
+            252,
+            183,
+            229,
+            100
+          ]
+        }
+      ],
+      "references": [
+        {
+          "name": "Portrait",
+          "original_url": "best_of_n/ex0/ref_portrait_original.png",
+          "graded_url": "best_of_n/ex0/ref_portrait_graded.png"
+        },
+        {
+          "name": "City",
+          "original_url": "best_of_n/ex0/ref_city_original.png",
+          "graded_url": "best_of_n/ex0/ref_city_graded.png"
+        },
+        {
+          "name": "Landscape",
+          "original_url": "best_of_n/ex0/ref_landscape_original.png",
+          "graded_url": "best_of_n/ex0/ref_landscape_graded.png"
+        }
+      ]
+    },
+    {
+      "id": "5143e8109beb",
+      "instruction": "Increase contrast by crushing the blacks and brightening the highlights.",
+      "spec_text": "route=grade | more_contrast=+4.1 crushed_blacks=+1.7 crushed_shadows=+1.7 brighter_highlights=+1.8",
+      "hero_original_url": "best_of_n/ex1/hero_original.png",
+      "winner_cube_url": "best_of_n/ex1/winner.cube",
+      "n": 6,
+      "winner_index": 3,
+      "candidates": [
+        {
+          "index": 0,
+          "source": "corpus:alt0",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.836903149783618,
+          "dominant_share": 0.09375,
+          "residual_norm": 0.32832750033690944,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex1/cand0_graded.png",
+          "codes_preview": [
+            12,
+            150,
+            240,
+            65,
+            39,
+            152,
+            245,
+            253,
+            234,
+            79,
+            138,
+            251
+          ]
+        },
+        {
+          "index": 1,
+          "source": "corpus:alt2",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.8755874023155797,
+          "dominant_share": 0.046875,
+          "residual_norm": 0.300895928000877,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex1/cand1_graded.png",
+          "codes_preview": [
+            236,
+            222,
+            239,
+            120,
+            148,
+            92,
+            1,
+            171,
+            24,
+            13,
+            170,
+            62
+          ]
+        },
+        {
+          "index": 2,
+          "source": "corpus:alt1",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.8505622969134006,
+          "dominant_share": 0.078125,
+          "residual_norm": 0.08833471216616477,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex1/cand2_graded.png",
+          "codes_preview": [
+            197,
+            166,
+            254,
+            249,
+            12,
+            81,
+            255,
+            192,
+            220,
+            40,
+            220,
+            74
+          ]
+        },
+        {
+          "index": 3,
+          "source": "corpus:self",
+          "label": "On-spec look",
+          "behavioral_fidelity": 1.0,
+          "collapsed": false,
+          "entropy_norm": 0.4697741368942588,
+          "dominant_share": 0.375,
+          "residual_norm": 0.014828795175930932,
+          "is_winner": true,
+          "graded_url": "best_of_n/ex1/cand3_graded.png",
+          "codes_preview": [
+            175,
+            31,
+            168,
+            168,
+            130,
+            130,
+            130,
+            130,
+            160,
+            160,
+            160,
+            254
+          ]
+        },
+        {
+          "index": 4,
+          "source": "corpus:alt3",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.9107691080560146,
+          "dominant_share": 0.046875,
+          "residual_norm": 0.11375654401171233,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex1/cand4_graded.png",
+          "codes_preview": [
+            169,
+            17,
+            128,
+            196,
+            167,
+            235,
+            235,
+            19,
+            125,
+            252,
+            27,
+            158
+          ]
+        },
+        {
+          "index": 5,
+          "source": "synthetic:collapse",
+          "label": "Collapse mode (illustrative)",
+          "behavioral_fidelity": 0.0,
+          "collapsed": true,
+          "entropy_norm": -0.0,
+          "dominant_share": 1.0,
+          "residual_norm": 0.0010225228771794234,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex1/cand5_graded.png",
+          "codes_preview": [
+            160,
+            160,
+            160,
+            160,
+            160,
+            160,
+            160,
+            160,
+            160,
+            160,
+            160,
+            160
+          ],
+          "note": "Illustrative greedy failure mode: a single dominant code fills all 64 positions. It scores low fidelity against the request; the reranker's collapse flag is a tie-break (not a hard veto), so it also loses on ties."
+        }
+      ],
+      "references": [
+        {
+          "name": "Portrait",
+          "original_url": "best_of_n/ex1/ref_portrait_original.png",
+          "graded_url": "best_of_n/ex1/ref_portrait_graded.png"
+        },
+        {
+          "name": "City",
+          "original_url": "best_of_n/ex1/ref_city_original.png",
+          "graded_url": "best_of_n/ex1/ref_city_graded.png"
+        },
+        {
+          "name": "Landscape",
+          "original_url": "best_of_n/ex1/ref_landscape_original.png",
+          "graded_url": "best_of_n/ex1/ref_landscape_graded.png"
+        }
+      ]
+    },
+    {
+      "id": "8134367f179d",
+      "instruction": "Shift the overall color balance cooler.",
+      "spec_text": "route=grade | cooler=+2.0 split_strength=+3.9 global_hue=270 shadow_hue=273 highlight_hue=271 sat_orange=-1.7 sat_yellow=-1.9 sat_green=-1.3 sat_blue=+1.7 sat_magenta=+1.1",
+      "hero_original_url": "best_of_n/ex2/hero_original.png",
+      "winner_cube_url": "best_of_n/ex2/winner.cube",
+      "n": 6,
+      "winner_index": 4,
+      "candidates": [
+        {
+          "index": 0,
+          "source": "synthetic:collapse",
+          "label": "Collapse mode (illustrative)",
+          "behavioral_fidelity": 0.7142857142857143,
+          "collapsed": true,
+          "entropy_norm": -0.0,
+          "dominant_share": 1.0,
+          "residual_norm": 0.010302934305673849,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex2/cand0_graded.png",
+          "codes_preview": [
+            254,
+            254,
+            254,
+            254,
+            254,
+            254,
+            254,
+            254,
+            254,
+            254,
+            254,
+            254
+          ],
+          "note": "Illustrative greedy failure mode: a single dominant code fills all 64 positions. It scores low fidelity against the request; the reranker's collapse flag is a tie-break (not a hard veto), so it also loses on ties."
+        },
+        {
+          "index": 1,
+          "source": "corpus:alt2",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.7343404466970188,
+          "dominant_share": 0.15625,
+          "residual_norm": 0.08563124335780649,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex2/cand1_graded.png",
+          "codes_preview": [
+            31,
+            203,
+            109,
+            30,
+            84,
+            26,
+            27,
+            227,
+            109,
+            115,
+            109,
+            30
+          ]
+        },
+        {
+          "index": 2,
+          "source": "corpus:alt0",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.0,
+          "collapsed": false,
+          "entropy_norm": 0.7134398437049277,
+          "dominant_share": 0.1875,
+          "residual_norm": 0.0864840343603719,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex2/cand2_graded.png",
+          "codes_preview": [
+            89,
+            110,
+            102,
+            109,
+            126,
+            215,
+            6,
+            27,
+            30,
+            115,
+            115,
+            115
+          ]
+        },
+        {
+          "index": 3,
+          "source": "corpus:alt3",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.14285714285714285,
+          "collapsed": false,
+          "entropy_norm": 0.7170096601552124,
+          "dominant_share": 0.1875,
+          "residual_norm": 0.10255802236591102,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex2/cand3_graded.png",
+          "codes_preview": [
+            50,
+            149,
+            172,
+            248,
+            236,
+            146,
+            6,
+            248,
+            115,
+            15,
+            15,
+            43
+          ]
+        },
+        {
+          "index": 4,
+          "source": "corpus:self",
+          "label": "On-spec look",
+          "behavioral_fidelity": 0.8571428571428571,
+          "collapsed": false,
+          "entropy_norm": 0.36574874134959195,
+          "dominant_share": 0.453125,
+          "residual_norm": 0.013146739417444854,
+          "is_winner": true,
+          "graded_url": "best_of_n/ex2/cand4_graded.png",
+          "codes_preview": [
+            183,
+            125,
+            125,
+            8,
+            183,
+            254,
+            125,
+            8,
+            199,
+            125,
+            125,
+            8
+          ]
+        },
+        {
+          "index": 5,
+          "source": "corpus:alt1",
+          "label": "Alternative look",
+          "behavioral_fidelity": 0.14285714285714285,
+          "collapsed": false,
+          "entropy_norm": 0.9147008137964493,
+          "dominant_share": 0.0625,
+          "residual_norm": 0.08827894373492144,
+          "is_winner": false,
+          "graded_url": "best_of_n/ex2/cand5_graded.png",
+          "codes_preview": [
+            168,
+            168,
+            175,
+            233,
+            20,
+            155,
+            86,
+            233,
+            60,
+            12,
+            241,
+            85
+          ]
+        }
+      ],
+      "references": [
+        {
+          "name": "Portrait",
+          "original_url": "best_of_n/ex2/ref_portrait_original.png",
+          "graded_url": "best_of_n/ex2/ref_portrait_graded.png"
+        },
+        {
+          "name": "City",
+          "original_url": "best_of_n/ex2/ref_city_original.png",
+          "graded_url": "best_of_n/ex2/ref_city_graded.png"
+        },
+        {
+          "name": "Landscape",
+          "original_url": "best_of_n/ex2/ref_landscape_original.png",
+          "graded_url": "best_of_n/ex2/ref_landscape_graded.png"
+        }
+      ]
+    }
+  ]
+}

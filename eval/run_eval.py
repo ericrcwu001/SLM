@@ -24,7 +24,6 @@ import yaml
 
 from . import baseline_adapters as ba
 from . import deterministic_checks, judge_client, lut_decoder, report, target_fidelity
-from .constrained_decoding import LutGrammarFSM
 from .output_parsers import parse_output
 from .schemas import (
     DECODER_DISABLED_REASON,
@@ -35,13 +34,11 @@ from .schemas import (
     load_rows,
 )
 from .stats import (
-    GateResult,
     NOT_EVALUABLE,
     evaluable,
     mcnemar,
     paired_delta_bootstrap,
     seed_summary,
-    wilson_ci,
     wilson_gate,
 )
 from .unsupported_metrics import DecisionRecord, compute_unsupported_metrics
@@ -197,15 +194,7 @@ def bootstrap_f1_lower(decisions: list[DecisionRecord], B: int = 10_000, seed: i
     is_unsup = np.array([not d.is_supported for d in decisions])
     refused = np.array([d.refused for d in decisions])
 
-    def f1(mask):
-        tp = np.sum(is_unsup[mask] & refused[mask])
-        fp = np.sum(~is_unsup[mask] & refused[mask])
-        fn = np.sum(is_unsup[mask] & ~refused[mask])
-        prec = tp / (tp + fp) if (tp + fp) else 0.0
-        rec = tp / (tp + fn) if (tp + fn) else 0.0
-        return 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
-
-    point = f1(np.ones(n, dtype=bool))
+    point = _f1_from_index(is_unsup, refused)
     rng = np.random.default_rng(seed)
     boots = np.empty(B)
     for i in range(B):

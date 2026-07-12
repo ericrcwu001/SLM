@@ -1,0 +1,32 @@
+{
+  "device": "mps",
+  "interpreter": {
+    "model_path": "models/interpreter/interp_full",
+    "base_model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tuning_mode": "full",
+    "max_new_tokens": 64
+  },
+  "generator": {
+    "stub": true,
+    "adapter_path": "models/sft_adapters/p6_twostage_d0f9c744_smokefull",
+    "base_model_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "resized_base_path": "models/base_resized",
+    "input_mode": "attribute_spec_text",
+    "spec_bucketize": false,
+    "load_in_4bit": true,
+    "best_of_n_N": 4,
+    "chunk": 4,
+    "sampling": {"temperature": 1.0, "top_p": 0.9},
+    "max_pixels": 200704,
+    "min_pixels": 3136
+  },
+  "vq_decoder": {"final_dir": null},
+  "server": {
+    "runs_dir": "webapp/_runs",
+    "static_dir": "webapp/static",
+    "references_dir": "webapp/assets/references",
+    "max_upload_mb": 20,
+    "max_image_edge": 2048,
+    "request_timeout_s": 600
+  }
+}

@@ -70,7 +70,9 @@ def load_frozen_vqvae(final_dir: str | None = None):
         )
 
     model = VQVAE(DEFAULT_CONFIG)
-    model.load_state_dict(torch.load(model_pt, map_location="cpu"))
+    # weights_only=True: the state dict is plain tensors, and we integrity-hash it below —
+    # never unpickle arbitrary objects from a downloaded artifact before that check.
+    model.load_state_dict(torch.load(model_pt, map_location="cpu", weights_only=True))
     model.eval()
 
     # Integrity: the loaded weights must reproduce the manifest hashes (freeze.py wrote them

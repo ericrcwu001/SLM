@@ -1117,12 +1117,13 @@
         <div class="hero-copy reveal">
           <p class="eyebrow">A transparent model-quality system</p>
           <h1 class="display hero-title" id="hero-title">Inside the <span class="accent">evaluation</span> harness.</h1>
-          <p class="hero-deck">How I test whether a fine-tuned vision-language model can turn a photo and a natural-language edit into a reliable, safe, compact 3D color transform — and refuse everything outside its remit.</p>
+          <p class="hero-deck">How I test a two-stage system — an interpreter that reads a photo and a natural-language edit into a measured <span class="accent">AttributeSpec</span>, and a generator that turns that spec into a reliable, safe, compact 3D color transform — and refuses everything outside its remit, honestly.</p>
           <div class="hero-meta" aria-label="Key system facts">
-            <span class="meta-chip">Qwen2.5-VL-3B base</span>
-            <span class="meta-chip">64 learned LUT tokens</span>
-            <span class="meta-chip">17³ canonical LUT</span>
-            <span class="meta-chip">L0–L7 deterministic verdict</span>
+            <span class="meta-chip">Interpreter → AttributeSpec</span>
+            <span class="meta-chip">Qwen2.5-VL-3B generator</span>
+            <span class="meta-chip">64 LUT tokens · 17³</span>
+            <span class="meta-chip">grade / clarify / refuse</span>
+            <span class="meta-chip">decoder-free v1 spine</span>
           </div>
         </div>
 
@@ -1144,10 +1145,10 @@
 
     <aside class="trust-strip" aria-label="Evaluation principles">
       <div class="shell trust-grid">
-        <div class="trust-item"><strong>Frozen rows</strong><span>Same cases for every contender</span></div>
-        <div class="trust-item"><strong>Paired tests</strong><span>Compare row by row, not anecdotes</span></div>
-        <div class="trust-item"><strong>Exact refusal</strong><span>Unsupported means &lt;unsupported&gt;</span></div>
-        <div class="trust-item"><strong>Judge is advisory</strong><span>Never overrides deterministic failure</span></div>
+        <div class="trust-item"><strong>Unit-aware holdout</strong><span>No near-clone LUT spans train and test</span></div>
+        <div class="trust-item"><strong>Full-slice · exact-64</strong><span>Every held-out row; 64 codes or it skips</span></div>
+        <div class="trust-item"><strong>Route, then refuse</strong><span>grade · clarify · refuse, each scored</span></div>
+        <div class="trust-item"><strong>Judge is advisory</strong><span>Never overrides a deterministic check</span></div>
       </div>
     </aside>
 
@@ -1157,7 +1158,7 @@
         <div class="principles reveal">
           <article class="principle">
             <span class="principle-number">01</span>
-            <div><h3>Test the product behavior, not the training loss.</h3><p>The harness starts from the client-visible contract: understand a global color request, produce a valid transform, preserve image integrity, and refuse requests that a global LUT cannot solve.</p></div>
+            <div><h3>Test the product behavior, not the training loss.</h3><p>The harness starts from the client-visible contract: read a request into an AttributeSpec, route it as grade, clarify, or refuse, produce a valid transform, preserve image integrity, and decline what a global LUT cannot solve.</p></div>
           </article>
           <article class="principle">
             <span class="principle-number">02</span>
@@ -1171,6 +1172,10 @@
             <span class="principle-number">04</span>
             <div><h3>Separate diagnosis from shipping.</h3><p>Small slices and qualitative examples illuminate behavior. Only predeclared, adequately powered metrics can approve a release.</p></div>
           </article>
+          <article class="principle">
+            <span class="principle-number">05</span>
+            <div><h3>Be honest about the holdout.</h3><p>The split is unit-aware, so no near-duplicate LUT straddles train and test; every held-out row is scored, not a convenient sample; and a supported row counts only with exactly 64 code positions. Where the frozen decoder is off, honesty slices use decoder-free proxies rather than pretending to measure color.</p></div>
+          </article>
         </div>
       </div>
     </section>
@@ -1179,15 +1184,15 @@
       <div class="shell">
         <p class="section-kicker reveal">The deterministic stack</p>
         <h2 class="display section-title reveal">Nine lenses. One non-negotiable verdict.</h2>
-        <p class="section-intro reveal">Supported rows must clear every deterministic layer from L0 through L7. The L8 judge adds explanation and qualitative context, but it cannot rescue an invalid or unsafe transform.</p>
+        <p class="section-intro reveal">Supported rows must clear every deterministic layer from L0 through L7. The L8 judge adds explanation and qualitative context, but it cannot rescue an invalid or unsafe transform. In v1 the frozen decoder stays disabled, so the decode-dependent layers (L2, L4–L7) run as decoder-free proxies or are owner-gated; the load-bearing spine is L0 boundary, L1 syntax, the routing metrics, and held-out token accuracy.</p>
 
         <div class="pipeline-wrap" id="pipeline">
           <div class="pipeline-line" aria-hidden="true"><div class="pipeline-progress" id="pipelineProgress"></div></div>
 
           <article class="layer reveal" data-layer="0">
             <div class="layer-index">L0</div>
-            <div class="layer-name"><span>Scope</span><h3>Boundary</h3></div>
-            <div class="layer-copy"><p>Supported requests must not be refused. Unsupported requests pass only with the exact token <code>&lt;unsupported&gt;</code>.</p><div class="layer-rule">No partial compliance. No friendly prose.</div></div>
+            <div class="layer-name"><span>Scope</span><h3>Boundary &amp; route</h3></div>
+            <div class="layer-copy"><p>The interpreter's route is scored three ways. A <code>grade</code> must not be refused; a <code>refuse</code> passes only with the exact token <code>&lt;unsupported&gt;</code>, split into out_of_scope and out_of_gamut; <code>clarify</code> is its own class.</p><div class="layer-rule">No partial compliance. No friendly prose.</div></div>
           </article>
           <article class="layer reveal" data-layer="1">
             <div class="layer-index">L1</div>
@@ -1207,7 +1212,7 @@
           <article class="layer reveal" data-layer="4">
             <div class="layer-index">L4</div>
             <div class="layer-name"><span>Intent</span><h3>Direction</h3></div>
-            <div class="layer-copy"><p>Measured Lab behavior must move in every requested direction — warmer, cooler, brighter, softer contrast, more green, and other supported axes — within calibrated magnitude windows.</p><div class="layer-rule">Intent is checked numerically, not by label matching.</div></div>
+            <div class="layer-copy"><p>Measured behavior_v2 must move in every requested direction — warmer, cooler, brighter, contrast toe and shoulder, matte, a global hue cast, per-tone-region hue, and per-hue saturation across seven sectors — within calibrated magnitude windows.</p><div class="layer-rule">Intent is checked numerically, not by label matching.</div></div>
           </article>
           <article class="layer reveal" data-layer="5">
             <div class="layer-index">L5</div>
@@ -1229,6 +1234,11 @@
             <div class="layer-name"><span>Context</span><h3>LLM / VLM judge</h3></div>
             <div class="layer-copy"><p>A pinned judge records perceptual and instruction-alignment commentary for review. It is evidence, not authority.</p><div class="layer-rule">L8 cannot override L0–L7.</div></div>
           </article>
+        </div>
+
+        <div class="gate-callout reveal" style="margin-top:32px;">
+          <div><strong>The decoder stays frozen and off in v1.</strong><br><span>L2 and L4–L7 depend on decoding 64 codes into a LUT. Until the frozen decoder is owner-enabled, those layers run decoder-free proxies, and the training loop is steered by held-out, teacher-forced LUT-code token accuracy — the faithful-ish proxy that needs no decode, since the 64 codes deterministically decode to the target residual LUT.</span></div>
+          <code>METRIC = held-out token accuracy · direction max</code>
         </div>
       </div>
     </section>
@@ -1261,21 +1271,21 @@
 
           <div class="flow-screen" id="flowScreen" aria-live="polite">
             <article class="flow-scene is-active" data-flow-scene="0">
-              <div class="flow-scene-copy"><small>01 / Frozen row intake</small><h3>Start with the product contract.</h3><p>The harness binds a source image, an instruction, a support label, an acceptance mode, and leakage-safe provenance before the model is called.</p></div>
+              <div class="flow-scene-copy"><small>01 / Frozen row intake</small><h3>Start with the product contract.</h3><p>The harness binds a source image, the request, its gold route and AttributeSpec, an acceptance mode, and leakage-safe, unit-aware provenance before the model is called.</p></div>
               <div class="flow-visual">
                 <div class="intake-visual">
                   <div class="intake-image" aria-hidden="true"></div>
-                  <div class="intake-prompt"><span>Instruction</span><strong>“Make the portrait a little warmer while keeping skin neutral.”</strong><em>supported · subtle_control</em></div>
+                  <div class="intake-prompt"><span>Request → AttributeSpec</span><strong>“Make the portrait a little warmer while keeping skin neutral.”</strong><em>route=grade · warmer=+1.6 · subtle_control</em></div>
                 </div>
               </div>
             </article>
 
             <article class="flow-scene" data-flow-scene="1" aria-hidden="true">
-              <div class="flow-scene-copy"><small>02 / Image-conditioned generation</small><h3>Turn context into a compact sequence.</h3><p>Image and prompt meet the pinned checkpoint. Constrained mode admits only LUT-BOS, exactly 64 learned codes, and LUT-EOS.</p></div>
+              <div class="flow-scene-copy"><small>02 / Interpret, then generate</small><h3>Turn context into a compact sequence.</h3><p>The interpreter maps the request to an AttributeSpec; the generator reads that serialized spec plus the image. Constrained mode admits only LUT-BOS, exactly 64 learned codes, and LUT-EOS.</p></div>
               <div class="flow-visual">
                 <div class="generation-diagram">
-                  <div class="signal-chip">source image</div><div class="signal-chip">edit prompt</div>
-                  <div class="model-core" aria-label="Model inference">Q</div>
+                  <div class="signal-chip">source image</div><div class="signal-chip">attribute_spec_text</div>
+                  <div class="model-core" aria-label="Generator inference">Q</div>
                   <div class="generation-tokens" id="flowGenerationTokens" aria-label="Animated 64-code output"></div>
                 </div>
               </div>
@@ -1293,7 +1303,7 @@
             </article>
 
             <article class="flow-scene" data-flow-scene="3" aria-hidden="true">
-              <div class="flow-scene-copy"><small>04 / Deterministic obligations</small><h3>Measure what actually changed.</h3><p>Boundary, grammar, decode, tokenizer quality, direction, fidelity, safety, and style are evaluated independently. The judge remains advisory.</p></div>
+              <div class="flow-scene-copy"><small>04 / Deterministic obligations</small><h3>Measure what actually changed.</h3><p>Boundary, grammar, decode, tokenizer quality, direction, fidelity, safety, and style are evaluated independently. In v1 the decode-dependent layers run decoder-free proxies while the frozen decoder is off. The judge remains advisory.</p></div>
               <div class="flow-visual">
                 <div class="measure-grid" aria-label="Nine evaluation layers">
                   <div class="measure-chip" style="--check-i:0"><strong>L0 ✓</strong><span>boundary</span></div>
@@ -1354,11 +1364,13 @@
                   <button class="scenario-button is-selected" type="button" data-scenario="warm">Warm portrait</button>
                   <button class="scenario-button" type="button" data-scenario="composite">Composite edit</button>
                   <button class="scenario-button" type="button" data-scenario="style">Named style</button>
+                  <button class="scenario-button" type="button" data-scenario="clarify">Underspecified</button>
+                  <button class="scenario-button" type="button" data-scenario="outofgamut">Out of gamut</button>
                   <button class="scenario-button" type="button" data-scenario="unsupported">Mixed unsupported</button>
                 </div>
               </div>
               <div class="field">
-                <label>Instruction</label>
+                <label>Request</label>
                 <div class="prompt-card" id="promptText">“Make the portrait a little warmer while keeping skin neutral.”</div>
               </div>
               <div class="field">
@@ -1387,7 +1399,7 @@
               <div class="row-preview">
                 <div class="image-proxy" aria-label="Stylized proxy for an input portrait"></div>
                 <div class="row-meta">
-                  <div class="meta-box"><span>Support label</span><strong id="supportLabel">Supported</strong></div>
+                  <div class="meta-box"><span>Route</span><strong id="supportLabel">grade</strong></div>
                   <div class="meta-box"><span>Acceptance mode</span><strong id="acceptanceMode">Behavior window</strong></div>
                   <div class="meta-box"><span>Eval slice</span><strong id="evalSlice">Subtle control</strong></div>
                   <div class="meta-box"><span>Output budget</span><strong id="outputBudget">67 tokens</strong></div>
@@ -1420,6 +1432,9 @@
             <div class="slice-row"><strong>style_discriminability</strong><p>Single-style rows with neighbor-exclusion tests, recipe windows, and confusion analysis.</p></div>
             <div class="slice-row"><strong>expert_holdout</strong><p>Held-out PPR10K and FiveK expert identities absent from the SFT training set.</p></div>
             <div class="slice-row"><strong>unseen_family</strong><p>Held-out source, style, or LUT families that measure generalization beyond memorized packs.</p></div>
+            <div class="slice-row"><strong>interpreter</strong><p>The interpreter's own scores: attribute-F1 against the gold AttributeSpec, three-way route accuracy, and over-refusal on valid work.</p></div>
+            <div class="slice-row"><strong>refuse_out_of_scope · out_of_gamut</strong><p>Non-global edits versus global looks the frozen tokenizer cannot represent — each refusal family measured on its own.</p></div>
+            <div class="slice-row"><strong>paraphrase · named · nonce concept</strong><p>Decoder-free honesty: paraphrases stay consistent, known styles map to real axes, and invented terms route to clarify or refuse instead of hallucinating.</p></div>
             <div class="slice-row"><strong>unsupported + boundary_pairs</strong><p>Local edits, geometry, generation, reference transfer, mixed traps, and contrastive near-boundary pairs.</p></div>
           </div>
 
@@ -1428,11 +1443,12 @@
             <p>Each bubble represents a different failure surface. Headline claims come only from eligible rows with frozen provenance and leakage-safe split units.</p>
             <div class="slice-points" aria-hidden="true">
               <div class="slice-point" style="--size:118px;--tone:var(--mint);--delay:-1s;left:3%;top:6%">headline</div>
-              <div class="slice-point" style="--size:92px;--tone:var(--coral);--delay:-3s;left:55%;top:3%">unsupported</div>
+              <div class="slice-point" style="--size:92px;--tone:var(--coral);--delay:-3s;left:57%;top:2%">refuse</div>
               <div class="slice-point" style="--size:84px;--tone:var(--amber);--delay:-2s;left:31%;top:38%">styles</div>
-              <div class="slice-point" style="--size:108px;--tone:var(--blue);--delay:-4s;left:65%;top:43%">image sensitivity</div>
+              <div class="slice-point" style="--size:108px;--tone:var(--blue);--delay:-4s;left:66%;top:44%">image sensitivity</div>
               <div class="slice-point" style="--size:76px;--tone:#ddd8c9;--delay:-.5s;left:7%;top:66%">hard CLI</div>
-              <div class="slice-point" style="--size:70px;--tone:#cdb8f1;--delay:-2.5s;left:45%;top:77%">holdout</div>
+              <div class="slice-point" style="--size:70px;--tone:#cdb8f1;--delay:-2.5s;left:42%;top:78%">holdout</div>
+              <div class="slice-point" style="--size:82px;--tone:var(--mint-deep);--delay:-1.6s;left:12%;top:22%">interpreter</div>
             </div>
           </aside>
         </div>
@@ -1454,6 +1470,9 @@
           <article class="gate reveal"><div class="gate-top"><h3>Over-refusal</h3><span class="gate-value">Wilson upper ≤ 10%</span></div><p>The model cannot protect itself by saying “unsupported” to difficult valid work.</p><div class="gate-track"><div class="gate-fill" style="--width:10%;--tone:var(--coral)"></div></div></article>
           <article class="gate reveal"><div class="gate-top"><h3>Safety failure</h3><span class="gate-value">Wilson upper ≤ 5%</span></div><p>Absolute v1 gate covering clipping, foldover, neutral drift, and skin-locus risk.</p><div class="gate-track"><div class="gate-fill" style="--width:5%;--tone:var(--coral)"></div></div></article>
           <article class="gate reveal"><div class="gate-top"><h3>Versus deterministic renderer</h3><span class="gate-value">Paired lower ≥ +10pp</span></div><p>Primary headline advantage on the same frozen rows under the v1 power design.</p><div class="gate-track"><div class="gate-fill" style="--width:62%;--tone:var(--mint)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Refusal recall by kind</h3><span class="gate-value">Each lower ≥ 80%</span></div><p>Out-of-scope and out-of-gamut refusals are gated separately, so one family cannot hide behind the other.</p><div class="gate-track"><div class="gate-fill" style="--width:80%;--tone:var(--amber)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Interpreter route accuracy</h3><span class="gate-value">attribute-F1 + 3-way route</span></div><p>The interpreter's AttributeSpec must match the gold axes and pick grade, clarify, or refuse correctly.</p><div class="gate-track"><div class="gate-fill" style="--width:72%;--tone:var(--blue)"></div></div></article>
+          <article class="gate reveal"><div class="gate-top"><h3>Held-out token accuracy</h3><span class="gate-value">direction: max</span></div><p>The decoder-free training metric: exact 64-code accuracy on the unit-aware holdout steers the SFT loop.</p><div class="gate-track"><div class="gate-fill" style="--width:55%;--tone:var(--mint-deep)"></div></div></article>
 
           <div class="gate-callout reveal">
             <div><strong>Statistics are part of the product contract.</strong><br><span>Three final-report seeds, Wilson intervals, stratified paired bootstrap with at least 10,000 draws, paired binary tests, and Holm–Bonferroni over the ship-gate family.</span></div>
@@ -1471,7 +1490,7 @@
 
         <div class="comparison-grid">
           <div class="reveal">
-            <div class="comparison-claim"><strong>The model must outperform shortcuts, not merely produce attractive examples.</strong><p>If it fails the image-conditioning ablations, I do not claim image-conditioned learning. If it fails the frontier comparison, I keep only the advantages that remain true: local operation, compact output, latency, determinism, or cost.</p></div>
+            <div class="comparison-claim"><strong>The model must outperform shortcuts, not merely produce attractive examples.</strong><p>If it fails the image-conditioning ablations, I do not claim image-conditioned learning. If it fails the frontier comparison, I keep only the advantages that remain true: local operation, compact output, latency, determinism, or cost. The production path is interpreter → AttributeSpec → generator → 64 codes; the JSON-recipe renderer is only a baseline, never the shipped system.</p></div>
             <div class="frontier-finding">
               <article class="finding-card"><span>Frontier probe</span><strong>Every complete LUT moved in the correct direction.</strong></article>
               <article class="finding-card"><span>Dominant failure</span><strong>Completion and token ceilings — not color intent.</strong></article>
@@ -1486,7 +1505,7 @@
             <div class="bar-row"><span class="bar-label">Prompt-only SFT</span><div class="bar-track"><div class="bar-fill" style="--width:46%;--tone:#cdb8f1"></div></div><span class="bar-value">ablation</span></div>
             <div class="bar-row"><span class="bar-label">Blank / shuffled image</span><div class="bar-track"><div class="bar-fill" style="--width:39%;--tone:var(--blue)"></div></div><span class="bar-value">ablation</span></div>
             <div class="bar-row"><span class="bar-label">Prompted frontier</span><div class="bar-track"><div class="bar-fill" style="--width:69%;--tone:var(--coral)"></div></div><span class="bar-value">raw LUT</span></div>
-            <div class="bar-row"><span class="bar-label">Image-conditioned SFT</span><div class="bar-track"><div class="bar-fill" style="--width:82%;--tone:var(--mint-deep)"></div></div><span class="bar-value">target</span></div>
+            <div class="bar-row"><span class="bar-label">Two-stage SFT</span><div class="bar-track"><div class="bar-fill" style="--width:82%;--tone:var(--mint-deep)"></div></div><span class="bar-value">target</span></div>
             <div class="baseline-note">Bars communicate the evaluation ladder, not final model results. Actual release decisions use paired row-level deltas and confidence bounds, never a decorative leaderboard.</div>
           </div>
         </div>
@@ -1500,7 +1519,7 @@
         <p class="section-intro reveal">The harness produces enough structure to reproduce a run, inspect individual failures, and distinguish model defects from parser, tokenizer, data, or evaluation defects.</p>
 
         <div class="evidence-grid">
-          <article class="evidence-card reveal" data-index="1"><div class="evidence-icon">ID</div><h3>Frozen identity</h3><p>Rows, split units, model artifacts, tokenizer hashes, canonical domain, parser/FSM versions, safety thresholds, and config versions are recorded.</p><ul class="evidence-list"><li><code>version_manifest.json</code></li><li><code>config_resolved.yaml</code></li><li>row-level provenance and leakage keys</li></ul></article>
+          <article class="evidence-card reveal" data-index="1"><div class="evidence-icon">ID</div><h3>Frozen identity</h3><p>Rows, split units, interpreter and generator artifacts, the AttributeSpec version, tokenizer hashes, canonical domain, parser/FSM versions, safety thresholds, and config versions are recorded.</p><ul class="evidence-list"><li><code>version_manifest.json</code></li><li><code>config_resolved.yaml</code></li><li>row-level provenance, route, and <code>split_unit_id</code></li></ul></article>
           <article class="evidence-card reveal" data-index="2"><div class="evidence-icon">ΔE</div><h3>Measured behavior</h3><p>Per-row layer results preserve the facts behind the aggregate: direction deltas, image/chart ΔE00, safety flags, style margins, and refusal classifications.</p><ul class="evidence-list"><li><code>metrics_by_row.parquet</code></li><li>attribute, target, style, safety tables</li><li>representative failure row IDs</li></ul></article>
           <article class="evidence-card reveal" data-index="3"><div class="evidence-icon">CI</div><h3>Decision record</h3><p>Overall results, paired deltas, seed summaries, adjusted gate outcomes, and qualitative artifacts are written together as the release packet.</p><ul class="evidence-list"><li><code>overall.csv</code> + <code>gates.csv</code></li><li><code>baseline_delta.csv</code></li><li><code>summary.md</code> + qualitative outputs</li></ul></article>
         </div>
@@ -1527,8 +1546,9 @@
           <p>It is a system whose scope, artifact validity, color behavior, safety, generalization, and comparative advantage are legible before anyone depends on it.</p>
           <div class="closing-list">
             <div><span>Primary outcome</span><span>supported_prompt_to_lut_pass_rate</span></div>
-            <div><span>Runtime path</span><span>64 codes → VQ decode → .cube</span></div>
-            <div><span>Unsupported path</span><span>exact &lt;unsupported&gt;</span></div>
+            <div><span>Runtime path</span><span>interpreter → spec → generator → 64 codes → decode</span></div>
+            <div><span>Unsupported path</span><span>route → exact &lt;unsupported&gt;</span></div>
+            <div><span>Training metric</span><span>held-out token accuracy (max)</span></div>
             <div><span>Release principle</span><span>predeclare → measure → audit</span></div>
           </div>
         </div>
@@ -1713,7 +1733,7 @@
       warm: {
         prompt: '“Make the portrait a little warmer while keeping skin neutral.”',
         supported: true,
-        supportLabel: 'Supported',
+        supportLabel: 'grade',
         acceptance: 'Behavior window',
         slice: 'Subtle control',
         output: '67 tokens',
@@ -1724,7 +1744,7 @@
       composite: {
         prompt: '“Make it warmer with softer contrast.”',
         supported: true,
-        supportLabel: 'Supported',
+        supportLabel: 'grade',
         acceptance: 'Behavior window',
         slice: 'Usage-weighted headline',
         output: '67 tokens',
@@ -1735,7 +1755,7 @@
       style: {
         prompt: '“Give this image a warm sepia tone.”',
         supported: true,
-        supportLabel: 'Supported',
+        supportLabel: 'grade',
         acceptance: 'Multi-reference',
         slice: 'Style discriminability',
         output: '67 tokens',
@@ -1743,10 +1763,32 @@
         details: ['Correctly accepted','64-code grammar valid','Canonical 17³ LUT','Tokenizer certified','Warm + muted directions pass','Matches an allowed reference','Safety gates pass','Sepia window + margin pass','Advisory score recorded'],
         verdict: ['Row passes','The transform matches sepia without collapsing into a neighboring warm style.','✓']
       },
+      clarify: {
+        prompt: '“Just make it look better.”',
+        supported: false,
+        supportLabel: 'clarify',
+        acceptance: 'Offer directions',
+        slice: 'Underspecified intent',
+        output: 'clarify',
+        outcomes: ['pass','na','na','na','na','na','na','na','na'],
+        details: ['Routed to clarify','No LUT and no refusal emitted','Not applicable','Not applicable','Not applicable','Not applicable','Not applicable','Not applicable','Judge not needed'],
+        verdict: ['Row passes','A valid but under-specified request: the interpreter offers supported directions instead of guessing a grade.','✓']
+      },
+      outofgamut: {
+        prompt: '“Make it infrared, so the foliage glows white.”',
+        supported: false,
+        supportLabel: 'refuse · out_of_gamut',
+        acceptance: 'Exact refusal',
+        slice: 'Unsupported · out_of_gamut',
+        output: '1 token',
+        outcomes: ['pass','pass','na','na','na','na','na','na','na'],
+        details: ['Exact <unsupported>','Refusal token is valid','Not applicable','Not applicable','Not applicable','Not applicable','Not applicable','Not applicable','Judge not needed'],
+        verdict: ['Row passes','A global look, but no in-gamut LUT clears the color gate — refused as out-of-gamut, not faked.','✓']
+      },
       unsupported: {
         prompt: '“Make the whole photo warmer and remove the background.”',
         supported: false,
-        supportLabel: 'Unsupported',
+        supportLabel: 'refuse · out_of_scope',
         acceptance: 'Exact refusal',
         slice: 'Mixed unsupported',
         output: '1 token',
@@ -1844,7 +1886,7 @@
       setTraceStage(0);
       state.textContent = 'Capturing frozen row';
       verdict.classList.remove('is-complete');
-      verdict.innerHTML = '<div><strong>Evaluating…</strong><br><span>Image and instruction are entering the harness.</span></div><div class="verdict-mark">···</div>';
+      verdict.innerHTML = '<div><strong>Evaluating…</strong><br><span>Image and AttributeSpec are entering the harness.</span></div><div class="verdict-mark">···</div>';
       resultPanel.setAttribute('aria-busy', 'true');
       runButton.disabled = true;
       runButton.textContent = 'Running row…';
@@ -1911,6 +1953,8 @@
         rows: [
           ['Supported pass rate','lower','≥ 60%','—','350','pending'],
           ['Valid token rate','lower','≥ 85%','—','350','pending'],
+          ['Out-of-gamut refusal','lower','≥ 80%','—','100','pending'],
+          ['Route accuracy','—','3-way','—','—','pending'],
           ['Safety failure','upper','≤ 5%','—','350','pending'],
           ['vs renderer','paired lower','≥ +10pp','—','350','pending']
         ],
@@ -1933,7 +1977,9 @@
         deck: 'The run binds the learned model to the exact tokenizer, decoder, canonical domain, color pipeline, parser, grammar, and threshold configuration.',
         headers: ['Component','Pinned identity','Why it matters'],
         rows: [
-          ['Base model','model ID + revision','Reconstructs the checkpoint lineage'],
+          ['Interpreter','LFM2.5-350M + revision','Fixes text → AttributeSpec + route'],
+          ['Generator','Qwen2.5-VL-3B + adapter','Reconstructs the checkpoint lineage'],
+          ['AttributeSpec','attribute_spec_v1','Pins the interpreter↔generator seam'],
           ['VQ tokenizer','codebook + decoder SHA','Defines the 64-code meaning'],
           ['Canonical LUT domain','17³ / sRGB / trilinear','Prevents metric-domain drift'],
           ['Parser + FSM','versioned','Prevents grammar drift'],

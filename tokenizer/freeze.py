@@ -26,7 +26,9 @@ from .model import VQVAE
 
 
 def load_model_from_checkpoint(ckpt_path: str, device: str = "cpu") -> tuple[VQVAE, dict, TokenizerConfig]:
-    ck = torch.load(ckpt_path, map_location=device)
+    # weights_only=True: checkpoints hold only tensors + basic types (config dict, step,
+    # RNG stored via _np_rng_state_safe) — see tokenizer/train.py save format.
+    ck = torch.load(ckpt_path, map_location=device, weights_only=True)
     cfg = TokenizerConfig(**ck["config"])
     model = VQVAE(cfg).to(device)
     model.load_state_dict(ck["model_state"])

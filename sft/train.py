@@ -38,22 +38,12 @@ import os
 import random
 from pathlib import Path
 
-import yaml
-
 from data_pipeline.errors import RequiresTokenizer, SFTError
-from sft.config import DEFAULT_CONFIG, SFTConfig
+from sft.config import DEFAULT_CONFIG, SFTConfig, load_config as _load_config
 from sft.example import artifact_root, build_supervised_example, load_rows, supported_rows
 from sft.manifest import build_adapter_manifest, write_manifest
 
 _DEFAULT_CFG_PATH = Path("configs/sft_default.yaml")
-
-
-def _load_config(path: str | None) -> SFTConfig:
-    p = Path(path) if path else _DEFAULT_CFG_PATH
-    overrides = yaml.safe_load(p.read_text(encoding="utf-8")) or {} if p.exists() else {}
-    fields = {f.name for f in dataclasses.fields(SFTConfig)}
-    kw = {k: (tuple(v) if isinstance(v, list) else v) for k, v in overrides.items() if k in fields}
-    return SFTConfig(**kw)
 
 
 def _effective_seed(cfg: SFTConfig) -> int:

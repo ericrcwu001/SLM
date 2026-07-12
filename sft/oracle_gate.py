@@ -24,26 +24,15 @@ Usage (on Colab, after staging + vocab-resize, with the current adapter):
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 from pathlib import Path
 
-import yaml
-
 from data_pipeline.attribute_spec import measured_behavior_to_text
 from data_pipeline.errors import SFTError
-from sft.config import SFTConfig
+from sft.config import SFTConfig, load_config as _load_config
 from sft.score_tokens import score
 
 _DEFAULT_CFG_PATH = Path("configs/sft_default.yaml")
-
-
-def _load_config(path: str | None) -> SFTConfig:
-    p = Path(path) if path else _DEFAULT_CFG_PATH
-    overrides = yaml.safe_load(p.read_text(encoding="utf-8")) or {} if p.exists() else {}
-    fields = {f.name for f in dataclasses.fields(SFTConfig)}
-    kw = {k: (tuple(v) if isinstance(v, list) else v) for k, v in overrides.items() if k in fields}
-    return SFTConfig(**kw)
 
 
 def _stamp_attribute_spec_text(row: dict) -> None:

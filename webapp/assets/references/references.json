@@ -1,0 +1,50 @@
+[
+  {
+    "name": "City",
+    "category": "city",
+    "file": "city.jpg",
+    "source_url": "https://unsplash.com/photos/a-busy-city-street-with-tall-buildings-and-blue-sky-14iZqlWkAWM",
+    "license": "Unsplash License",
+    "photographer": "Declan Sun"
+  },
+  {
+    "name": "Landscape",
+    "category": "landscape",
+    "file": "landscape.jpg",
+    "source_url": "https://unsplash.com/photos/green-trees-and-green-grass-field-near-lake-under-white-clouds-during-daytime-xWJscAHUiFM",
+    "license": "Unsplash License",
+    "photographer": "Maxim Hopman"
+  },
+  {
+    "name": "Portrait",
+    "category": "portrait",
+    "file": "portrait.jpg",
+    "source_url": "https://www.pexels.com/photo/romantic-young-black-woman-leaning-on-table-3746277/",
+    "license": "Pexels License",
+    "photographer": "Anna Shvets"
+  },
+  {
+    "name": "Close-up",
+    "category": "closeup",
+    "file": "closeup.jpg",
+    "source_url": "https://www.pexels.com/photo/shallow-focus-photography-of-yellow-flower-1090657/",
+    "license": "Pexels License",
+    "photographer": "Brett Sayles"
+  },
+  {
+    "name": "Food",
+    "category": "food",
+    "file": "food.jpg",
+    "source_url": "https://unsplash.com/photos/a-white-plate-topped-with-food-on-top-of-a-table-Txud2G_16Y4",
+    "license": "Unsplash License",
+    "photographer": "Bakd&Raw by Karolin Baitinger"
+  },
+  {
+    "name": "Interior",
+    "category": "interior",
+    "file": "interior.jpg",
+    "source_url": "https://www.pexels.com/photo/photo-of-living-room-1457842/",
+    "license": "Pexels License",
+    "photographer": "Jean van der Meulen"
+  }
+]

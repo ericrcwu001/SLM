@@ -1,10 +1,15 @@
 .DS_Store
 .vscode
+.cursor/
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Claude Code worktrees (must never be committed — a stray one was previously
+# committed as a gitlink; keep them out of the index).
+.claude/worktrees/
 
 # Python
 __pycache__/
@@ -21,8 +26,8 @@ data/eval/images/
 data/eval/smoke_rows.jsonl
 data/eval/mock_outputs.jsonl
 
-# Overnight run log
-overnight.log
+# Run logs (all *.log at any depth are scratch; force-add if one is ever a fixture).
+*.log
 
 # Data-gen pipeline artifacts (acquired + derived; large, regenerable)
 luts/
@@ -31,25 +36,34 @@ data/splits/
 data/active_sft/
 data/warmup/
 data/run_summary.json
-freshluts.log
-parallel.log
+data/run_summary_*_backup.json
+data/eval/*.jsonl.v1
 data/raw_registry/freshluts_rows.jsonl
 data/raw_registry/.freshluts_done
 OVERNIGHT_STATUS.md
+OVERNIGHT_SFT_REPORT.md
 MORNING_FINDINGS.md
-pipeline_full.log
-ppr10k_topup.log
 data/raw_registry/.pipeline_done
 data/raw_registry/.pipeline_failed
 data/raw_registry/.ppr10k_topup_done
 data/raw_registry/ppr10k_topup_rows.jsonl
 
+# Off-topic / rendered output artifacts (imagegen sheets, PDF renders).
+output/
+
+# SFT improve-loop runtime state (written by scripts/sft_ledger.py per run).
+sft_improve_ledger.json
+
 # Model / tokenizer training artifacts (large binaries, regenerable).
 # NOTE: tokenizer/final/ also holds the small frozen manifest (identity contract);
 # force-add it with `git add -f tokenizer/final/manifest.json` if you want it tracked.
 tokenizer/checkpoints/
+tokenizer/checkpoints_mlx/
 tokenizer/final/
 models/
+
+# Local web demo request artifacts and downloaded model snapshots.
+webapp/_runs/
 
 # slm_stage local shard staging dir (downloaded/extracted shards + resume markers).
 **/.shards/

@@ -35,30 +35,20 @@ Usage (on Colab, after training an adapter):
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import yaml
 
 from data_pipeline.errors import SFTError
 from eval.vocab import code_token
-from sft.config import SFTConfig
+from sft.config import SFTConfig, load_config as _load_config
 from sft.example import build_supervised_example, load_rows, supported_rows
 
 _DEFAULT_CFG_PATH = Path("configs/sft_default.yaml")
 _CODES_PER_ROW = 64          # exact-64 invariant (ADR 0024 / AUDIT F8)
 _CI_BOOTSTRAP_B = 2000       # cluster-bootstrap resamples for per-slice CIs (deterministic, cheap)
-
-
-def _load_config(path: str | None) -> SFTConfig:
-    p = Path(path) if path else _DEFAULT_CFG_PATH
-    overrides = yaml.safe_load(p.read_text(encoding="utf-8")) or {} if p.exists() else {}
-    fields = {f.name for f in dataclasses.fields(SFTConfig)}
-    kw = {k: (tuple(v) if isinstance(v, list) else v) for k, v in overrides.items() if k in fields}
-    return SFTConfig(**kw)
 
 
 def _group_bootstrap_ratio(units, corrects, totals, *, B: int = _CI_BOOTSTRAP_B, seed: int = 0):

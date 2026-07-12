@@ -115,23 +115,6 @@ def mcnemar(a: Sequence[float], b: Sequence[float]) -> McNemarResult:
     return McNemarResult(disc_b, disc_c, p, stat)
 
 
-def exact_paired_permutation(
-    a: Sequence[float], b: Sequence[float], B: int = DEFAULT_BOOTSTRAP_B, seed: int = 0
-) -> float:
-    """Two-sided paired sign-flip permutation p-value for mean(a-b) (continuous ok)."""
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    d = a - b
-    n = d.size
-    if n == 0:
-        return 1.0
-    obs = abs(d.mean())
-    rng = np.random.default_rng(seed)
-    signs = rng.choice([-1.0, 1.0], size=(B, n))
-    stats_ = np.abs((signs * d).mean(axis=1))
-    return float((np.sum(stats_ >= obs - 1e-12) + 1) / (B + 1))
-
-
 # --- Holm-Bonferroni -------------------------------------------------------------
 @dataclass
 class HolmResult:

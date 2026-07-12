@@ -1,0 +1,243 @@
+"""FastAPI server for the local prompt-to-LUT demo."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+from io import BytesIO
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from PIL import Image
+from pydantic import BaseModel, Field
+
+import webapp.terms as terms
+from webapp.models_config import WebappConfig, repo_path
+from webapp.pipeline import PromptToLutPipeline
+
+log = logging.getLogger("webapp")
+
+
+class _State:
+    pipeline: PromptToLutPipeline | None = None
+    cfg: WebappConfig | None = None
+    load_error: str | None = None
+
+
+STATE = _State()
+INFERENCE_LOCK = asyncio.Lock()
+_BACKGROUND_INFERENCE: set[asyncio.Task] = set()
+
+
+class Term(BaseModel):
+    term: str
+    axis: str
+    category: str | None = None
+    definition: str
+    example_usage: str
+    grounded: bool = True
+    sign: int | None = None
+
+
+class LutRef(BaseModel):
+    cube_url: str
+
+
+class PreviewOut(BaseModel):
+    name: str
+    original_url: str
+    graded_url: str
+
+
+class SuggestedTermOut(BaseModel):
+    term: str
+    axis: str
+    definition: str
+    example_usage: str
+    grounded: bool = True
+
+
+class PromptFeedbackOut(BaseModel):
+    assessment: str
+    suggested_terms: list[SuggestedTermOut] = Field(default_factory=list)
+
+
+class QualityOut(BaseModel):
+    behavioral_fidelity: float | None = None
+    collapsed: bool | None = None
+    fell_back_greedy: bool | None = None
+
+
+class GenerateResponse(BaseModel):
+    request_id: str | None = None
+    route: str
+    refuse_reason: str | None = None
+    clarify_message: str | None = None
+    attribute_spec_text: str | None = None
+    lut: LutRef | None = None
+    previews: list[PreviewOut] = Field(default_factory=list)
+    prompt_feedback: PromptFeedbackOut
+    quality: QualityOut | None = None
+
+
+class APIError(Exception):
+    def __init__(self, status: int, code: str, message: str):
+        self.status, self.code, self.message = status, code, message
+
+
+def _load_config() -> WebappConfig:
+    return WebappConfig.load(os.environ.get("WEBAPP_CONFIG", str(repo_path("configs/webapp.json"))))
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    cfg = STATE.cfg or _load_config()
+    STATE.cfg = cfg
+    try:
+        STATE.pipeline = PromptToLutPipeline(cfg)
+        STATE.load_error = None
+        log.info("pipeline ready: device=%s stub=%s adapter=%s", cfg.device, cfg.generator.stub, cfg.generator.adapter_path)
+    except Exception as exc:  # keep the SPA and diagnostics available
+        log.exception("pipeline load failed")
+        STATE.pipeline = None
+        STATE.load_error = f"{type(exc).__name__}: {exc}"
+    yield
+
+
+STATE.cfg = _load_config()
+# Resolve serving dirs against the repo root and create them BEFORE mounting, so importing this
+# module never crashes on a missing dir and the app can launch from any working directory.
+RUNS_DIR = repo_path(STATE.cfg.server.runs_dir)
+STATIC_DIR = repo_path(STATE.cfg.server.static_dir)
+ASSETS_DIR = repo_path(STATE.cfg.server.references_dir).parent
+for _dir in (RUNS_DIR, STATIC_DIR, ASSETS_DIR):
+    _dir.mkdir(parents=True, exist_ok=True)
+app = FastAPI(title="prompt-to-LUT demo", version="1", lifespan=lifespan)
+
+
+@app.exception_handler(APIError)
+async def api_error_handler(_request, exc: APIError):
+    return JSONResponse(status_code=exc.status, content={"error": {"code": exc.code, "message": exc.message}})
+
+
+# Guard against decompression bombs: reject before rasterizing, since a small compressed file can
+# expand to an enormous in-memory bitmap. Reading .size only parses the header (no full decode).
+_MAX_DECODE_PIXELS = 50_000_000  # ~50 MP
+
+
+def load_rgb_downscaled(raw: bytes, max_edge: int) -> Image.Image:
+    with Image.open(BytesIO(raw)) as opened:
+        width, height = opened.size
+        if width * height > _MAX_DECODE_PIXELS:
+            raise ValueError(f"image too large to decode: {width}x{height} exceeds {_MAX_DECODE_PIXELS} pixels")
+        opened.load()
+        image = opened.convert("RGB")
+    image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+    return image
+
+
+def _retain_task(task: asyncio.Task) -> None:
+    """Keep fire-and-drain tasks alive until their callback removes them."""
+    _BACKGROUND_INFERENCE.add(task)
+    task.add_done_callback(_BACKGROUND_INFERENCE.discard)
+
+
+async def _drain_pipeline_and_release(task: asyncio.Task) -> None:
+    """Hold the inference lock until a timed-out worker thread actually exits."""
+    try:
+        await task
+    except BaseException:  # the request already reported the worker failure/timeout
+        pass
+    finally:
+        INFERENCE_LOCK.release()
+
+
+async def _run_pipeline(prompt: str, image: Image.Image, run_dir: Path, timeout_s: int):
+    pipeline = STATE.pipeline
+    if pipeline is None:  # explicit guard (never an assert, which -O would strip) BEFORE acquiring
+        raise APIError(503, "model_not_loaded", STATE.load_error or "pipeline not loaded")
+    await INFERENCE_LOCK.acquire()
+    release_here = True
+    try:
+        worker = asyncio.create_task(run_in_threadpool(pipeline.run, prompt, image, run_dir))
+        _retain_task(worker)
+        try:
+            return await asyncio.wait_for(asyncio.shield(worker), timeout=timeout_s)
+        except BaseException:
+            if not worker.done():
+                # Cancelling the await cannot stop a Python worker thread.  Transfer ownership of the
+                # lock to a drain task so the next request cannot overlap the still-running inference.
+                release_here = False
+                cleanup = asyncio.create_task(_drain_pipeline_and_release(worker))
+                _retain_task(cleanup)
+            raise
+    finally:
+        if release_here:
+            INFERENCE_LOCK.release()
+
+
+@app.get("/api/health")
+def health():
+    if STATE.pipeline is None:
+        return {"ok": False, "loaded": False, "ready": False, "load_error": STATE.load_error}
+    return STATE.pipeline.self_check()
+
+
+@app.get("/api/terms", response_model=list[Term])
+def get_terms():
+    return STATE.pipeline.terms.all_terms() if STATE.pipeline is not None else terms.all_terms()
+
+
+@app.post("/api/generate", response_model=GenerateResponse)
+async def generate(image: UploadFile = File(...), prompt: str = Form(...)):
+    if STATE.pipeline is None or STATE.cfg is None:
+        raise APIError(503, "model_not_loaded", STATE.load_error or "pipeline not loaded")
+    if not STATE.pipeline.is_ready():
+        raise APIError(503, "model_not_loaded", STATE.pipeline.load_error or "models failed to load")
+    prompt = (prompt or "").strip()
+    if not prompt:
+        raise APIError(400, "bad_request", "prompt is required")
+    # Read in bounded chunks so an oversized upload is rejected before the whole body lands in memory.
+    max_bytes = STATE.cfg.server.max_upload_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    received = 0
+    while True:
+        chunk = await image.read(1024 * 1024)
+        if not chunk:
+            break
+        received += len(chunk)
+        if received > max_bytes:
+            raise APIError(413, "image_too_large", f"maximum upload is {STATE.cfg.server.max_upload_mb} MB")
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+
+    run_id = uuid4().hex
+    run_dir = RUNS_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        pil_image = load_rgb_downscaled(raw, STATE.cfg.server.max_image_edge)
+        pil_image.save(run_dir / "input.png")
+    except Exception as exc:
+        log.info("bad image upload: %s", exc)
+        raise APIError(400, "bad_image", "could not decode image; use PNG, JPEG, or WebP") from exc
+    try:
+        payload = await _run_pipeline(prompt, pil_image, run_dir, STATE.cfg.server.request_timeout_s)
+    except asyncio.TimeoutError as exc:
+        raise APIError(504, "generation_timeout", "inference exceeded the configured request timeout") from exc
+    except Exception as exc:
+        log.exception("generation failed")
+        raise APIError(500, "generation_failure", f"{type(exc).__name__}: {exc}") from exc
+    payload["request_id"] = run_id
+    return payload
+
+
+# Route registration must precede both mounts; the root SPA mount is intentionally last.
+app.mount("/runs", StaticFiles(directory=str(RUNS_DIR)), name="runs")
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
