@@ -59,7 +59,7 @@ _WEIGHTS = "/weights"                                  # Volume mount (model wei
 
 # HF repos + subfolders (see docs/interpreter_results.md / docs/webapp/07 §1.6).
 INTERPRETER_REPO = "ericrcwu/LUT_SLM_interpreter"
-INTERPRETER_SUBDIR = "interp_full"
+INTERPRETER_SUBDIR = "interp_full_smokefull"   # actual subfolder in the HF repo (verified via list_repo_files)
 ADAPTER_REPO = "ericrcwu/LUT_SLM_sft_adapters"
 ADAPTER_SUBDIR = "p6_twostage_d0f9c744_smokefull"
 
@@ -71,6 +71,7 @@ image = (
     # The Linux torch wheel is CUDA-enabled, and bitsandbytes' CUDA 4-bit path works on Modal.
     .pip_install(
         "torch==2.7.1",
+        "torchvision==0.22.1",   # Qwen2.5-VL processor (Qwen2VLVideoProcessor) requires torchvision
         "transformers==5.13.0",
         "accelerate",
         "safetensors",
@@ -99,10 +100,16 @@ _PYCACHE = ["**/__pycache__", "**/__pycache__/**", "**/*.pyc"]
 for _pkg in ("webapp", "interpreter", "sft", "eval", "data_pipeline", "tokenizer", "configs"):
     _ignore = list(_PYCACHE)
     if _pkg == "webapp":
-        _ignore += ["_runs", "_runs/**"]                     # ephemeral run outputs (regenerated at runtime)
+        _ignore += ["_runs", "_runs/**",                     # ephemeral run outputs (regenerated at runtime)
+                    "static/best_of_n", "static/best_of_n/**"]  # 13MB precomputed showcase PNGs; host the showcase statically instead
     if _pkg == "tokenizer":
         _ignore += ["checkpoints_mlx", "checkpoints_mlx/**"]  # training checkpoints; tokenizer/final/ is kept
     image = image.add_local_dir(str(_REPO_ROOT / _pkg), f"{_CODE_DIR}/{_pkg}", copy=True, ignore=_ignore)
+
+# include_source=False on the functions (below) disables Modal's automatic source upload — which is
+# what stopped the 22 GB repo from shipping. But that also drops THIS entrypoint file, which the
+# container re-imports to locate setup_weights/fastapi_app. Add just this module back explicitly.
+image = image.add_local_python_source("modal_app")
 
 app = modal.App("slm-lut-demo", image=image)
 
@@ -163,6 +170,7 @@ def _write_runtime_config() -> str:
     timeout=3600,
     memory=16384,   # resizing the 3B base needs headroom
     cpu=4.0,
+    include_source=False,   # don't automount the local repo (weights come from HF into the Volume)
 )
 def setup_weights():
     """Run ONCE: download the interpreter + adapter and build the resized base into the Volume."""
@@ -204,6 +212,7 @@ def setup_weights():
     scaledown_window=120,   # stay warm 2 min after the last request, then scale to zero
     timeout=600,            # matches server request_timeout_s
     max_containers=1,       # older Modal: use `concurrency_limit=1`
+    include_source=False,   # don't automount the local repo; code is added explicitly to the image
 )
 @modal.concurrent(max_inputs=20)  # one container serves many HTTP reqs (assets + api) concurrently;
 #                                   older Modal: drop this and add allow_concurrent_inputs=20 above.
