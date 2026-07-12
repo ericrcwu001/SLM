@@ -168,3 +168,34 @@ def test_score_batch_reranker_agreement_on_real_rows():
         fast_arg = max(range(len(cands)), key=lambda i: rerank_key(fast[i]))
         agree += int(can_arg == fast_arg)
     assert agree / len(rows) >= 0.95, f"reranker agreement {agree}/{len(rows)}"
+
+
+# --- tier 2: GRPO shaped-reward parity vs the canonical ruler (needs the frozen VQ weights) --------
+@pytest.mark.skipif(not _WEIGHTS or not _ROWS_PATH.is_file(),
+                    reason="frozen VQ weights or active_rows corpus absent (staged-corpus only)")
+def test_grpo_shaped_reward_parity_with_score_generation():
+    """The GRPO training reward equals `score_generation` on the same codes (guards a shaping bug that
+    silently changes the objective): |Δ base fidelity| <= 0.02 and identical `collapsed` flags.
+
+    (docs/grpo/01_reward.md §8 / IMPLEMENTATION_PROMPT §5 A. The refusal / None-exclusion / collapse-
+    penalty accounting is unit-tested off-GPU in ``tests/test_grpo_reward.py``.)"""
+    pytest.importorskip("torch")
+    from eval.behavioral_fidelity import score_generation
+    from eval.grpo_reward import shaped_rewards
+
+    rows = _load_score_rows(20)
+    assert len(rows) >= 8, f"need >= 8 scoreable rows, got {len(rows)}"
+    max_dfid = 0.0
+    for r in rows:
+        spec = ground_truth_attribute_spec_text(r)
+        can = score_generation(r["target_tokens"], spec)      # NO target_codes (training-reward parity)
+        reward, rec = shaped_rewards([r["target_tokens"]], spec, collapse_penalty=0.0)[0]  # base reward
+        cf = can["behavioral_fidelity"]
+        if cf is None:                                        # axis-less spec -> excluded both sides
+            assert reward is None and rec.get("behavioral_fidelity") is None
+            continue
+        assert reward == pytest.approx(max(0.0, rec["behavioral_fidelity"]))   # base reward == fidelity
+        max_dfid = max(max_dfid, abs(rec["behavioral_fidelity"] - cf))
+        assert abs(rec["behavioral_fidelity"] - cf) <= 0.02, f"row {r.get('id')}: |Δ|={abs(rec['behavioral_fidelity'] - cf)}"
+        assert bool(rec["collapsed"]) == bool(can["collapsed"]), f"row {r.get('id')} collapsed flag"
+    assert max_dfid <= 0.02
