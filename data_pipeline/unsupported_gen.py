@@ -128,6 +128,14 @@ _CATEGORY_CUES: dict[str, tuple[str, ...]] = {
                               "do something", "make it pop", "enhance it", "clean it up"),
 }
 
+# Clarify is validated by the ABSENCE of these concrete directions — naming one makes a request
+# gradeable, not underspecified. Mirrors build_clarify_system_prompt's "must NOT name warmer/cooler/
+# brighter/darker/more-or-less-saturated/contrast/matte". Matched as stems via _has_attr_cue.
+_CLARIFY_DISQUALIFIERS: tuple[str, ...] = (
+    "warm", "cool", "bright", "dark", "contrast", "mut", "fad", "matte", "cinema",
+    "saturat", "desaturat", "vibrant", "vivid", "tint", "sepia",
+)
+
 # Mixed families: a supported global attribute + one unsupported component. The category string
 # matches the smoke-row convention ``mixed_partial_supported_plus_<family>``.
 MIXED_FAMILIES: tuple[dict, ...] = (
@@ -285,11 +293,12 @@ def _has_attr_cue(text: str, cue: str) -> bool:
 def validate_unsupported_prompt(prompt: str, plan_item: dict) -> tuple[bool, list[str]]:
     """Deterministic guard: the phrasing must actually match the assigned non-grade category.
 
-    Returns (ok, issues). For a pure category — out_of_scope, out_of_gamut, or clarify (ADR 0023) —
-    the prompt must contain that category's cue (:data:`_CATEGORY_CUES`), which is the guard against a
-    globally-supported phrasing sneaking into a refusal/clarify row. For a mixed row it must contain
-    BOTH a supported-attribute cue and the unsupported component's cue (so it is genuinely a *mixed*
-    boundary case, not a pure refusal or a pure supported request).
+    Returns (ok, issues). For out_of_scope / out_of_gamut the prompt must CONTAIN that category's cue
+    (:data:`_CATEGORY_CUES`) — the guard against a globally-supported phrasing sneaking into a refusal.
+    **Clarify is the opposite:** vagueness is open-ended, so it is validated by the ABSENCE of a
+    concrete supported direction (:data:`_CLARIFY_DISQUALIFIERS`) — a fixed vague-phrase cue list was
+    far too narrow and rejected ~99% of valid clarify prompts. For a mixed row the prompt must contain
+    BOTH a supported-attribute cue and the unsupported component's cue.
     """
     issues: list[str] = []
     if not prompt or len(prompt.strip()) < 8:
@@ -303,7 +312,11 @@ def validate_unsupported_prompt(prompt: str, plan_item: dict) -> tuple[bool, lis
             issues.append("no_supported_cue")
     else:
         cat = plan_item["category"]
-        if not _has_cue(prompt, _CATEGORY_CUES[cat]):
+        if cat in CLARIFY_CATEGORIES:
+            named = next((d for d in _CLARIFY_DISQUALIFIERS if _has_attr_cue(prompt, d)), None)
+            if named:
+                issues.append(f"names_supported_direction:{named}")
+        elif not _has_cue(prompt, _CATEGORY_CUES[cat]):
             issues.append(f"no_category_cue:{cat}")
     return (len(issues) == 0), issues
 

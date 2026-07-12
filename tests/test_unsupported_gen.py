@@ -168,3 +168,23 @@ def test_supported_attrs_and_families_wellformed():
     # a duplicated label silently drops a family from the balanced plan's label space.
     assert len({f["category"] for f in MIXED_FAMILIES}) == len(MIXED_FAMILIES)
     assert len({f["component_category"] for f in MIXED_FAMILIES}) == len(MIXED_FAMILIES)
+
+
+def test_clarify_validated_by_absence_of_direction():
+    """Clarify prompts pass on open-ended vagueness and fail only when they name a real direction."""
+    from eval.refuse_taxonomy import CLARIFY_CATEGORIES
+    item = {"category": CLARIFY_CATEGORIES[0], "mixed": False}
+    # Open-ended vague requests (none in the old fixed phrase list) must now PASS.
+    for p in ("Can you make this photo look more appealing overall?",
+              "Give it a nicer, more polished vibe.",
+              "I want this to look more professional.",
+              "Just make the colours feel right."):
+        ok, issues = validate_unsupported_prompt(p, item)
+        assert ok, (p, issues)
+    # A prompt that NAMES a concrete supported direction is gradeable, not clarify -> REJECT.
+    for p in ("Make it warmer and a bit brighter.",
+              "Boost the saturation.",
+              "Give it more contrast.",
+              "Add a matte, faded look."):
+        ok, issues = validate_unsupported_prompt(p, item)
+        assert not ok and any(i.startswith("names_supported_direction") for i in issues), (p, issues)
