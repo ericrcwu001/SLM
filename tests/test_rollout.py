@@ -95,6 +95,23 @@ def test_rollout_entropy_positive_and_bounded():
     assert 0.0 <= ent <= math.log(256) + 1e-6                  # entropy over 256 codes, in nats
 
 
+def test_init_code_maps_idempotent_keeps_cache():
+    """Re-init with the SAME tokenizer must NOT clear the per-device tensor cache (called per row)."""
+    import sft.rollout as R
+    R.init_code_maps(_FakeTokenizer())
+    R._TENSOR_CACHE["__sentinel__"] = ("x", "y")
+    R.init_code_maps(_FakeTokenizer())                 # same code ids -> no-op
+    assert "__sentinel__" in R._TENSOR_CACHE
+
+    class _Shifted(_FakeTokenizer):
+        def convert_tokens_to_ids(self, tok):
+            return super().convert_tokens_to_ids(tok) + 1000   # different code ids
+
+    R.init_code_maps(_Shifted())                       # changed -> clears cache
+    assert "__sentinel__" not in R._TENSOR_CACHE
+    R.init_code_maps(_FakeTokenizer())                 # restore for the other tests
+
+
 def test_assistant_target_matches_materializer():
     from scripts.materialize_target_tokens import _assistant_target
     codes = [0, 1, 255, 42] + list(range(60))

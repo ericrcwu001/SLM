@@ -16,9 +16,26 @@ the value the loop actually reads via ``gcfg.ckpt_every`` — and never double-p
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, fields
+from pathlib import Path
 
 from sft.config import SFTConfig
+
+_INT_RE = re.compile(r"^[+-]?\d+$")
+_FLOAT_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
+
+
+def _coerce_num(v):
+    """Coerce a numeric-looking string to int/float (PyYAML leaves ``5e-6`` etc. as a string)."""
+    if not isinstance(v, str):
+        return v
+    s = v.strip()
+    if _INT_RE.match(s):
+        return int(s)
+    if _FLOAT_RE.match(s):
+        return float(s)
+    return v
 
 # The P6 two-stage adapter — the GRPO policy init AND the frozen KL reference (grounding: distill_r1
 # does NOT exist; use P6). Gitignored on a fresh clone (snapshot_download from the HF adapters repo).
@@ -103,12 +120,13 @@ def load_grpo_config(path: str) -> GRPOConfig:
     Parsed as JSON first (the file is flat JSON — this handles scientific notation like ``5e-6`` that
     PyYAML's float resolver silently leaves as a string), falling back to YAML for a ``.yaml`` override.
     """
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding="utf-8")
     try:
         raw = json.loads(text)
     except json.JSONDecodeError:
         import yaml
         raw = yaml.safe_load(text) or {}
+        raw = {k: _coerce_num(v) for k, v in raw.items()}   # PyYAML leaves 5e-6/1e-4 as strings
     grpo_names = {f.name for f in fields(GRPOConfig)} - {"sft"}     # GRPO names WIN on a collision
     sft_names = {f.name for f in fields(SFTConfig)}
     unknown = set(raw) - sft_names - grpo_names

@@ -45,12 +45,19 @@ from sft.generate import (
 # ---------------------------------------------------------------------------------------------------
 _CODE_IDS: list[int] | None = None          # 256 vocab ids in codebook-index order (column k <-> code k)
 _TENSOR_CACHE: dict[str, tuple] = {}        # device-str -> (code_ids LongTensor[256], id2idx LongTensor)
+_WARNED_NO_REF = False                       # one-time warning latch for a missing reference adapter
 
 
 def init_code_maps(tokenizer) -> None:
-    """Populate the process-global 256-code id map from a (real or fake) tokenizer. Idempotent."""
+    """Populate the process-global 256-code id map from a (real or fake) tokenizer. Idempotent.
+
+    A no-op when the map is already set to the same code ids (so calling it per rollout row does NOT
+    thrash the per-device tensor cache — the frozen tokenizer's code ids never change within a run)."""
     global _CODE_IDS
-    _CODE_IDS = list(SpecialIds(tokenizer).codes)
+    codes = list(SpecialIds(tokenizer).codes)
+    if _CODE_IDS == codes:
+        return
+    _CODE_IDS = codes
     _TENSOR_CACHE.clear()
 
 
@@ -145,6 +152,9 @@ def build_rollout_example(processor, image, cond_text: str, codes, cfg, *, devic
     as :func:`sft.example.build_supervised_example`. Returns a batch-of-1 dict."""
     from qwen_vl_utils import process_vision_info
 
+    from data_pipeline.errors import SFTError
+    from sft.example import surviving_code_positions
+
     user = {"role": "user", "content": [{"type": "image", "image": image},
                                         {"type": "text", "text": cond_text}]}
     assistant = {"role": "assistant",
@@ -157,6 +167,17 @@ def build_rollout_example(processor, image, cond_text: str, codes, cfg, *, devic
                      return_tensors="pt", max_length=cfg.max_seq_len, truncation=True)
     prompt = processor(text=[prompt_text], images=image_inputs, videos=video_inputs, return_tensors="pt")
     n_prompt = prompt["input_ids"].shape[1]
+    full_len = full["input_ids"].shape[1]
+
+    # Same guards as build_supervised_example (sft/example.py:200-216): end-truncation must not eat the
+    # assistant span, and ALL 64 sampled code tokens must survive — otherwise n_prompt misaligns with
+    # the assistant span in `full` and the old/new logprobs would gather the WRONG tokens SILENTLY.
+    if n_prompt >= full_len:
+        raise SFTError(f"rollout example: n_prompt ({n_prompt}) >= full ({full_len}) after truncation")
+    n_code = surviving_code_positions(processor.tokenizer, full["input_ids"], n_prompt)
+    if n_code != TOKEN_COUNT:
+        raise SFTError(f"rollout example: {n_code} code positions survived != {TOKEN_COUNT} "
+                       f"(partial truncation — lower max_pixels or raise max_seq_len)")
 
     labels = full["input_ids"].clone()
     labels[:, :n_prompt] = -100                              # assistant-only span (build_supervised_example)
@@ -293,6 +314,7 @@ def rollout_row(model, processor, row, cfg, *, G: int, sampling: dict, chunk: in
     import torch
 
     from data_pipeline.attribute_spec import ground_truth_attribute_spec_text
+    from data_pipeline.errors import SFTError
     from sft.example import input_text_for, resolve_image
     from sft.generate import generate_codes_batch
 
@@ -313,15 +335,26 @@ def rollout_row(model, processor, row, cfg, *, G: int, sampling: dict, chunk: in
                                       device=device)
 
     has_ref = bool(_has_reference_adapter(model, reference_adapter)) and hasattr(model, "set_adapter")
+    global _WARNED_NO_REF
+    if not has_ref and not _WARNED_NO_REF:
+        _WARNED_NO_REF = True
+        print(f"[grpo][warn] no frozen '{reference_adapter}' adapter — KL falls back to the old policy "
+              f"(KL≈0); the KL-to-P6 regularizer is effectively OFF.")
     dev = device if device is not None else getattr(model, "device", None)
     samples: list[RolloutSample] = []
     for codes in codes_list:
         valid64 = codes is not None and len(codes) == TOKEN_COUNT
+        ex = None
+        if valid64:
+            try:
+                ex = build_rollout_example(processor, image, cond, codes, cfg, device=dev)
+            except SFTError as exc:          # truncated / misaligned span -> never train on garbage
+                print(f"[grpo][rollout-skip] {row_id}: {exc}")
+                valid64 = False
         if not valid64:
             samples.append(RolloutSample(row_id=row_id, cond_text=cond, spec_text=spec, codes=codes,
                                          refused=codes is None, valid64=False))
             continue
-        ex = build_rollout_example(processor, image, cond, codes, cfg, device=dev)
         n_prompt = int(ex.pop("_n_prompt"))
         with torch.no_grad():
             logp_full, gidx, sel = _forward_code_logp(model, ex)

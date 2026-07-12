@@ -121,13 +121,31 @@ def _restore_rng(st: dict | None):
 # ---------------------------------------------------------------------------------------------------
 # Model stack — two adapters (policy trainable + reference frozen) on ONE shared 4-bit NF4 base
 # ---------------------------------------------------------------------------------------------------
+def _disable_dropout(model) -> None:
+    """Zero every ``nn.Dropout`` so a ``.train()``-mode forward is numerically identical to ``.eval()``.
+
+    GRPO needs dropout OFF (LoRA dropout would give the old and current forwards different masks and
+    corrupt the importance ratio — Doc 02 invariant 6), but it also needs the UPDATE forward to run in
+    ``.train()`` so gradient checkpointing engages (transformers gates checkpointing on ``self.training``,
+    else full activations are retained -> OOM risk on the A100). Globally zeroing dropout reconciles
+    both: ``ρ≡1`` on the first inner step is preserved AND checkpointing fires. The P6 adapter ships
+    ``lora_dropout=0.05`` (baked into its ``adapter_config.json``, NOT read from the GRPO JSON), so this
+    must be done programmatically, not via config."""
+    import torch.nn as nn
+
+    for m in model.modules():
+        if isinstance(m, nn.Dropout):
+            m.p = 0.0
+
+
 def build_stack(gcfg: GRPOConfig, resized_model: str, *, policy_init: str, reference_init: str):
     """Return ``(policy, processor, opt, trainable)``.
 
     Mirrors ``sft/train.py:97-113`` for the base + kbit prep, then attaches the trainable ``policy``
     adapter (from ``policy_init`` — P6 fresh, or ``latest/`` on resume) and the FROZEN ``reference``
-    adapter (always P6 = ``reference_init``) on the SAME base. Dropout is kept OFF for every forward
-    (``.eval()``); gradients flow through the ``requires_grad`` policy params (Doc 02 invariant 6)."""
+    adapter (always P6 = ``reference_init``) on the SAME base. Dropout is globally zeroed so the update
+    forward can run in ``.train()`` (gradient checkpointing on) while staying numerically identical to
+    ``.eval()`` (Doc 02 invariant 6)."""
     try:
         import torch
         from peft import PeftModel, prepare_model_for_kbit_training
@@ -156,6 +174,7 @@ def build_stack(gcfg: GRPOConfig, resized_model: str, *, policy_init: str, refer
     policy = PeftModel.from_pretrained(base, policy_init, adapter_name="policy", is_trainable=True)
     policy.load_adapter(reference_init, adapter_name="reference")   # frozen (is_trainable defaults False)
     policy.set_adapter("policy")
+    _disable_dropout(policy)                       # so .train() (checkpointing) == .eval() numerically
     policy.eval()
 
     trainable = [p for p in policy.parameters() if p.requires_grad]
@@ -167,9 +186,12 @@ def build_stack(gcfg: GRPOConfig, resized_model: str, *, policy_init: str, refer
 
 
 def _set_mode(policy, *, generate: bool):
-    """Toggle ``use_cache`` at the rollout(generate)↔update boundary; keep the policy adapter active
-    and dropout off (``.eval()``). Generation needs the KV cache; the loss forward (grad checkpointing)
-    needs it off."""
+    """Toggle train/eval + ``use_cache`` at the rollout(generate)↔update boundary; keep ``policy`` active.
+
+    Generation/eval: ``.eval()`` + ``use_cache=True`` (no autograd graph). Update: ``.train()`` +
+    ``use_cache=False`` so gradient checkpointing engages (it is gated on ``self.training``). Dropout was
+    globally zeroed in ``build_stack``, so ``.train()`` and ``.eval()`` forwards are numerically identical
+    and ``ρ≡1`` on the first inner update is preserved."""
     try:
         policy.config.use_cache = bool(generate)
     except Exception:  # noqa: BLE001
@@ -178,7 +200,7 @@ def _set_mode(policy, *, generate: bool):
         policy.set_adapter("policy")
     except Exception:  # noqa: BLE001
         pass
-    policy.eval()
+    policy.eval() if generate else policy.train()
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -262,16 +284,34 @@ def _grpo_manifest_block(gcfg: GRPOConfig, state: TrainerState) -> dict:
     }
 
 
+def _flatten_adapter_subdir(dst: Path, name: str) -> None:
+    """peft's ``save_pretrained(selected_adapters=[name])`` writes a NON-'default' adapter under
+    ``dst/<name>/``; move those files up to ``dst/`` so ``PeftModel.from_pretrained(base, dst)`` (resume,
+    deploy, and ``sft.loader.load_eval_model``) finds a FLAT ``adapter_config.json`` /
+    ``adapter_model.safetensors`` — the layout the whole eval/SFT ecosystem assumes."""
+    sub = Path(dst) / name
+    if not sub.is_dir():
+        return
+    for f in sub.iterdir():
+        target = Path(dst) / f.name
+        if target.exists():
+            shutil.rmtree(target) if target.is_dir() else target.unlink()
+        os.replace(f, target)
+    sub.rmdir()
+
+
 def _write_adapter(policy, processor, gcfg: GRPOConfig, state: TrainerState, resized_model: str,
                    dst: Path):
     """Write the TRAINED ``policy`` adapter (never the frozen reference) + tokenizer + manifest to dst."""
+    from sft.example import artifact_root
     from tokenizer.manifest import hash_state_dict
 
     policy.save_pretrained(str(dst), selected_adapters=["policy"])
+    _flatten_adapter_subdir(dst, "policy")        # peft nests dst/policy/* -> flatten to dst/*
     processor.tokenizer.save_pretrained(str(dst))
     trainable_sd = {n: p for n, p in policy.named_parameters() if p.requires_grad}
     adapter_sha = hash_state_dict({n: p.detach().float().cpu() for n, p in trainable_sd.items()})
-    tok_manifest = _read_json(Path(os.environ.get("SLM_ARTIFACT_ROOT", ".")) / "tokenizer" / "final" / "manifest.json")
+    tok_manifest = _read_json(artifact_root() / "tokenizer" / "final" / "manifest.json")
     vr_manifest = _read_json(Path(resized_model) / "vocab_resize_manifest.json")
     manifest = build_adapter_manifest(
         run_id=str(dst.parent.name), adapter_step=state.step, adapter_sha256=adapter_sha,
@@ -308,6 +348,24 @@ def save_best(policy, processor, gcfg: GRPOConfig, state: TrainerState, resized_
     """Atomically write the guard-vetoed ``best/`` (policy adapter only; no trainer_state — deploy)."""
     _atomic_write_dir(lambda tmp: _write_adapter(policy, processor, gcfg, state, resized_model, tmp),
                       run_dir / "best")
+
+
+def recover_latest(run_dir: Path) -> None:
+    """Promote an orphaned checkpoint if a crash landed in the middle of the ``latest/`` dir swap.
+
+    The three-step swap has a 1-syscall window where ``latest/`` is absent but ``latest.old/`` (or
+    ``latest.tmp/``) holds a complete checkpoint; a ``kill -9`` / second SIGINT there would otherwise make
+    ``resume_or_init`` silently restart from P6, discarding all progress."""
+    latest = run_dir / "latest"
+    if (latest / "trainer_state.pt").exists():
+        return
+    for cand in (run_dir / "latest.tmp", run_dir / "latest.old"):
+        if (cand / "trainer_state.pt").exists():
+            if latest.exists():
+                shutil.rmtree(latest, ignore_errors=True)
+            os.replace(cand, latest)
+            print(f"[grpo] recovered interrupted checkpoint {cand.name} -> latest/")
+            return
 
 
 def resume_or_init(run_dir: Path, gcfg: GRPOConfig) -> tuple[bool, str]:
@@ -440,6 +498,7 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
 
     run_dir = Path(out_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    recover_latest(run_dir)                        # promote an orphaned mid-swap checkpoint (if any)
     resuming, policy_init = resume_or_init(run_dir, gcfg)
 
     if not resuming:
@@ -480,6 +539,7 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
               f"collapse_rate={summ.get('collapse_rate')} (BEST baseline)")
 
     total_gradable = 0
+    empty_rounds = 0
     stop = False
     while state.step < gcfg.total_steps and not _INTERRUPTED and not stop:
         # ---- ROLLOUT ROUND (no grad; use_cache=True; adapter='policy') ------------------------------
@@ -513,8 +573,17 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
                   f"({artifact_root()}) / image paths / the adapter")
             return 1
         if not buffer:
-            print(f"[grpo][warn] round {state.round}: no gradable groups (all refused/None) — skipping")
+            empty_rounds += 1
+            print(f"[grpo][warn] round {state.round}: 0 gradable groups (all refused/None) "
+                  f"[{empty_rounds} consecutive]")
+            if empty_rounds >= 5:
+                print(json.dumps({"grpo_summary": {"run_id": run_id, "step": state.step,
+                                                   "rows_trained": total_gradable, "aborted": True}}))
+                print(f"[grpo][ABORT] {empty_rounds} consecutive rounds produced 0 gradable rollouts — "
+                      f"reward scoring or generation is broken (not a transient)")
+                return 1
             continue
+        empty_rounds = 0
 
         # ---- μ (update_epochs) UPDATE PASSES (grad; use_cache=False; adapter='policy') --------------
         _set_mode(policy, generate=False)
@@ -549,11 +618,13 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
     # Final anytime save.
     save_latest(policy, processor, opt, gcfg, state, resized_model, run_dir)
 
-    if state.step == 0 and total_gradable == 0:
+    if state.step == 0 and total_gradable == 0 and not _INTERRUPTED:
         print(json.dumps({"grpo_summary": {"run_id": run_id, "step": 0, "rows_trained": 0,
                                            "aborted": True}}))
         print(f"[grpo][ABORT] 0 optimizer steps and 0 gradable rollouts — nothing was trained")
         return 1
+    # (an interrupt during the initial baseline eval still leaves a valid `best/` — fall through to
+    #  the summary + a clean exit rather than a misleading ABORT.)
 
     best_fid = (state.best_summary or {}).get("behavioral_fidelity_mean")
     init_fid = (state.init_summary or {}).get("behavioral_fidelity_mean")
@@ -644,12 +715,11 @@ def main(argv=None) -> int:
         overrides["eval_every"] = args.eval_every
     if args.ckpt_every is not None:
         overrides["ckpt_every"] = args.ckpt_every
-    if overrides:
-        gcfg = dataclasses.replace(gcfg, **overrides)
-
     try:
+        if overrides:
+            gcfg = dataclasses.replace(gcfg, **overrides)   # re-runs GRPOConfig.__post_init__ validation
         return train(gcfg, args.resized_model, args.out, args.run_id)
-    except (SFTError, RequiresTokenizer) as exc:
+    except (SFTError, RequiresTokenizer, ValueError) as exc:
         print(f"[grpo][ABORT] {exc}")
         return 1
 

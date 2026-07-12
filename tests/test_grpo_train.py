@@ -56,6 +56,49 @@ def test_config_shared_name_routes_to_grpo(tmp_path):
     assert g.sft.ckpt_every == 200     # SFTConfig keeps its default; never double-populated
 
 
+def test_config_yaml_fallback_coerces_scientific_floats(tmp_path):
+    # a hand-written .yaml override: PyYAML leaves `5e-6`/`1e-4` as STRINGS -> would crash AdamW(lr="5e-6").
+    p = tmp_path / "g.yaml"
+    p.write_text("grpo_lr: 5e-6\nadv_eps: 1e-4\ngroup_size: 8\nclip_eps: 0.2\ninput_field: attribute_spec_text\n")
+    g = load_grpo_config(str(p))
+    assert isinstance(g.grpo_lr, float) and g.grpo_lr == pytest.approx(5e-6)
+    assert isinstance(g.adv_eps, float) and g.adv_eps == pytest.approx(1e-4)
+    assert g.group_size == 8 and g.sft.input_field == "attribute_spec_text"
+
+
+# --- checkpoint layout hardening (peft nests named adapters; crash-recovery of the dir swap) -------
+def test_flatten_adapter_subdir(tmp_path):
+    dst = tmp_path / "latest"
+    (dst / "policy").mkdir(parents=True)
+    (dst / "policy" / "adapter_config.json").write_text("{}")
+    (dst / "policy" / "adapter_model.safetensors").write_bytes(b"w")
+    (dst / "trainer_state.pt").write_bytes(b"s")            # a flat file already present
+    gt._flatten_adapter_subdir(dst, "policy")
+    assert (dst / "adapter_config.json").is_file()          # moved up -> PeftModel.from_pretrained(dst) works
+    assert (dst / "adapter_model.safetensors").is_file()
+    assert not (dst / "policy").exists()                    # subdir removed
+    assert (dst / "trainer_state.pt").read_bytes() == b"s"  # untouched
+
+
+def test_recover_latest_from_orphaned_swap(tmp_path):
+    run = tmp_path / "run"
+    (run / "latest.tmp").mkdir(parents=True)
+    (run / "latest.tmp" / "trainer_state.pt").write_bytes(b"s")
+    gt.recover_latest(run)                                  # no latest/ but latest.tmp/ has the state
+    assert (run / "latest" / "trainer_state.pt").is_file()
+    assert not (run / "latest.tmp").exists()
+
+
+def test_recover_latest_noop_when_latest_present(tmp_path):
+    run = tmp_path / "run"
+    (run / "latest").mkdir(parents=True)
+    (run / "latest" / "trainer_state.pt").write_bytes(b"good")
+    (run / "latest.old").mkdir()
+    (run / "latest.old" / "trainer_state.pt").write_bytes(b"stale")
+    gt.recover_latest(run)
+    assert (run / "latest" / "trainer_state.pt").read_bytes() == b"good"   # not clobbered by .old
+
+
 # --- atomic latest/ swap --------------------------------------------------------------------------
 def test_atomic_write_dir_survives_repeated_writes(tmp_path):
     dst = tmp_path / "latest"

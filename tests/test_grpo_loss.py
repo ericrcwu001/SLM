@@ -71,6 +71,31 @@ def test_masked_mean_equals_per_sequence_mean_at_64():
     assert float(loss) == pytest.approx(float(per_seq.mean()), abs=1e-6)
 
 
+def test_adv_accepts_1d_or_2d():
+    """grpo_loss must accept adv as [B] or [B,1] (defensive shape guard) — same loss either way."""
+    logp, sel, adv = _tensors()
+    l2, _ = grpo_loss(logp, logp, logp, adv, sel, clip_eps=0.2, kl_beta=0.05)          # [B,1]
+    l1, _ = grpo_loss(logp, logp, logp, adv.squeeze(1), sel, clip_eps=0.2, kl_beta=0.05)  # [B]
+    assert float(l1) == pytest.approx(float(l2))
+
+
+def test_loss_detaches_old_and_ref():
+    """The cached old/ref logprobs must not receive gradient even if a caller passes grad-carrying ones."""
+    B, T = 2, 65
+    sel = torch.zeros(B, T - 1, dtype=torch.bool)
+    sel[:, 1:65] = True
+    base = torch.randn(B, T - 1).masked_fill(~sel, 0.0)
+    logp_old = base.detach().clone().requires_grad_(True)
+    logp_ref = base.detach().clone().requires_grad_(True)
+    logp_new = (base.detach().clone() + 0.1 * sel.float()).requires_grad_(True)
+    adv = torch.tensor([[1.0], [-0.5]])
+    loss, _ = grpo_loss(logp_new, logp_old, logp_ref, adv, sel, clip_eps=0.2, kl_beta=0.1)
+    loss.backward()
+    assert logp_new.grad is not None            # grad flows into the current policy
+    assert logp_old.grad is None                # detached inside the loss
+    assert logp_ref.grad is None
+
+
 def test_clip_fraction_counts_out_of_band_tokens():
     logp_old, sel, adv = _tensors()
     logp_new = logp_old + 1.0 * sel.float()                # ratio ~ e^1 >> 1+eps everywhere selected

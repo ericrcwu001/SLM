@@ -38,6 +38,10 @@ def grpo_loss(logp_new, logp_old, logp_ref, adv, sel, *, clip_eps: float, kl_bet
     """
     import torch
 
+    logp_old = logp_old.detach()                 # cached (no-grad) at rollout; harden vs a grad-carrying caller
+    logp_ref = logp_ref.detach()                 # frozen reference; never contributes gradient
+    if adv.dim() == 1:                           # accept [B] or [B,1]; broadcast per completion over its tokens
+        adv = adv.unsqueeze(1)
     selm = sel.to(logp_new.dtype)
 
     logratio = (logp_new - logp_old).clamp(-_LOGRATIO_CLAMP, _LOGRATIO_CLAMP)   # overflow guard (§5)
@@ -55,14 +59,21 @@ def grpo_loss(logp_new, logp_old, logp_ref, adv, sel, *, clip_eps: float, kl_bet
 
     with torch.no_grad():
         clipped = ((ratio - 1.0).abs() > clip_eps).to(logp_new.dtype)
+        adv_abs = (adv.abs().mean() if adv.numel()
+                   else torch.zeros((), device=logp_new.device, dtype=logp_new.dtype))
+        # ONE host sync for all scalar stats (7 separate .item() calls would serialize the A100 loop).
+        packed = torch.stack([
+            loss.detach(),
+            (ratio * selm).sum() / n,
+            (clipped * selm).sum() / n,
+            (kl * selm).sum() / n,
+            adv_abs.to(logp_new.dtype),
+            (-logp_new * selm).sum() / n,
+            selm.sum(),
+        ]).tolist()
         stats = {
-            "loss": float(loss),
-            "ratio_mean": float((ratio * selm).sum() / n),
-            "clip_fraction": float((clipped * selm).sum() / n),
-            "kl_mean": float((kl * selm).sum() / n),
-            "adv_abs_mean": float(adv.abs().mean()) if adv.numel() else 0.0,
-            "entropy_proxy": float((-logp_new * selm).sum() / n),
-            "n_tokens": int(selm.sum()),
-            "n_samples": int(adv.shape[0]),
+            "loss": packed[0], "ratio_mean": packed[1], "clip_fraction": packed[2],
+            "kl_mean": packed[3], "adv_abs_mean": packed[4], "entropy_proxy": packed[5],
+            "n_tokens": int(packed[6]), "n_samples": int(adv.shape[0]),
         }
     return loss, stats
