@@ -46,10 +46,19 @@ to the generator collapse-fix loop.
   NOT a metric artifact. **Grade magnitude is genuinely not learned.** Root cause = intensity-free
   captions: the captioner writes "make it warmer" regardless of whether the LUT is slightly or
   strongly warmer, so `(text → magnitude)` supervision is contradictory across LUTs and unlearnable.
-  Direction is learned (words carry it); magnitude is not (words don't). Fork: (A) ship the
-  interpreter as a **router only** (its strong suit) + one-stage generator for grade intensity, or
-  (B) regenerate **intensity-aware captions** (inject the measured bucket into the language) and
-  retest — a slice test decides whether the grade path is salvageable.
+  Direction is learned (words carry it); magnitude is not (words don't).
+- **Intensity-fix test (RESOLVED the fork → router-only).** Re-captioned a 500-LUT slice with
+  intensity-aware prompts (teacher told each axis's bucket + to reflect strength in wording), retrained
+  `interp_intensity`, scored: `attribute_bucket_f1[real_lut] = 0.148` — unchanged from 0.16, NO jump.
+  The fix did not rescue aggregate magnitude. Only tell: `literal`-style `attribute_f1` rose to 0.217
+  (best of any style) — intensity IS learnable when the language explicitly carries it, but the vague
+  styles (concept/mood/slang, ~like real user requests) can't carry it and dominate the macro. So the
+  magnitude ceiling is bounded by input-language specificity, not data or the fix.
+- **DECISION: ship the interpreter as a ROUTER** (grade/clarify/refuse gatekeeper — route acc 0.88,
+  all non-grade recall 1.0, refuse-kind 1.0; the ADR-0020 safety win) and use the **one-stage
+  generator** (collapse-fix loop) for grade LUT intensity. Do NOT do a full 2761-LUT intensity regen —
+  the slice shows it won't move the aggregate. The two-stage's value is routing + a clean refuse/
+  clarify gate, not text→magnitude.
 
 Three GPU/transformers-5.x bugs were fixed live: `apply_chat_template(tokenize=True)` returns a
 BatchEncoding (→ render-then-tokenize to `list[int]`); training must use bf16/fp32 not raw fp16
