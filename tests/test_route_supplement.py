@@ -18,6 +18,9 @@ def test_plan_routes_and_kinds_and_fresh_ids():
     units = [p["split_unit_id"] for p in plan]
     assert len(set(units)) == len(units)
     assert all(u.startswith("unsup:") for u in units)
+    # Clarify items carry distinct framing seeds (breaks the teacher's diversity collapse).
+    hints = [p["style_hint"] for p in clarify]
+    assert len(set(hints)) == len(clarify)  # 3 clarify -> 3 different hints
 
 
 def test_load_done_only_generated(tmp_path):

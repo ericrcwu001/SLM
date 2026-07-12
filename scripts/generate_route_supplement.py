@@ -54,6 +54,23 @@ _OUT = "data/active_sft/route_supplement_rows.jsonl"
 _CACHE = "data/active_sft/route_supplement_cache.jsonl"
 _MANIFEST = "data/active_sft/route_supplement_manifest.json"
 
+# Direction-free framing seeds cycled across clarify items so the teacher produces DIVERSE vague
+# requests instead of collapsing to one sentence. None of these name a color/tone direction (that
+# would make the request gradeable, not underspecified).
+_CLARIFY_HINTS: tuple[str, ...] = (
+    "as a very short phrase (3-4 words)", "phrased as a question", "in casual everyday slang",
+    "in a polite, formal tone", "as if mildly frustrated it looks off", "as if texting a friend",
+    "mentioning it's for an Instagram post", "mentioning it's for a client portfolio",
+    "in an excited, enthusiastic tone", "wanting a vague 'cozy' feel", "wanting it to look 'clean'",
+    "wanting it to look 'premium'", "as a one-word-ish imperative like 'fix it'",
+    "saying you can't tell what's wrong, it just looks off", "asking the model to just handle it",
+    "mentioning this photo matters to you", "as a total beginner who doesn't know the terms",
+    "saying you already tried and it still looks bad", "wanting a generic 'nicer' look",
+    "wanting it to look 'more finished'", "wanting it to just 'look right'",
+    "as a hurried, low-effort note", "wanting a 'natural' look", "wanting a 'modern' vibe",
+    "mentioning it's for a print", "wanting it to look less amateur",
+)
+
 
 def build_supplement_plan(n_clarify: int, n_gamut: int) -> list[dict]:
     """Deterministic plan over clarify + out_of_gamut categories; fresh ids, unique split units."""
@@ -64,7 +81,8 @@ def build_supplement_plan(n_clarify: int, n_gamut: int) -> list[dict]:
         rid = f"unsup_clarify_{i + 1:06d}"
         plan.append({"id": rid, "category": cat, "mixed": False,
                      "route": route_for_category(cat), "refuse_kind": refuse_kind_for_category(cat),
-                     "split_unit_id": f"unsup:{rid}"})
+                     "split_unit_id": f"unsup:{rid}",
+                     "style_hint": _CLARIFY_HINTS[i % len(_CLARIFY_HINTS)]})
     gamut_cats = list(OUT_OF_GAMUT_CATEGORIES)
     for i in range(n_gamut):
         cat = gamut_cats[i % len(gamut_cats)]

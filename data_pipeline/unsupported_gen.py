@@ -250,8 +250,15 @@ def build_messages(plan_item: dict, *, attach_image: bool = True, min_image_edge
         )
     elif cat in CLARIFY_CATEGORIES:
         system = build_clarify_system_prompt()
+        hint = plan_item.get("style_hint")
+        # A per-item framing seed breaks the diversity collapse: identical clarify inputs otherwise
+        # make the teacher emit the same sentence every time. The seed varies register/audience/
+        # length only — never a color direction (that would make it gradeable, not clarify).
+        hint_line = (f"Write it {hint}, and make it clearly DIFFERENT in wording from a generic "
+                     f"'make the colors look better'.\n") if hint else ""
         user_text = (
-            f"UNDER-SPECIFIED global request (category {cat}): {_CATEGORY_BRIEF[cat]}\n\n"
+            f"UNDER-SPECIFIED global request (category {cat}): {_CATEGORY_BRIEF[cat]}\n"
+            f"{hint_line}\n"
             "Return ONLY the JSON object described in the system prompt."
         )
     else:
