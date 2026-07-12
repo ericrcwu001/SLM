@@ -1,0 +1,13 @@
+{
+  "base_model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "tuning_mode": "full",
+  "epochs": 5,
+  "learning_rate": 0.00001,
+  "per_device_batch_size": 4,
+  "gradient_accumulation_steps": 8,
+  "max_seq_len": 256,
+  "holdout_frac": 0.06,
+  "upsample_nongrade": 1,
+  "max_new_tokens": 64,
+  "corpus_path": "data/interpreter/interpreter_rows_intensity.jsonl"
+}

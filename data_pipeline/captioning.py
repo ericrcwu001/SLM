@@ -17,10 +17,14 @@ from __future__ import annotations
 
 from data_pipeline.attribute_spec import (
     AttributeSpec,
+    _bucket_mag,
     from_measured_behavior,
     is_backed,
     serialize,
 )
+
+# Hue-angle axes are directions in degrees, not magnitudes — no meaningful intensity bucket.
+_HUE_TAGS = ("global_hue", "shadow_hue", "highlight_hue")
 from eval.refuse_taxonomy import ROUTE_GRADE
 
 # The diversity axes ADR 0026 names: the teacher writes one caption per style per LUT.
@@ -47,6 +51,29 @@ def caption_target_text(measured_behavior: dict) -> str:
     return serialize(caption_target(measured_behavior))
 
 
+def _intensity_summary(measured_behavior: dict) -> str:
+    """Per-axis intensity buckets (slight/moderate/strong/extreme) from the measured magnitudes, so
+    the teacher can encode HOW MUCH in the wording. The full-run finding: intensity-free captions
+    ("make it warmer" for both slight and strong LUTs) make text→magnitude unlearnable. This gives
+    the teacher explicit strength to reflect. Hue-angle axes (degrees) are skipped. Returns "" if
+    the spec asserts no bucketable axis (near-identity LUT)."""
+    parts = caption_target_text(measured_behavior).split("|")
+    if len(parts) < 2:
+        return ""
+    out = []
+    for tok in parts[1].split():
+        if "=" not in tok:
+            continue
+        tag, val = tok.split("=", 1)
+        if tag in _HUE_TAGS:
+            continue
+        try:
+            out.append(f"{tag}={_bucket_mag(abs(float(val)))}")
+        except ValueError:
+            continue
+    return ", ".join(out)
+
+
 def build_caption_system_prompt(n_styles: int) -> str:
     return (
         "You write DIVERSE natural-language requests a real user might type to ask a global "
@@ -57,6 +84,12 @@ def build_caption_system_prompt(n_styles: int) -> str:
         f"Write EXACTLY {n_styles} requests for the SAME look, one per requested STYLE, each a "
         "single sentence. Every request must describe the SAME measured global look (do not invent "
         "changes the measurements do not show, and never ask for local/content/relighting edits).\n\n"
+        "STRENGTH MATTERS: each change has an intensity (slight / moderate / strong / extreme), given "
+        "with the measured look. REFLECT that strength in natural wording — slight -> 'a touch' / "
+        "'slightly', moderate -> 'noticeably' / 'a bit more', strong -> 'much' / 'really', extreme -> "
+        "'completely' / 'dramatically'. A slight change and a strong change MUST read differently. "
+        "Never write the bucket words or any numbers verbatim; convey intensity the way a real user "
+        "would. (Styles that are inherently vague, like mood, may carry strength loosely.)\n\n"
         "OUTPUT CONTRACT — output EXACTLY ONE JSON object and nothing else (no prose, no fences):\n"
         '{ "captions": { "<style>": "the request", ... } }'
     )
@@ -67,6 +100,9 @@ def build_caption_user_text(measured_behavior: dict, *, title: str | None,
     """The user message: the measured summary + the requested styles (+ title hint if recovered)."""
     spec_text = caption_target_text(measured_behavior)
     lines = [f"MEASURED look (attribute_spec): {spec_text}"]
+    intensity = _intensity_summary(measured_behavior)
+    if intensity:
+        lines.append(f"INTENSITY of each change (match this strength in your wording): {intensity}")
     if title:
         lines.append(f"LUT title hint (use only if consistent with the measured look): {title!r}")
     lines.append("")

@@ -39,6 +39,23 @@ def test_prompts_reference_styles_and_measured_look():
     assert "attribute_spec" in user and "Faded Kodak" in user
 
 
+def test_intensity_summary_buckets_axes():
+    mb = _mb("proc_attr_warmer")
+    summ = C._intensity_summary(mb)
+    # warmer is asserted; it must appear with an ordinal bucket, not a raw number or a hue angle.
+    assert "warmer=" in summ
+    assert any(b in summ for b in ("slight", "moderate", "strong", "extreme"))
+    assert "global_hue" not in summ  # hue-angle axes carry no intensity bucket
+
+
+def test_user_text_carries_intensity_and_instruction():
+    mb = _mb("proc_attr_warmer")
+    user = C.build_caption_user_text(mb, title=None)
+    assert "INTENSITY of each change" in user and "warmer=" in user
+    sysp = C.build_caption_system_prompt(len(C.CAPTION_STYLES))
+    assert "STRENGTH MATTERS" in sysp and "slight" in sysp and "strong" in sysp
+
+
 def test_validate_caption():
     assert C.validate_caption("Make it warm and faded like an old photo.")[0]
     assert not C.validate_caption("")[0]
