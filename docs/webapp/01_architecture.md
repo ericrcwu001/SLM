@@ -290,11 +290,11 @@ must script these; a plain `git clone` ships **none of the weights** (`.pt`/adap
 Requires an HF token. Per repo memory: `.env` `HF_TOKEN` is read-only (fine for downloads); uploads use
 the separate write token. For a read-only demo, `huggingface_hub` picks up `HF_TOKEN`/`hf auth login`.
 
-1. **Interpreter** (Qwen2.5-0.5B-Instruct full-FT router). `interp_full/` subfolder per
-   `docs/interpreter_results.md` §Artifacts (repo id `<CONFIRM_REPO>` — confirm with maintainer):
+1. **Interpreter** (Qwen2.5-0.5B-Instruct full-FT router). `interp_full/` subfolder of the model repo
+   `ericrcwu/LUT_SLM_interpreter` (also has `interp_intensity/`):
    ```python
    from huggingface_hub import snapshot_download
-   snapshot_download(repo_id="<INTERP_REPO>", allow_patterns=["interp_full/*"],
+   snapshot_download(repo_id="ericrcwu/LUT_SLM_interpreter", allow_patterns=["interp_full/*"],
                      local_dir="models/interpreter")   # → models/interpreter/interp_full
    ```
 2. **Generator adapter** (Qwen2.5-VL-3B QLoRA). Adapters live at
@@ -302,7 +302,7 @@ the separate write token. For a read-only demo, `huggingface_hub` picks up `HF_T
    adapter subfolder into `models/sft_adapters/p6_two_stage`.
    ```python
    snapshot_download(repo_id="ericrcwu/LUT_SLM_sft_adapters",
-                     allow_patterns=["<P6_SUBFOLDER>/*"], local_dir="models/sft_adapters")
+                     allow_patterns=["p6_twostage_d0f9c744_smokefull/*"], local_dir="models/sft_adapters")
    ```
 3. **Resized base** (`models/base_resized`) — the base with the 259 extra token rows the adapter was
    trained against. **The adapter will NOT load correctly on the vanilla `Qwen/Qwen2.5-VL-3B-Instruct`

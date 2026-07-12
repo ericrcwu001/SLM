@@ -114,7 +114,7 @@ more data nor intensity-aware prompts change that.
    - `route == grade` → forward the **raw user text** to the one-stage generator (not the interpreter's
      spec — magnitude would be lost). This is the architecture the evidence points to; it's glue, not a
      model change.
-2. **Finalize the HF artifact paths** in the "Artifacts" section below (replace `<CONFIRM_REPO>`).
+2. HF artifact paths are finalized (see "Artifacts" below).
 3. **Optionally use the interpreter's direction as a soft hint** to the generator (direction is ~0.5
    reliable) — only if a cheap experiment shows it helps; not required for shipping.
 4. **Reopen the grade path only if** the input distribution changes to carry intensity — e.g. a
@@ -126,18 +126,22 @@ more data nor intensity-aware prompts change that.
 
 ## Artifacts on Hugging Face
 
-Uploaded by the maintainer — **update these paths** (`<CONFIRM_REPO>`):
-- **Trained interpreters:** `hf://<CONFIRM_REPO>` (model), subfolders `interp_full/` (full run) and
-  `interp_intensity/` (intensity-fix test); base `Qwen/Qwen2.5-0.5B-Instruct`.
-- **Caches + corpus:** `hf://<CONFIRM_DATASET>/interpreter/` — `caption_cache*.jsonl`,
-  `route_supplement_cache.jsonl`, `interpreter_rows*.jsonl`, `interpreter_corpus_manifest.json`.
-- Related: corpus dataset `hf://datasets/ericrcwu/LUT_SLM`; generator adapters
-  `hf://ericrcwu/LUT_SLM_sft_adapters`.
+All four repos (owner `ericrcwu`):
+- **Trained interpreters (model):** `hf://ericrcwu/LUT_SLM_interpreter` — subfolders `interp_full/`
+  (full run) and `interp_intensity/` (intensity-fix test); base `Qwen/Qwen2.5-0.5B-Instruct`.
+- **Interpreter caches + corpus (dataset):** `hf://datasets/ericrcwu/LUT_SLM_interpreter_cache` —
+  `caption_cache*.jsonl`, `route_supplement_cache.jsonl`, `interpreter_rows*.jsonl`,
+  `interpreter_corpus_manifest.json`.
+- **Generator adapters (model):** `hf://ericrcwu/LUT_SLM_sft_adapters` — P6 two-stage
+  `p6_twostage_d0f9c744_smokefull/` + distillation adapters.
+- **Source corpus (dataset):** `hf://datasets/ericrcwu/LUT_SLM`.
 
 Load the router:
 ```python
+from huggingface_hub import snapshot_download
 from transformers import AutoModelForCausalLM, AutoTokenizer
-# tok/model from hf://<CONFIRM_REPO>/interp_full ; then interpreter.example.build_prompt_ids +
+d = snapshot_download("ericrcwu/LUT_SLM_interpreter", allow_patterns=["interp_full/*"])
+# tok/model from f"{d}/interp_full"; then interpreter.example.build_prompt_ids +
 # interpreter.comparator.parse on the generated text -> route + spec.
 ```
 

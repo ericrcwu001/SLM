@@ -109,7 +109,7 @@ python -c "from PIL import Image; print(Image.open('webapp/assets/test/sample.pn
 A plain clone ships **no** weights. In stub mode you skip this entirely.
 
 ```bash
-# 1. Interpreter router (Qwen2.5-0.5B full-FT). CONFIRM repo id (interpreter_results.md shows <CONFIRM_REPO>).
+# 1. Interpreter router (Qwen2.5-0.5B full-FT). Model repo ericrcwu/LUT_SLM_interpreter (also interp_intensity/).
 python -c "from huggingface_hub import snapshot_download; \
 snapshot_download(repo_id='ericrcwu/LUT_SLM_interpreter', allow_patterns=['interp_full/*'], \
 local_dir='models/interpreter')"                       # -> models/interpreter/interp_full
