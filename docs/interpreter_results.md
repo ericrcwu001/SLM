@@ -41,10 +41,15 @@ to the generator collapse-fix loop.
   underdetermination** — vague captions don't encode intensity, but the metric demands each LUT's
   exact measured magnitude. Evidence: `attribute_f1_by_style` literal 0.16 > concept 0.09
   (specificity helps), and direction (0.47) ≫ magnitude (0.11).
-- **Open question:** whether the interpreter gets the coarse magnitude **bucket**
-  (slight/moderate/strong/extreme — the granularity the generator consumes via `serialize_bucketed`)
-  right. A bucket-level metric on the trained model answers whether the grade path is usable or
-  exact-`attribute_f1` was the wrong bar.
+- **Resolved (bucket metric):** `attribute_bucket_f1[real_lut] = 0.159` — barely above exact
+  (0.112) and far below direction (0.468). So coarse magnitude is ALSO poor; the low exact score was
+  NOT a metric artifact. **Grade magnitude is genuinely not learned.** Root cause = intensity-free
+  captions: the captioner writes "make it warmer" regardless of whether the LUT is slightly or
+  strongly warmer, so `(text → magnitude)` supervision is contradictory across LUTs and unlearnable.
+  Direction is learned (words carry it); magnitude is not (words don't). Fork: (A) ship the
+  interpreter as a **router only** (its strong suit) + one-stage generator for grade intensity, or
+  (B) regenerate **intensity-aware captions** (inject the measured bucket into the language) and
+  retest — a slice test decides whether the grade path is salvageable.
 
 Three GPU/transformers-5.x bugs were fixed live: `apply_chat_template(tokenize=True)` returns a
 BatchEncoding (→ render-then-tokenize to `list[int]`); training must use bf16/fp32 not raw fp16
