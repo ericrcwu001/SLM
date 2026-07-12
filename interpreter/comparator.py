@@ -57,6 +57,24 @@ def _backed_fraction(asserting: AttributeSpec, reference_mb: dict, tol: float) -
     return 1.0 if n == 0 else res["axes_backed"] / n
 
 
+def _combined_axes(spec: AttributeSpec) -> dict:
+    """Non-hue axes + sat sectors as one signed dict (hue-angle axes have no meaningful sign)."""
+    d = {f: v for f, v in spec.axes.items() if not f.endswith("_hue_deg")}
+    d.update({f"sat_{s}": v for s, v in spec.sat.items()})
+    return d
+
+
+def _sign_fraction(asserting: AttributeSpec, reference: AttributeSpec) -> float:
+    """Fraction of ``asserting``'s axes whose SIGN matches ``reference`` (magnitude ignored); 1.0
+    (vacuous) when ``asserting`` claims nothing. This isolates 'did it get the DIRECTION right'
+    from magnitude calibration, which the tol-based ``attribute_f1`` conflates."""
+    ca, cr = _combined_axes(asserting), _combined_axes(reference)
+    if not ca:
+        return 1.0
+    match = sum(1 for f, v in ca.items() if cr.get(f, 0.0) != 0.0 and (v > 0) == (cr[f] > 0))
+    return match / len(ca)
+
+
 def compare_specs(pred_text: str, gold_text: str, *, tol: float = DEFAULT_TOL) -> dict:
     """Compare a predicted ``attribute_spec_text`` to the gold target.
 
@@ -67,7 +85,7 @@ def compare_specs(pred_text: str, gold_text: str, *, tol: float = DEFAULT_TOL) -
     pred = _safe_parse(pred_text)
     if pred is None:
         return {"parse_ok": False, "route_correct": False, "refuse_kind_correct": False,
-                "attribute_f1": 0.0, "precision": None, "recall": None,
+                "attribute_f1": 0.0, "direction_f1": 0.0, "precision": None, "recall": None,
                 "route_pred": None, "route_gold": gold.route}
 
     pred = canonicalize(pred)
@@ -79,12 +97,15 @@ def compare_specs(pred_text: str, gold_text: str, *, tol: float = DEFAULT_TOL) -
         precision = _backed_fraction(pred, spec_as_mb(gold), tol)  # pred's claims backed by gold
         recall = _backed_fraction(gold, spec_as_mb(pred), tol)     # gold's claims recovered by pred
         f1 = 0.0 if (precision + recall) == 0.0 else 2 * precision * recall / (precision + recall)
+        # sign-only counterpart: isolates direction correctness from magnitude calibration.
+        dp, dr = _sign_fraction(pred, gold), _sign_fraction(gold, pred)
+        direction_f1 = 0.0 if (dp + dr) == 0.0 else 2 * dp * dr / (dp + dr)
     else:
-        precision = recall = f1 = None  # not a grade↔grade pair -> attribute F1 is undefined
+        precision = recall = f1 = direction_f1 = None  # not grade↔grade -> attribute F1 undefined
 
     return {"parse_ok": True, "route_correct": route_correct,
             "refuse_kind_correct": refuse_kind_correct, "attribute_f1": f1,
-            "precision": precision, "recall": recall,
+            "direction_f1": direction_f1, "precision": precision, "recall": recall,
             "route_pred": pred.route, "route_gold": gold.route}
 
 

@@ -28,13 +28,12 @@ def _is_procedural(source_lut_id: Optional[str]) -> bool:
     return bool(source_lut_id) and str(source_lut_id).startswith("proc")
 
 
-def _f1_macro(records: list[dict], predicate) -> Optional[dict]:
+def _f1_macro(records: list[dict], predicate, key: str = "attribute_f1") -> Optional[dict]:
     grade = [r for r in records if r["route_gold"] == ROUTE_GRADE and predicate(r)]
     if not grade:
         return None
-    # route miss on a grade gold contributes 0 to attribute F1 (it never produced usable axes).
-    vals = [(r["attribute_f1"] if (r["route_correct"] and r["attribute_f1"] is not None) else 0.0)
-            for r in grade]
+    # route miss on a grade gold contributes 0 (it never produced usable axes).
+    vals = [(r[key] if (r["route_correct"] and r.get(key) is not None) else 0.0) for r in grade]
     return {"mean": sum(vals) / len(vals), "n": len(grade)}
 
 
@@ -90,6 +89,12 @@ def summarize_interpreter(records: list[dict]) -> dict:
             "overall": _f1_macro(records, lambda r: True),
             "real_lut": _f1_macro(records, lambda r: not _is_procedural(r.get("source_lut_id"))),
             "procedural": _f1_macro(records, lambda r: _is_procedural(r.get("source_lut_id"))),
+        },
+        # sign-only counterpart: high here + low attribute_f1 => directions right, magnitudes off.
+        "attribute_direction_f1": {
+            "overall": _f1_macro(records, lambda r: True, key="direction_f1"),
+            "real_lut": _f1_macro(records, lambda r: not _is_procedural(r.get("source_lut_id")),
+                                  key="direction_f1"),
         },
         "attribute_f1_by_style": {
             style: _f1_macro(records, lambda r, s=style: r.get("style") == s)

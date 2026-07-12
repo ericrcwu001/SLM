@@ -63,6 +63,21 @@ def test_refuse_kind_tracked_separately():
     assert joint_score(wrong_kind) == 1.0         # route-correct refuse -> joint 1.0 (kind reported apart)
 
 
+def test_direction_f1_separates_direction_from_magnitude():
+    # Right DIRECTION (warmer), wrong MAGNITUDE (+1.0 vs +3.0): attribute_f1 fails on tol,
+    # but direction_f1 credits the correct sign.
+    gold = serialize(AttributeSpec(route="grade", axes={"temperature_delta_b": 3.0}))
+    pred = serialize(AttributeSpec(route="grade", axes={"temperature_delta_b": 1.0}))
+    c = compare_specs(gold, pred)
+    assert c["attribute_f1"] == 0.0        # |3-1|=2 > tol and > 25% of 3
+    assert c["direction_f1"] == 1.0        # same sign -> direction correct
+    # opposite sign -> both zero
+    wrong = compare_specs(serialize(AttributeSpec(route="grade", axes={"temperature_delta_b": -1.0})), gold)
+    assert wrong["direction_f1"] == 0.0
+    # refuse/clarify -> direction undefined
+    assert compare_specs(REFUSE_SCOPE, REFUSE_SCOPE)["direction_f1"] is None
+
+
 def test_clarify_route_only():
     c = compare_specs(CLARIFY, CLARIFY)
     assert c["route_correct"] and c["attribute_f1"] is None and joint_score(c) == 1.0
