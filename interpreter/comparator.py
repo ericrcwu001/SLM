@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from data_pipeline.attribute_spec import AttributeSpec, canonicalize, parse
+from data_pipeline.attribute_spec import AttributeSpec, _bucket_mag, canonicalize, parse
 from eval.behavioral_fidelity import DEFAULT_TOL, behavioral_agreement
 from eval.refuse_taxonomy import ROUTE_GRADE, ROUTE_REFUSE
 
@@ -75,6 +75,22 @@ def _sign_fraction(asserting: AttributeSpec, reference: AttributeSpec) -> float:
     return match / len(ca)
 
 
+def _bucket_fraction(asserting: AttributeSpec, reference: AttributeSpec) -> float:
+    """Fraction of ``asserting``'s axes matching ``reference`` on SIGN **and** ordinal magnitude
+    BUCKET (slight/moderate/strong/extreme via the seam's ``_bucket_mag``). Sits between direction
+    (sign only) and attribute_f1 (sign + tol): it measures the coarse intensity the generator
+    actually consumes (``serialize_bucketed``). 1.0 (vacuous) when ``asserting`` claims nothing."""
+    ca, cr = _combined_axes(asserting), _combined_axes(reference)
+    if not ca:
+        return 1.0
+    match = 0
+    for f, v in ca.items():
+        rv = cr.get(f, 0.0)
+        if rv != 0.0 and (v > 0) == (rv > 0) and _bucket_mag(v) == _bucket_mag(rv):
+            match += 1
+    return match / len(ca)
+
+
 def compare_specs(pred_text: str, gold_text: str, *, tol: float = DEFAULT_TOL) -> dict:
     """Compare a predicted ``attribute_spec_text`` to the gold target.
 
@@ -85,8 +101,8 @@ def compare_specs(pred_text: str, gold_text: str, *, tol: float = DEFAULT_TOL) -
     pred = _safe_parse(pred_text)
     if pred is None:
         return {"parse_ok": False, "route_correct": False, "refuse_kind_correct": False,
-                "attribute_f1": 0.0, "direction_f1": 0.0, "precision": None, "recall": None,
-                "route_pred": None, "route_gold": gold.route}
+                "attribute_f1": 0.0, "direction_f1": 0.0, "bucket_f1": 0.0,
+                "precision": None, "recall": None, "route_pred": None, "route_gold": gold.route}
 
     pred = canonicalize(pred)
     route_correct = pred.route == gold.route
@@ -100,12 +116,16 @@ def compare_specs(pred_text: str, gold_text: str, *, tol: float = DEFAULT_TOL) -
         # sign-only counterpart: isolates direction correctness from magnitude calibration.
         dp, dr = _sign_fraction(pred, gold), _sign_fraction(gold, pred)
         direction_f1 = 0.0 if (dp + dr) == 0.0 else 2 * dp * dr / (dp + dr)
+        # sign + coarse-bucket: the granularity the generator consumes.
+        bp, br = _bucket_fraction(pred, gold), _bucket_fraction(gold, pred)
+        bucket_f1 = 0.0 if (bp + br) == 0.0 else 2 * bp * br / (bp + br)
     else:
-        precision = recall = f1 = direction_f1 = None  # not grade↔grade -> attribute F1 undefined
+        precision = recall = f1 = direction_f1 = bucket_f1 = None  # not grade↔grade -> undefined
 
     return {"parse_ok": True, "route_correct": route_correct,
             "refuse_kind_correct": refuse_kind_correct, "attribute_f1": f1,
-            "direction_f1": direction_f1, "precision": precision, "recall": recall,
+            "direction_f1": direction_f1, "bucket_f1": bucket_f1,
+            "precision": precision, "recall": recall,
             "route_pred": pred.route, "route_gold": gold.route}
 
 

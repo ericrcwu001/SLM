@@ -78,6 +78,20 @@ def test_direction_f1_separates_direction_from_magnitude():
     assert compare_specs(REFUSE_SCOPE, REFUSE_SCOPE)["direction_f1"] is None
 
 
+def test_bucket_f1_sits_between_direction_and_attribute():
+    # Same sign + same bucket (both 'strong' = [3,6)), but magnitudes far apart (tol fails):
+    # attribute_f1 = 0, bucket_f1 = 1.0, direction_f1 = 1.0.
+    gold = serialize(AttributeSpec(route="grade", axes={"temperature_delta_b": 3.5}))
+    pred = serialize(AttributeSpec(route="grade", axes={"temperature_delta_b": 5.5}))
+    c = compare_specs(pred, gold)
+    assert c["attribute_f1"] == 0.0 and c["bucket_f1"] == 1.0 and c["direction_f1"] == 1.0
+    # Same sign, DIFFERENT bucket ('moderate' [1.5,3) vs 'strong' [3,6)): bucket_f1 drops, dir holds.
+    c2 = compare_specs(serialize(AttributeSpec(route="grade", axes={"temperature_delta_b": 2.0})), gold)
+    assert c2["direction_f1"] == 1.0 and c2["bucket_f1"] == 0.0
+    # refuse -> undefined
+    assert compare_specs(REFUSE_SCOPE, REFUSE_SCOPE)["bucket_f1"] is None
+
+
 def test_clarify_route_only():
     c = compare_specs(CLARIFY, CLARIFY)
     assert c["route_correct"] and c["attribute_f1"] is None and joint_score(c) == 1.0

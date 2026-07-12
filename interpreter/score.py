@@ -96,6 +96,13 @@ def summarize_interpreter(records: list[dict]) -> dict:
             "real_lut": _f1_macro(records, lambda r: not _is_procedural(r.get("source_lut_id")),
                                   key="direction_f1"),
         },
+        # sign + coarse magnitude bucket: the granularity the generator consumes. If this is decent
+        # while attribute_f1 is low, the grade path is usable and exact-float was the wrong bar.
+        "attribute_bucket_f1": {
+            "overall": _f1_macro(records, lambda r: True, key="bucket_f1"),
+            "real_lut": _f1_macro(records, lambda r: not _is_procedural(r.get("source_lut_id")),
+                                  key="bucket_f1"),
+        },
         "attribute_f1_by_style": {
             style: _f1_macro(records, lambda r, s=style: r.get("style") == s)
             for style in sorted({r.get("style") for r in records if r.get("style")})
