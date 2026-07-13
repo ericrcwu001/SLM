@@ -79,8 +79,11 @@ INTERPRETER_SUBDIR = "interp_full_smokefull"   # actual subfolder in the HF repo
 ADAPTER_REPO = "ericrcwu/LUT_SLM_sft_adapters"
 ADAPTER_SUBDIR = "p6_twostage_d0f9c744_smokefull"
 
-# --- image: heavy deps first (cached), then the repo code last (changes cheaply) -------------
-image = (
+# --- image ---------------------------------------------------------------------------------------
+# Modal requires every build step to precede add_local_* (adding local files must come LAST, or the
+# image rebuilds on every code change). So: build the heavy deps here, fork a GPU variant that
+# pre-imports torch, and only THEN add the repo code to both.
+_deps_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git")
     # Pin torch/transformers to what the repo was built against; leave the rest floating.
@@ -103,40 +106,43 @@ image = (
         "fastapi>=0.110",
         "uvicorn[standard]>=0.29",
         "python-multipart>=0.0.9",
-        "httpx>=0.27",          # CPU edge node uses this to reverse-proxy inference to the GPU app
     )
+    # Separate layer on purpose: adding httpx here doesn't invalidate the big (cached) deps layer
+    # above. The CPU edge node uses httpx to reverse-proxy inference to the GPU app.
+    .pip_install("httpx>=0.27")
     .env({"PYTHONUNBUFFERED": "1", "HF_HOME": f"{_WEIGHTS}/hf_cache"})
 )
 
-# Upload ONLY the code we need into the image — NOT models/ (10 GB), data/, .git, or webapp/_runs.
-# Modal's source AUTOMOUNT (include_source, default True) would otherwise try to ship the whole ~22 GB
-# repo from your machine and time out; we disable it on the functions below (include_source=False) and
-# add these small dirs (~22 MB total) explicitly. Each lands under _CODE_DIR and is importable once
-# _CODE_DIR is on sys.path.
-_PYCACHE = ["**/__pycache__", "**/__pycache__/**", "**/*.pyc"]
-for _pkg in ("webapp", "interpreter", "sft", "eval", "data_pipeline", "tokenizer", "configs"):
-    _ignore = list(_PYCACHE)
-    if _pkg == "webapp":
-        _ignore += ["_runs", "_runs/**"]   # ephemeral run outputs (regenerated at runtime)
-        # NOTE: static/best_of_n (~13MB of precomputed showcase PNGs) IS shipped — the Best-of-N
-        # page loads its reference/candidate images from there (best_of_n_showcase.json paths).
-    if _pkg == "tokenizer":
-        _ignore += ["checkpoints_mlx", "checkpoints_mlx/**"]  # training checkpoints; tokenizer/final/ is kept
-    image = image.add_local_dir(str(_REPO_ROOT / _pkg), f"{_CODE_DIR}/{_pkg}", copy=True, ignore=_ignore)
-
-# include_source=False on the functions (below) disables Modal's automatic source upload — which is
-# what stopped the 22 GB repo from shipping. But that also drops THIS entrypoint file, which the
-# container re-imports to locate setup_weights/fastapi_app. Add just this module back explicitly.
-image = image.add_local_python_source("modal_app")
-
-# GPU service uses a forked image that PRE-IMPORTS torch in global (module) scope. Combined with
-# enable_memory_snapshot=True on the GPU function, that import is captured in the snapshot, so each
-# cold start restores a process with torch already loaded instead of paying ~10s to import it. The
-# CPU `web` node keeps the base `image` (no torch preload) so it stays light. `image.imports()` runs
-# ONLY in the remote container — it's a no-op on your laptop during `modal deploy`.
-gpu_image = image.env({"SLM_ROLE": "gpu"})   # trivial env layer just to fork the Image object
-with gpu_image.imports():
+# GPU variant: fork the deps (marker env layer) and PRE-IMPORT torch in global scope, so the memory
+# snapshot (enable_memory_snapshot on the GPU function) captures it and cold starts restore a process
+# with torch already loaded instead of paying ~10s to import it. Both `.env()` and `.imports()` are
+# registered BEFORE any local files are added, as Modal requires. `.imports()` runs only remotely —
+# it's a no-op on your laptop during `modal deploy`. The CPU node keeps `_deps_image` (no torch).
+_gpu_deps_image = _deps_image.env({"SLM_ROLE": "gpu"})
+with _gpu_deps_image.imports():
     import torch  # noqa: F401  (remote-only global import, captured by the memory snapshot)
+
+
+def _add_repo_code(img: "modal.Image") -> "modal.Image":
+    """Add ONLY the code we need (NOT models/ 10GB, data/, .git, webapp/_runs). Runs last in the
+    build so a code change re-adds ~22MB of files instead of rebuilding the deps layers above."""
+    pycache = ["**/__pycache__", "**/__pycache__/**", "**/*.pyc"]
+    for pkg in ("webapp", "interpreter", "sft", "eval", "data_pipeline", "tokenizer", "configs"):
+        ignore = list(pycache)
+        if pkg == "webapp":
+            ignore += ["_runs", "_runs/**"]   # ephemeral run outputs (regenerated at runtime)
+            # NOTE: static/best_of_n (~13MB of precomputed showcase PNGs) IS shipped — the Best-of-N
+            # page loads its reference/candidate images from there (best_of_n_showcase.json paths).
+        if pkg == "tokenizer":
+            ignore += ["checkpoints_mlx", "checkpoints_mlx/**"]  # training checkpoints; final/ kept
+        img = img.add_local_dir(str(_REPO_ROOT / pkg), f"{_CODE_DIR}/{pkg}", copy=True, ignore=ignore)
+    # include_source=False on the functions disables Modal's 22GB repo automount; re-add just this
+    # entrypoint module so the container can locate setup_weights/fastapi_app/web on re-import.
+    return img.add_local_python_source("modal_app")
+
+
+image = _add_repo_code(_deps_image)          # CPU / default image (no torch preload -> stays light)
+gpu_image = _add_repo_code(_gpu_deps_image)  # GPU image (torch preloaded for the snapshot)
 
 app = modal.App("slm-lut-demo", image=image)
 
@@ -286,13 +292,30 @@ def fastapi_app():
 # /api/gallery, /gallery/* — is served locally so it never wakes the T4.
 _PROXY_EXACT = {"/api/generate", "/api/warmup"}
 _PROXY_PREFIXES = ("/runs/",)
-# Hop-by-hop / length headers we must not blindly copy across the proxy hop.
+# Hop-by-hop / length headers we must not blindly copy across the proxy hop. We also drop any
+# `modal-*` header: Modal injects internal routing headers (e.g. modal-function-call-id) into the
+# CPU container's inbound request, and forwarding them to another Modal web endpoint makes its
+# ingress reject the request ("prohibited modal header").
 _DROP_REQ_HEADERS = {"host", "content-length", "accept-encoding", "connection"}
 _DROP_RESP_HEADERS = {"content-length", "transfer-encoding", "content-encoding", "connection"}
 
 
+def _clean_headers(items, drop: set) -> dict:
+    return {k: v for k, v in items if k.lower() not in drop and not k.lower().startswith("modal-")}
+
+
+# While the GPU container is cold-starting, Modal's routing rejects the inter-container call with a
+# 5xx ingress error (e.g. "prohibited modal header: modal-function-call-id") before it ever reaches
+# our app. These are safe to retry — the request never executed — so we briefly retry to bridge the
+# GPU cold start. Signatures that mark such a transient ingress error (vs. a real app 5xx):
+_COLD_START_SIGNATURES = ("modal-http", "prohibited modal header", "failed to respond")
+_PROXY_MAX_ATTEMPTS = 12
+_PROXY_RETRY_BACKOFF_S = 2.0
+
+
 def _make_gpu_proxy():
     """Build an ASGI http-middleware dispatch that reverse-proxies inference paths to fastapi_app."""
+    import asyncio
     import httpx
     from starlette.responses import JSONResponse, Response
 
@@ -321,15 +344,28 @@ def _make_gpu_proxy():
         if request.url.query:
             url += "?" + request.url.query
         body = await request.body()
-        headers = {k: v for k, v in request.headers.items() if k.lower() not in _DROP_REQ_HEADERS}
-        try:
-            upstream = await _client().request(request.method, url, content=body, headers=headers)
-        except Exception as exc:  # GPU app unreachable or its cold start failed
+        headers = _clean_headers(request.headers.items(), _DROP_REQ_HEADERS)
+        last_exc: Exception | None = None
+        upstream = None
+        for attempt in range(_PROXY_MAX_ATTEMPTS):
+            try:
+                upstream = await _client().request(request.method, url, content=body, headers=headers)
+            except Exception as exc:  # transport error while the GPU boots — retry a few times
+                last_exc = exc
+                await asyncio.sleep(_PROXY_RETRY_BACKOFF_S)
+                continue
+            # A transient Modal ingress error during GPU cold start (not our app) -> retry.
+            if upstream.status_code >= 500 and any(sig in upstream.text for sig in _COLD_START_SIGNATURES):
+                if attempt < _PROXY_MAX_ATTEMPTS - 1:
+                    await asyncio.sleep(_PROXY_RETRY_BACKOFF_S)
+                    continue
+            break
+        if upstream is None:  # exhausted retries on transport errors
             return JSONResponse(
-                {"error": {"code": "upstream_unavailable", "message": f"GPU backend error: {exc}"}},
+                {"error": {"code": "upstream_unavailable", "message": f"GPU backend error: {last_exc}"}},
                 status_code=502,
             )
-        out_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in _DROP_RESP_HEADERS}
+        out_headers = _clean_headers(upstream.headers.items(), _DROP_RESP_HEADERS)
         return Response(
             content=upstream.content,
             status_code=upstream.status_code,
