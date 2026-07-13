@@ -134,6 +134,32 @@ def _mean_code_entropy(logp_full, sel) -> float:
     return float((ent * sel).sum() / n)
 
 
+def _per_row_entropy(logp_full, sel) -> list[float]:
+    """Per-row mean code entropy (nats) over each row's selected positions — one float per batch row."""
+    ent = -(logp_full.exp() * logp_full).sum(-1)                  # [B, T-1]
+    denom = sel.sum(-1).clamp(min=1)                              # [B]
+    return ((ent * sel).sum(-1) / denom).tolist()
+
+
+def _stack_examples(examples: list[dict], device) -> dict:
+    """Stack B teacher-forced examples of ONE prompt (identical length + shared image) into a batch.
+
+    ``pixel_values`` are concatenated along dim 0 and ``image_grid_thw`` stacked to ``[B,3]`` — exactly
+    how the processor batches B copies of the same image (see docs/grpo/02)."""
+    import torch
+
+    batch = {
+        "input_ids": torch.cat([e["input_ids"] for e in examples], 0).to(device),
+        "attention_mask": torch.cat([e["attention_mask"] for e in examples], 0).to(device),
+        "labels": torch.cat([e["labels"] for e in examples], 0).to(device),
+    }
+    if "pixel_values" in examples[0]:
+        batch["pixel_values"] = torch.cat([e["pixel_values"] for e in examples], 0).to(device)
+    if "image_grid_thw" in examples[0]:
+        batch["image_grid_thw"] = torch.cat([e["image_grid_thw"] for e in examples], 0).to(device)
+    return batch
+
+
 # ---------------------------------------------------------------------------------------------------
 # Teacher-forced example from a SAMPLED completion (mirrors sft.example.build_supervised_example, but
 # substitutes the sampled assistant target). Re-spelled locally to keep the module torch-free at import
@@ -278,16 +304,7 @@ class RolloutGroup:
         import torch
 
         gs = self.gradable()
-        exs = [s.example for s in gs]
-        batch = {
-            "input_ids": torch.cat([e["input_ids"] for e in exs], 0).to(device),
-            "attention_mask": torch.cat([e["attention_mask"] for e in exs], 0).to(device),
-            "labels": torch.cat([e["labels"] for e in exs], 0).to(device),
-        }
-        if "pixel_values" in exs[0]:
-            batch["pixel_values"] = torch.cat([e["pixel_values"] for e in exs], 0).to(device)
-        if "image_grid_thw" in exs[0]:
-            batch["image_grid_thw"] = torch.cat([e["image_grid_thw"] for e in exs], 0).to(device)
+        batch = _stack_examples([s.example for s in gs], device)
         old_lp = torch.stack([s.old_logprobs for s in gs]).to(device)               # [B, T-1]
         ref_src = [s.ref_logprobs if s.ref_logprobs is not None else s.old_logprobs for s in gs]
         ref_lp = torch.stack(ref_src).to(device)                                    # [B, T-1]
@@ -341,7 +358,10 @@ def rollout_row(model, processor, row, cfg, *, G: int, sampling: dict, chunk: in
         print(f"[grpo][warn] no frozen '{reference_adapter}' adapter — KL falls back to the old policy "
               f"(KL≈0); the KL-to-P6 regularizer is effectively OFF.")
     dev = device if device is not None else getattr(model, "device", None)
+
+    # Pass 1: build the teacher-forced example for each valid-64 sample (per-sample truncation guard).
     samples: list[RolloutSample] = []
+    valid: list[tuple[RolloutSample, dict]] = []      # (sample, example-on-device) for the valid-64 ones
     for codes in codes_list:
         valid64 = codes is not None and len(codes) == TOKEN_COUNT
         ex = None
@@ -351,28 +371,36 @@ def rollout_row(model, processor, row, cfg, *, G: int, sampling: dict, chunk: in
             except SFTError as exc:          # truncated / misaligned span -> never train on garbage
                 print(f"[grpo][rollout-skip] {row_id}: {exc}")
                 valid64 = False
-        if not valid64:
-            samples.append(RolloutSample(row_id=row_id, cond_text=cond, spec_text=spec, codes=codes,
-                                         refused=codes is None, valid64=False))
-            continue
-        n_prompt = int(ex.pop("_n_prompt"))
+        s = RolloutSample(row_id=row_id, cond_text=cond, spec_text=spec,
+                          codes=(list(codes) if codes is not None else None),
+                          refused=codes is None, valid64=valid64)
+        samples.append(s)
+        if valid64:
+            s.n_prompt = int(ex.pop("_n_prompt"))
+            valid.append((s, ex))
+
+    # Pass 2: ONE batched teacher-forced forward for the OLD-policy logprobs (and one for the REFERENCE)
+    # over ALL valid samples of this prompt — instead of 2 batch-of-1 forwards per sample. The G samples
+    # share the prompt + a fixed 66-token completion, so they stack without padding. This is the hot
+    # path: batching keeps the GPU busy (per-sample B=1 forwards starve it — see docs/grpo/02 §Device).
+    if valid:
+        exs = [ex for _, ex in valid]
+        batch = _stack_examples(exs, dev)
         with torch.no_grad():
-            logp_full, gidx, sel = _forward_code_logp(model, ex)
-            old_lp = logp_full.gather(-1, gidx[..., None]).squeeze(-1).masked_fill(~sel, 0.0)[0]
-            entropy = _mean_code_entropy(logp_full, sel)
-            ref_lp = None
+            logp_full, gidx, sel = _forward_code_logp(model, batch)          # [B, T-1, 256]
+            old_b = logp_full.gather(-1, gidx[..., None]).squeeze(-1).masked_fill(~sel, 0.0)  # [B, T-1]
+            ent_b = _per_row_entropy(logp_full, sel)                         # [B] floats
+            ref_b = None
             if has_ref:
                 model.set_adapter(reference_adapter)
                 try:
-                    r_lp, _ = code_logprobs(model, ex)
-                    ref_lp = r_lp[0]
+                    ref_b, _ = code_logprobs(model, batch)                   # [B, T-1]
                 finally:
                     model.set_adapter("policy")
-        cpu_ex = {k: (v.detach().to("cpu") if hasattr(v, "detach") else v) for k, v in ex.items()}
-        samples.append(RolloutSample(
-            row_id=row_id, cond_text=cond, spec_text=spec, codes=list(codes), refused=False,
-            valid64=True, n_prompt=n_prompt, example=cpu_ex,
-            old_logprobs=old_lp.detach().to("cpu"),
-            ref_logprobs=(ref_lp.detach().to("cpu") if ref_lp is not None else None),
-            entropy=entropy))
+        for k, (s, ex) in enumerate(valid):
+            s.example = {kk: (v.detach().to("cpu") if hasattr(v, "detach") else v)
+                         for kk, v in ex.items()}
+            s.old_logprobs = old_b[k].detach().to("cpu")
+            s.ref_logprobs = ref_b[k].detach().to("cpu") if ref_b is not None else None
+            s.entropy = ent_b[k]
     return samples

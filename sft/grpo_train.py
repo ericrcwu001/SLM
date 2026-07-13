@@ -485,6 +485,8 @@ class LoopStats:
 # The loop
 # ---------------------------------------------------------------------------------------------------
 def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> int:
+    import time
+
     import torch
 
     from eval.grpo_reward import group_advantages, shaped_rewards
@@ -542,6 +544,7 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
     empty_rounds = 0
     stop = False
     while state.step < gcfg.total_steps and not _INTERRUPTED and not stop:
+        round_t0 = time.time()
         # ---- ROLLOUT ROUND (no grad; use_cache=True; adapter='policy') ------------------------------
         _set_mode(policy, generate=True)
         buffer: list = []
@@ -563,6 +566,7 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
                 buffer.append(group)
         state.round += 1
         total_gradable += sum(len(g.gradable()) for g in buffer)
+        roll_s = time.time() - round_t0
 
         # Fail-loud: a first round with zero valid-64 rollouts means generation/images are broken
         # (SLM_ARTIFACT_ROOT case trap) — never spin on a no-op.
@@ -587,6 +591,7 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
 
         # ---- μ (update_epochs) UPDATE PASSES (grad; use_cache=False; adapter='policy') --------------
         _set_mode(policy, generate=False)
+        upd_t0 = time.time()
         lstats = LoopStats()
         import random as _r
         for _ in range(gcfg.update_epochs):
@@ -614,6 +619,16 @@ def train(gcfg: GRPOConfig, resized_model: str, out_dir: str, run_id: str) -> in
                                   lstats) or stop
             if stop:
                 break
+
+        # per-round heartbeat (so the run is never silent between the 20-step evals, and the
+        # rollout-vs-update timing split makes the bottleneck visible)
+        rm = [g.reward_mean for g in buffer if g.reward_mean is not None]
+        _kl = lstats.snapshot().get("kl_to_ref", 0.0)
+        print(f"[grpo] round {state.round} step {state.step} | rollout {roll_s:.0f}s "
+              f"update {time.time() - upd_t0:.0f}s | "
+              f"reward_mean={round(sum(rm) / len(rm), 4) if rm else None} kl={_kl:.4f} "
+              f"gradable={sum(len(g.gradable()) for g in buffer)} "
+              f"refusals={sum(1 for g in buffer for s in g.samples if s.refused)}", flush=True)
 
     # Final anytime save.
     save_latest(policy, processor, opt, gcfg, state, resized_model, run_dir)

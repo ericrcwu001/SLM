@@ -85,6 +85,21 @@ def test_code_logprobs_deterministic_and_teacher_forced():
     assert bool((a[b == b] <= 1e-6).all())
 
 
+def test_batched_logprobs_equal_per_sample():
+    """The batched old/ref forward (rollout_row's hot path) must equal per-sample B=1 forwards — the
+    correctness contract behind batching the logprob passes for GPU efficiency."""
+    init_code_maps(_FakeTokenizer())
+    m = _OracleModel(vocab=2300)
+    seq2 = [11, 12, 13, 14][:_N_PROMPT] + [1000] + [2000 + ((c + 7) % 256) for c in _CODES] + [1001]
+    b1, b2 = _batch(), _batch(seq=seq2)
+    batch = {k: torch.cat([b1[k], b2[k]], 0) for k in ("input_ids", "attention_mask", "labels")}
+    lp, sel = code_logprobs(m, batch)
+    lp1, _ = code_logprobs(m, b1)
+    lp2, _ = code_logprobs(m, b2)
+    assert torch.allclose(lp[0], lp1[0]) and torch.allclose(lp[1], lp2[0])
+    assert int(sel.sum()) == 128            # 64 code positions per row, 2 rows
+
+
 def test_rollout_entropy_positive_and_bounded():
     init_code_maps(_FakeTokenizer())
     model = _OracleModel(vocab=2300)
