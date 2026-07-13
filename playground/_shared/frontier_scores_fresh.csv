@@ -1,0 +1,6 @@
+model,model_id,N,split,raw_cube_valid_rate,raw_cube_valid_ci_low,raw_cube_valid_ci_high,unsupported_recall,unsupported_precision,over_refusal_rate,boundary_accuracy,boundary_f1,direction_pass_rate,direction_N,safety_pass_rate,safety_N,lut_quality_pass_rate,lut_quality_ci_low,lut_quality_ci_high,lut_quality_N,target_fidelity_status
+gemini_3_1_pro,gemini-group/gemini-3.1-pro,70,smoke,0.0,0.0,0.052,0.0,,0.0,0.7143,0.0,,0,,0,,,,0,not_evaluated:no_target_luts_in_frozen_eval_set
+gpt_5_5,openai-group/gpt-5.5,70,smoke,0.0,0.0,0.052,0.0,0.0,0.08,0.6571,0.0,,0,,0,,,,0,not_evaluated:no_target_luts_in_frozen_eval_set
+gpt_5_5_xhigh,openai-group/gpt-5.5,70,smoke,0.0429,0.0147,0.1186,0.05,1.0,0.0,0.7286,0.0952,1.0,3,1.0,3,1.0,0.4385,1.0,3,not_evaluated:no_target_luts_in_frozen_eval_set
+opus_4_8,claude-group/claude-opus-4-8,70,smoke,0.0714,0.0309,0.1566,0.05,1.0,0.0,0.7286,0.0952,1.0,5,1.0,5,1.0,0.5655,1.0,5,not_evaluated:no_target_luts_in_frozen_eval_set
+sonnet_4_6,claude-group/claude-sonnet-4-6,70,smoke,0.0571,0.0224,0.1379,0.05,1.0,0.0,0.7286,0.0952,1.0,4,1.0,4,1.0,0.5101,1.0,4,not_evaluated:no_target_luts_in_frozen_eval_set

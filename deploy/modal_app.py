@@ -1,9 +1,22 @@
 """Deploy the prompt->LUT demo (webapp/server.py) on Modal with real GPU inference.
 
-This wraps the EXISTING FastAPI app unchanged. It:
+Two cooperating services, so casual page views never spend GPU credits:
+  * `web`  — a cheap CPU container (the PUBLIC front door). Serves the SPA, static assets, the
+             glossary (/api/terms) and the shared gallery (/api/gallery + /gallery/*) straight
+             from the image + gallery Volume. It reverse-proxies ONLY the model-bound paths
+             (/api/generate, /api/warmup, /runs/*) to the GPU service below.
+  * `fastapi_app` — the T4 GPU container that actually loads weights and grades. Scales to zero,
+             wakes only when the CPU node proxies real inference to it.
+
+So: browsing the landing/dataset/eval/best-of-n pages, reading the glossary, and viewing the
+gallery all stay on the CPU node and never wake the T4. The GPU lights up only on warmup/grade.
+
+It also:
   * bakes the repo *code* + frozen VQ decoder into the image (no model weights),
   * caches the model *weights* on a Modal Volume so cold starts don't re-download from HF,
-  * serves the whole app (SPA + /api) on a T4, scaling to zero when idle (free-tier friendly).
+  * uses memory snapshots + lazy weight loading to keep GPU cold starts short.
+
+>>> Share the `web` (CPU) URL, e.g. https://<you>--slm-lut-demo-web.modal.run — NOT fastapi_app.
 
 --------------------------------------------------------------------------------
 ONE-TIME SETUP
@@ -23,9 +36,11 @@ ONE-TIME SETUP
 DEPLOY
 --------------------------------------------------------------------------------
        modal deploy deploy/modal_app.py
-   -> prints a public HTTPS URL like  https://<you>--slm-lut-demo-fastapi-app.modal.run
-   That URL is already shareable — anyone can use the live inference. Scales to zero
-   when idle, so it only spends credits while a request is actually running.
+   -> prints TWO public HTTPS URLs (one per web function):
+        * https://<you>--slm-lut-demo-web.modal.run           <- SHARE THIS (CPU front door)
+        * https://<you>--slm-lut-demo-fastapi-app.modal.run   <- GPU backend (proxy target)
+   Share the `web` URL. It serves the whole SPA off a cheap CPU box and only proxies actual
+   grading to the T4, which scales to zero and wakes on demand — so idle visitors cost ~nothing.
 
 --------------------------------------------------------------------------------
 CUSTOM DOMAIN (optional)
@@ -56,6 +71,7 @@ import modal
 _REPO_ROOT = Path(__file__).resolve().parent.parent   # local repo checkout
 _CODE_DIR = "/root/slm"                                # where the repo lands in the container
 _WEIGHTS = "/weights"                                  # Volume mount (model weights live here)
+_GALLERY = "/data/gallery"                             # Volume mount (shared generated-grade gallery)
 
 # HF repos + subfolders (see docs/interpreter_results.md / docs/webapp/07 §1.6).
 INTERPRETER_REPO = "ericrcwu/LUT_SLM_interpreter"
@@ -87,6 +103,7 @@ image = (
         "fastapi>=0.110",
         "uvicorn[standard]>=0.29",
         "python-multipart>=0.0.9",
+        "httpx>=0.27",          # CPU edge node uses this to reverse-proxy inference to the GPU app
     )
     .env({"PYTHONUNBUFFERED": "1", "HF_HOME": f"{_WEIGHTS}/hf_cache"})
 )
@@ -100,8 +117,9 @@ _PYCACHE = ["**/__pycache__", "**/__pycache__/**", "**/*.pyc"]
 for _pkg in ("webapp", "interpreter", "sft", "eval", "data_pipeline", "tokenizer", "configs"):
     _ignore = list(_PYCACHE)
     if _pkg == "webapp":
-        _ignore += ["_runs", "_runs/**",                     # ephemeral run outputs (regenerated at runtime)
-                    "static/best_of_n", "static/best_of_n/**"]  # 13MB precomputed showcase PNGs; host the showcase statically instead
+        _ignore += ["_runs", "_runs/**"]   # ephemeral run outputs (regenerated at runtime)
+        # NOTE: static/best_of_n (~13MB of precomputed showcase PNGs) IS shipped — the Best-of-N
+        # page loads its reference/candidate images from there (best_of_n_showcase.json paths).
     if _pkg == "tokenizer":
         _ignore += ["checkpoints_mlx", "checkpoints_mlx/**"]  # training checkpoints; tokenizer/final/ is kept
     image = image.add_local_dir(str(_REPO_ROOT / _pkg), f"{_CODE_DIR}/{_pkg}", copy=True, ignore=_ignore)
@@ -111,23 +129,41 @@ for _pkg in ("webapp", "interpreter", "sft", "eval", "data_pipeline", "tokenizer
 # container re-imports to locate setup_weights/fastapi_app. Add just this module back explicitly.
 image = image.add_local_python_source("modal_app")
 
+# GPU service uses a forked image that PRE-IMPORTS torch in global (module) scope. Combined with
+# enable_memory_snapshot=True on the GPU function, that import is captured in the snapshot, so each
+# cold start restores a process with torch already loaded instead of paying ~10s to import it. The
+# CPU `web` node keeps the base `image` (no torch preload) so it stays light. `image.imports()` runs
+# ONLY in the remote container — it's a no-op on your laptop during `modal deploy`.
+gpu_image = image.env({"SLM_ROLE": "gpu"})   # trivial env layer just to fork the Image object
+with gpu_image.imports():
+    import torch  # noqa: F401  (remote-only global import, captured by the memory snapshot)
+
 app = modal.App("slm-lut-demo", image=image)
 
 # Persistent Volume for weights (survives across deploys/containers). Free tier includes 1 TiB.
 weights_volume = modal.Volume.from_name("slm-weights", create_if_missing=True)
 
+# Separate persistent Volume for the shared gallery of generated grades. Kept apart from weights
+# so user-generated data and model artifacts have independent lifecycles. Modal background-commits
+# mounted Volumes every few seconds and on container shutdown, so entries survive scale-to-zero;
+# we ALSO wire an explicit commit after each write (below) as insurance against abrupt kills.
+gallery_volume = modal.Volume.from_name("slm-gallery", create_if_missing=True)
+
 # HF read token, from: `modal secret create huggingface HF_TOKEN=...`
 hf_secret = modal.Secret.from_name("huggingface")
 
 
-def _write_runtime_config() -> str:
-    """Write a real-mode webapp config pointing the model paths at the Volume; return its path.
+def _write_runtime_config(stub: bool = False) -> str:
+    """Write a webapp config and return its path.
 
-    Only the device + model/decoder paths are overridden — server dirs stay repo-relative and
+    stub=False (GPU service): real mode, device=cuda, model paths pointing at the weights Volume.
+    stub=True  (CPU edge node): no models are ever loaded here — it serves static/terms/gallery and
+    proxies grading to the GPU service — so device=cpu and generator.stub=True keep construction
+    weight-free. Only device + model/decoder paths differ; server dirs stay repo-relative and
     resolve under _CODE_DIR via webapp.models_config.repo_path().
     """
     cfg = {
-        "device": "cuda",
+        "device": "cpu" if stub else "cuda",
         "interpreter": {
             "model_path": f"{_WEIGHTS}/interpreter/{INTERPRETER_SUBDIR}",
             "base_model_id": "Qwen/Qwen2.5-0.5B-Instruct",
@@ -135,7 +171,7 @@ def _write_runtime_config() -> str:
             "max_new_tokens": 64,
         },
         "generator": {
-            "stub": False,
+            "stub": stub,
             "adapter_path": f"{_WEIGHTS}/sft_adapters/{ADAPTER_SUBDIR}",
             "base_model_id": "Qwen/Qwen2.5-VL-3B-Instruct",
             "resized_base_path": f"{_WEIGHTS}/base_resized",
@@ -157,9 +193,13 @@ def _write_runtime_config() -> str:
             "max_upload_mb": 20,
             "max_image_edge": 2048,
             "request_timeout_s": 600,
+            # Point the shared gallery at the persistent Volume so grades survive scale-to-zero.
+            "gallery_dir": _GALLERY,
+            "gallery_max_entries": 60,
+            "gallery_enabled": True,
         },
     }
-    path = f"{_CODE_DIR}/configs/webapp.modal.json"
+    path = f"{_CODE_DIR}/configs/webapp.modal.{'cpu' if stub else 'gpu'}.json"
     Path(path).write_text(json.dumps(cfg, indent=2))
     return path
 
@@ -202,13 +242,17 @@ def setup_weights():
     print("[setup] done. Weights cached on the 'slm-weights' Volume.")
 
 
-# Serve the FastAPI app. Scales to zero (min_containers defaults to 0), capped at one GPU
-# container so the app's single inference lock stays meaningful and cost stays bounded.
+# GPU backend: loads weights and grades. Scales to zero (min_containers defaults to 0), capped at
+# one container so the app's single inference lock stays meaningful and cost stays bounded. Reached
+# by end users only indirectly, via the CPU `web` node's reverse proxy (below).
 @app.function(
+    image=gpu_image,        # forked image that pre-imports torch in global scope (see gpu_image above)
     gpu="T4",
-    volumes={_WEIGHTS: weights_volume},
+    volumes={_WEIGHTS: weights_volume, _GALLERY: gallery_volume},
     secrets=[hf_secret],
-    memory=16384,
+    memory=8192,            # was 16384; the T4's 16GB VRAM holds the model, host RAM only needs load
+    #                         headroom for the 4-bit 3B — 8GB is safe, 4GB risks OOM during load.
+    enable_memory_snapshot=True,  # snapshot the (torch-preloaded) process for faster cold starts
     scaledown_window=120,   # stay warm 2 min after the last request, then scale to zero
     timeout=600,            # matches server request_timeout_s
     max_containers=1,       # older Modal: use `concurrency_limit=1`
@@ -221,11 +265,107 @@ def setup_weights():
 )
 def fastapi_app():
     # Make the repo importable and configure real mode BEFORE importing the app (it reads
-    # WEBAPP_CONFIG at import time).
+    # WEBAPP_CONFIG at import time). Weights load lazily (on /api/warmup), not here.
     sys.path.insert(0, _CODE_DIR)
     os.chdir(_CODE_DIR)
-    os.environ["WEBAPP_CONFIG"] = _write_runtime_config()
+    os.environ["WEBAPP_CONFIG"] = _write_runtime_config(stub=False)
     os.environ["WEBAPP_STUB"] = "0"
 
-    from webapp.server import app as web_app  # models load in the FastAPI lifespan on startup
-    return web_app
+    import webapp.server as web_server  # cheap: construction no longer loads weights
+
+    # Force an immediate durable commit after each gallery write. Modal's background commits already
+    # persist the mounted Volume, but an explicit commit guarantees a just-saved grade survives even
+    # an abrupt container kill before the next background flush.
+    if web_server.STATE.gallery is not None:
+        web_server.STATE.gallery.commit_hook = gallery_volume.commit
+    return web_server.app
+
+
+# Paths the CPU edge node cannot serve itself (they need the loaded model or its ephemeral run
+# outputs) and must forward to the GPU service. Everything else — the SPA, /assets, /api/terms,
+# /api/gallery, /gallery/* — is served locally so it never wakes the T4.
+_PROXY_EXACT = {"/api/generate", "/api/warmup"}
+_PROXY_PREFIXES = ("/runs/",)
+# Hop-by-hop / length headers we must not blindly copy across the proxy hop.
+_DROP_REQ_HEADERS = {"host", "content-length", "accept-encoding", "connection"}
+_DROP_RESP_HEADERS = {"content-length", "transfer-encoding", "content-encoding", "connection"}
+
+
+def _make_gpu_proxy():
+    """Build an ASGI http-middleware dispatch that reverse-proxies inference paths to fastapi_app."""
+    import httpx
+    from starlette.responses import JSONResponse, Response
+
+    # Resolved lazily on first use (the GPU app is deployed by the time any inference is requested).
+    cache: dict[str, object] = {}
+
+    def _base_url() -> str:
+        if "base" not in cache:
+            gpu_fn = modal.Function.from_name("slm-lut-demo", "fastapi_app")
+            cache["base"] = gpu_fn.get_web_url().rstrip("/")
+        return cache["base"]  # type: ignore[return-value]
+
+    def _client() -> "httpx.AsyncClient":
+        if "client" not in cache:
+            # Read timeout must exceed the GPU's 600s request timeout (cold load + grade).
+            cache["client"] = httpx.AsyncClient(timeout=httpx.Timeout(650.0, connect=30.0))
+        return cache["client"]  # type: ignore[return-value]
+
+    def _needs_gpu(path: str) -> bool:
+        return path in _PROXY_EXACT or path.startswith(_PROXY_PREFIXES)
+
+    async def dispatch(request, call_next):
+        if not _needs_gpu(request.url.path):
+            return await call_next(request)
+        url = _base_url() + request.url.path
+        if request.url.query:
+            url += "?" + request.url.query
+        body = await request.body()
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in _DROP_REQ_HEADERS}
+        try:
+            upstream = await _client().request(request.method, url, content=body, headers=headers)
+        except Exception as exc:  # GPU app unreachable or its cold start failed
+            return JSONResponse(
+                {"error": {"code": "upstream_unavailable", "message": f"GPU backend error: {exc}"}},
+                status_code=502,
+            )
+        out_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in _DROP_RESP_HEADERS}
+        return Response(
+            content=upstream.content,
+            status_code=upstream.status_code,
+            headers=out_headers,
+            media_type=upstream.headers.get("content-type"),
+        )
+
+    return dispatch
+
+
+# Public CPU front door. No GPU, small RAM, scales to zero. Serves the SPA + static + glossary +
+# gallery locally (stub mode: it never loads models) and proxies only real grading to fastapi_app.
+@app.function(
+    volumes={_GALLERY: gallery_volume},   # read the shared gallery Volume (write happens on the GPU)
+    memory=1024,
+    cpu=1.0,
+    scaledown_window=300,   # keep the cheap CPU box warm across a browsing session
+    timeout=700,            # a proxied /api/generate can block on the GPU's 600s request timeout
+    max_containers=2,
+    include_source=False,
+)
+@modal.concurrent(max_inputs=100)  # static + proxy fan-out; cheap to serve many at once
+@modal.asgi_app()
+def web():
+    sys.path.insert(0, _CODE_DIR)
+    os.chdir(_CODE_DIR)
+    os.environ["WEBAPP_CONFIG"] = _write_runtime_config(stub=True)
+    os.environ["WEBAPP_STUB"] = "1"
+
+    import webapp.server as web_server  # stub: construction loads no weights
+
+    # Reload the gallery Volume before each /api/gallery read so grades the GPU node just committed
+    # show up here too (Modal Volume writes from another container need an explicit reload).
+    if web_server.STATE.gallery is not None:
+        web_server.STATE.gallery.reload_hook = gallery_volume.reload
+
+    # Register the reverse proxy LAST so it wraps every request (must be added before serving starts).
+    web_server.app.middleware("http")(_make_gpu_proxy())
+    return web_server.app

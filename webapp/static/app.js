@@ -6,7 +6,7 @@ const mockValue = query.get("mock");
 const MOCK_MODE = mockValue !== null;
 const MOCK_ROUTES = new Set(["grade", "clarify", "refuse", "error"]);
 const MOCK_FORCED_ROUTE = MOCK_ROUTES.has(mockValue) ? mockValue : null;
-const MAX_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const POPOVER_DELAY_MS = 120;
 const LONG_PRESS_MS = 480;
 const TOAST_MS = 1800;
@@ -43,6 +43,7 @@ const dom = {
   glossary: $("#glossary"),
   toast: $("#toast"),
   modeBadge: $("#mode-badge"),
+  galleryGrid: $("#gallery-grid"),
 };
 
 const state = {
@@ -59,6 +60,8 @@ const state = {
   toastTimer: null,
   lastFocused: null,
   mockObjectUrls: [],
+  mockGallery: [],
+  warmupStarted: false,
 };
 
 function element(tag, className, text) {
@@ -139,7 +142,7 @@ async function selectFile(file) {
     return;
   }
   if (file.size > MAX_FILE_BYTES) {
-    setInputError("That image is over 12 MB. Choose a smaller file.");
+    setInputError("That image is over 20 MB. Choose a smaller file.");
     return;
   }
 
@@ -157,9 +160,24 @@ async function selectFile(file) {
     dom.uploadClear.hidden = false;
     dom.fileInput.value = "";
     updateGenerateAvailability();
+    warmupModels();  // start loading model weights now, so they're warm by the time the prompt is ready
   } catch (error) {
     URL.revokeObjectURL(nextUrl);
     setInputError(error.message);
+  }
+}
+
+// Ask the server to begin loading model weights the moment an image is chosen, so inference is
+// warm by the time the user finishes typing.  Best-effort: /api/generate triggers the load anyway,
+// so a failed or skipped warmup only costs latency on the first grade, never correctness.
+async function warmupModels() {
+  if (MOCK_MODE || state.warmupStarted) return;
+  state.warmupStarted = true;
+  try {
+    await fetch("/api/warmup", { method: "POST", headers: { Accept: "application/json" } });
+  } catch (error) {
+    state.warmupStarted = false;  // let a later selection retry the warmup
+    console.warn("Model warmup request failed:", error.message);
   }
 }
 
@@ -584,7 +602,7 @@ async function generate() {
   try {
     const data = await requestGeneration();
     if (!data || typeof data.route !== "string") throw new Error("The server returned a malformed response without a route.");
-    if (data.route === "grade") renderGrade(data);
+    if (data.route === "grade") { renderGrade(data); refreshGalleryAfterGrade(data); }
     else if (data.route === "clarify") renderClarify(data);
     else if (data.route === "refuse") renderRefuse(data);
     else throw new Error(`The server returned an unknown route: ${data.route}`);
@@ -999,12 +1017,135 @@ async function mockGenerate() {
   };
 }
 
+function usePrompt(text) {
+  if (!text) return;
+  dom.prompt.value = text;
+  dom.prompt.dispatchEvent(new Event("input", { bubbles: true }));  // refresh count/size/availability
+  dom.inputPanel.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start",
+  });
+  dom.prompt.focus();
+}
+
+function galleryCard(entry, { isSeed = false } = {}) {
+  const card = element("article", `gallery-card${isSeed ? " gallery-card--seed" : ""}`);
+
+  const well = element("button", "gallery-card__well");
+  well.type = "button";
+  well.setAttribute("aria-pressed", "false");
+  well.setAttribute("aria-label", "Toggle the original and graded image");
+  const after = element("img", "gallery-card__image");
+  after.src = entry.after_url;
+  after.alt = "Graded result of this look";
+  after.loading = "lazy";
+  after.decoding = "async";
+  hideOnError(after);
+  const before = element("img", "gallery-card__image gallery-card__original");
+  before.src = entry.before_url;
+  before.alt = "";
+  before.loading = "lazy";
+  before.decoding = "async";
+  hideOnError(before);
+  const mode = element("span", "gallery-card__mode", "after");
+  well.append(after, before, mode);
+  if (isSeed) well.append(element("span", "gallery-card__badge", "Example"));
+  well.addEventListener("click", () => {
+    const showBefore = card.classList.toggle("is-before");
+    well.setAttribute("aria-pressed", String(showBefore));
+    mode.textContent = showBefore ? "before" : "after";
+  });
+  well.addEventListener("mouseenter", () => { mode.textContent = "before"; });
+  well.addEventListener("mouseleave", () => {
+    mode.textContent = card.classList.contains("is-before") ? "before" : "after";
+  });
+
+  const body = element("div", "gallery-card__body");
+  const prompt = element("p", "gallery-card__prompt", entry.prompt || "Untitled look");
+  if (entry.prompt) prompt.title = entry.prompt;
+  const actions = element("div", "gallery-card__actions");
+  const useButton = element("button", "btn btn--ghost gallery-card__use");
+  useButton.type = "button";
+  useButton.append(svgIcon("arrow"), element("span", "", "Use prompt"));
+  useButton.addEventListener("click", () => usePrompt(entry.prompt || ""));
+  const downloadButton = element("button", "btn btn--secondary gallery-card__download");
+  downloadButton.type = "button";
+  downloadButton.append(svgIcon("download"), element("span", "", "Download .cube"));
+  const filename = `chroma_${slug(entry.prompt || entry.id || "look")}.cube`;
+  downloadButton.addEventListener("click", () => downloadCube(entry.cube_url, filename, downloadButton));
+  actions.append(useButton, downloadButton);
+  body.append(prompt, actions);
+
+  card.append(well, body);
+  return card;
+}
+
+async function loadSeedGrades() {
+  try {
+    const response = await fetch("/gallery_seeds/seeds.json", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const seeds = await response.json();
+    return Array.isArray(seeds) ? seeds.filter((seed) => seed && seed.after_url && seed.before_url) : [];
+  } catch (error) {
+    console.warn("Gallery examples unavailable:", error.message);
+    return [];
+  }
+}
+
+async function loadSavedGrades() {
+  if (MOCK_MODE) return state.mockGallery;
+  try {
+    const response = await fetch("/api/gallery", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return Array.isArray(data?.entries) ? data.entries : [];
+  } catch (error) {
+    console.warn("Saved grades unavailable:", error.message);
+    return [];
+  }
+}
+
+async function loadGallery() {
+  const grid = dom.galleryGrid;
+  if (!grid) return;
+  const [seeds, saved] = await Promise.all([loadSeedGrades(), loadSavedGrades()]);
+  const cards = [
+    ...seeds.map((seed) => galleryCard(seed, { isSeed: true })),
+    ...saved.map((entry) => galleryCard(entry, { isSeed: false })),
+  ];
+  grid.setAttribute("aria-busy", "false");
+  if (!cards.length) {
+    grid.replaceChildren(element("p", "gallery-empty", "No saved grades yet. Generate one above to get started."));
+    return;
+  }
+  grid.replaceChildren(...cards);
+}
+
+function refreshGalleryAfterGrade(data) {
+  // Real mode: the server persisted this grade during the request, so just re-fetch.  Mock mode has
+  // no backend, so prepend a transient client-only card from the rendered preview.
+  if (MOCK_MODE) {
+    const preview = Array.isArray(data.previews) ? data.previews[0] : null;
+    if (preview?.original_url && preview?.graded_url && data.lut?.cube_url) {
+      state.mockGallery.unshift({
+        id: `mock-${(state.nextTermId += 1)}`,
+        prompt: dom.prompt.value.trim(),
+        before_url: preview.original_url,
+        after_url: preview.graded_url,
+        cube_url: data.lut.cube_url,
+      });
+    }
+  }
+  loadGallery();
+}
+
 function init() {
   dom.modeBadge.hidden = !MOCK_MODE;
   wireEvents();
   autoGrowPrompt();
   updateGenerateAvailability();
   loadTerms();
+  loadGallery();
 }
 
 init();

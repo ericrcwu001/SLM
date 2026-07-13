@@ -1,0 +1,26 @@
+[
+  {
+    "id": "warm-golden-hour",
+    "prompt": "Warm golden-hour glow: push the whites toward amber, lift the shadows into a soft matte, and keep skin tones natural.",
+    "spec_text": "route=grade | warmer=+2.4 lifted_blacks=+1.6 matte_strength=+1.2 highlight_hue=48",
+    "before_url": "/gallery_seeds/warm-golden-hour/before.jpg",
+    "after_url": "/gallery_seeds/warm-golden-hour/after.jpg",
+    "cube_url": "/gallery_seeds/warm-golden-hour/lut.cube"
+  },
+  {
+    "id": "teal-orange-cinematic",
+    "prompt": "Cinematic teal-and-orange: cool the shadows toward deep teal, warm the highlights, and crush the blacks for punchy contrast.",
+    "spec_text": "route=grade | more_contrast=+3.2 split_tone_strength=+3.0 shadow_hue=195 highlight_hue=42",
+    "before_url": "/gallery_seeds/teal-orange-cinematic/before.jpg",
+    "after_url": "/gallery_seeds/teal-orange-cinematic/after.jpg",
+    "cube_url": "/gallery_seeds/teal-orange-cinematic/lut.cube"
+  },
+  {
+    "id": "faded-vintage-film",
+    "prompt": "Faded vintage film: mute the color, fade the blacks to a milky charcoal, and add a subtle warm-green cast in the midtones.",
+    "spec_text": "route=grade | chroma_delta=-2.6 lifted_blacks=+2.8 matte_strength=+2.4 midtone_hue=95",
+    "before_url": "/gallery_seeds/faded-vintage-film/before.jpg",
+    "after_url": "/gallery_seeds/faded-vintage-film/after.jpg",
+    "cube_url": "/gallery_seeds/faded-vintage-film/lut.cube"
+  }
+]

@@ -65,6 +65,11 @@ class ServerConfig:
     max_upload_mb: int = 20
     max_image_edge: int = 2048
     request_timeout_s: int = 600
+    # Shared, persisted gallery of generated grades.  On Modal, gallery_dir points at a Volume so
+    # entries survive scale-to-zero; disable entirely with gallery_enabled=false.
+    gallery_dir: str = "webapp/_gallery"
+    gallery_max_entries: int = 40
+    gallery_enabled: bool = True
 
 
 @dataclass
@@ -113,6 +118,8 @@ class WebappConfig:
             raise ValueError("generator max_pixels must be >= min_pixels")
         if self.server.max_upload_mb < 1 or self.server.max_image_edge < 64:
             raise ValueError("server upload/image limits are invalid")
+        if self.server.gallery_max_entries < 1:
+            raise ValueError("server.gallery_max_entries must be >= 1")
 
 
 def load_interpreter(cfg: WebappConfig):

@@ -1,4 +1,8 @@
-from webapp.models_config import _match_embedding_rows
+import json
+
+import pytest
+
+from webapp.models_config import WebappConfig, _match_embedding_rows
 
 
 class _Embedding:
@@ -38,3 +42,34 @@ def test_matching_embedding_rows_are_left_untouched():
     model = _Model(151924)
     _match_embedding_rows(model, _Tokenizer(151924))
     assert model.resizes == []
+
+
+def _write_config(tmp_path, server_overrides: dict):
+    server = {
+        "runs_dir": "webapp/_runs",
+        "static_dir": "webapp/static",
+        "references_dir": "webapp/assets/references",
+        **server_overrides,
+    }
+    path = tmp_path / "webapp.json"
+    path.write_text(json.dumps({"device": "cpu", "server": server}), encoding="utf-8")
+    return path
+
+
+def test_gallery_config_defaults_and_overrides(tmp_path):
+    default_cfg = WebappConfig.load(_write_config(tmp_path, {}))
+    assert default_cfg.server.gallery_dir == "webapp/_gallery"
+    assert default_cfg.server.gallery_max_entries == 40
+    assert default_cfg.server.gallery_enabled is True
+
+    override = WebappConfig.load(
+        _write_config(tmp_path, {"gallery_dir": "/data/gallery", "gallery_max_entries": 60, "gallery_enabled": False})
+    )
+    assert override.server.gallery_dir == "/data/gallery"
+    assert override.server.gallery_max_entries == 60
+    assert override.server.gallery_enabled is False
+
+
+def test_gallery_max_entries_must_be_positive(tmp_path):
+    with pytest.raises(ValueError, match="gallery_max_entries"):
+        WebappConfig.load(_write_config(tmp_path, {"gallery_max_entries": 0}))

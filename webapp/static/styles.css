@@ -1,48 +1,85 @@
-:root {
+/* ============================================================================
+   Canonical design-system tokens (shared across all Chroma sites, light + dark).
+   Pasted verbatim from playground/_shared/THEME_CONTRACT.md §2. Dark is default;
+   :root[data-theme="light"] overrides. Every app-specific alias below re-points
+   to these --c-* tokens so the whole app is theme-aware at once.
+   ============================================================================ */
+:root{
   color-scheme: dark;
+  /* Surfaces */
+  --c-bg:#0A0B0D; --c-surface-1:#101216; --c-surface-2:#16181D; --c-surface-3:#1D2026; --c-inset:#07080A;
+  --c-line:rgba(255,255,255,0.08); --c-line-strong:rgba(255,255,255,0.15);
+  /* Text */
+  --c-text:#F3F5F8; --c-text-2:#A9B1BD; --c-text-3:#7F8999;
+  /* Brand accent (gold) */
+  --c-accent:#E8A860; --c-accent-fill:#E8A860; --c-accent-2:#F3BE7C; --c-accent-soft:rgba(232,168,96,0.12); --c-on-accent:#1A130A;
+  /* Data-encoding palette (charts, tiers) — consistent meaning everywhere */
+  --c-gold:#E8A860;   /* positive / gold-tier / supported / OUR MODEL */
+  --c-teal:#5CC7BE;   /* secondary series */
+  --c-steel:#7FA0B7;  /* neutral / diagnostic */
+  --c-coral:#E06B6B;  /* negative / rejected / refuse / fail */
+  --c-mint:#86D6A8;   /* alt positive / pass */
+  --c-amber:#E0B14E;  /* warn */
+  --c-shadow:rgba(0,0,0,0.55); --c-backdrop:rgba(5,6,8,0.72);
+  /* Type */
+  --c-sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --c-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --c-bg:#F3EFE7; --c-surface-1:#FBFAF5; --c-surface-2:#FFFFFF; --c-surface-3:#EFEBE1; --c-inset:#ECE7DB;
+  --c-line:rgba(23,27,27,0.12); --c-line-strong:rgba(23,27,27,0.24);
+  --c-text:#171B1B; --c-text-2:#4A524F; --c-text-3:#6E7572;
+  --c-accent:#9A6512; --c-accent-fill:#C98A2E; --c-accent-2:#B4791F; --c-accent-soft:rgba(154,101,18,0.12); --c-on-accent:#1A130A;
+  --c-gold:#9A6512; --c-teal:#2E8F86; --c-steel:#4E7288; --c-coral:#C0504A; --c-mint:#357D59; --c-amber:#B9832A;
+  --c-shadow:rgba(32,36,32,0.16); --c-backdrop:rgba(40,40,35,0.35);
+}
 
-  --bg-0: #0A0B0D;
-  --bg-1: #101216;
-  --surface: #16181D;
-  --surface-2: #1D2026;
-  --surface-3: #24272F;
-  --surface-inset: #0D0F12;
+:root {
+  /* App aliases — VALUES re-pointed to canonical --c-* per THEME_CONTRACT §3a.
+     Names are unchanged so all component CSS below stays untouched. */
+  --bg-0: var(--c-bg);
+  --bg-1: var(--c-surface-1);
+  --surface: var(--c-surface-2);
+  --surface-2: var(--c-surface-3);
+  --surface-3: color-mix(in srgb, var(--c-surface-3) 80%, var(--c-text) 7%);
+  --surface-inset: var(--c-inset);
 
-  --border: #262A31;
-  --border-strong: #343A44;
-  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border: var(--c-line-strong);
+  --border-strong: var(--c-line-strong);
+  --border-subtle: var(--c-line);
   --transparent: transparent;
 
-  --text-primary: #F3F5F8;
-  --text-secondary: #A9B1BD;
-  --text-tertiary: #7F8999;
-  --text-disabled: #454B55;
+  --text-primary: var(--c-text);
+  --text-secondary: var(--c-text-2);
+  --text-tertiary: var(--c-text-3);
+  --text-disabled: color-mix(in srgb, var(--c-text-3) 52%, var(--c-bg));
 
-  --accent: #E8A860;
-  --accent-hover: #F3BE7C;
-  --accent-press: #D2924A;
-  --accent-contrast: #1A130A;
-  --accent-wash: rgba(232, 168, 96, 0.12);
-  --accent-glow: rgba(232, 168, 96, 0.28);
+  --accent: var(--c-accent);
+  --accent-hover: var(--c-accent-2);
+  --accent-press: var(--c-accent);
+  --accent-contrast: var(--c-on-accent);
+  --accent-wash: var(--c-accent-soft);
+  --accent-glow: color-mix(in srgb, var(--c-accent) 30%, transparent);
 
-  --teal: #5CC7BE;
-  --teal-wash: rgba(92, 199, 190, 0.12);
-  --success: #57C08A;
-  --success-wash: rgba(87, 192, 138, 0.12);
-  --warn: #E0B14E;
-  --warn-wash: rgba(224, 177, 78, 0.12);
-  --error: #E06B6B;
-  --error-wash: rgba(224, 107, 107, 0.12);
-  --backdrop: rgba(5, 6, 8, 0.72);
-  --image-well: #07080A;
-  --shadow-color: rgba(0, 0, 0, 0.55);
+  --teal: var(--c-teal);
+  --teal-wash: color-mix(in srgb, var(--c-teal) 14%, transparent);
+  --success: var(--c-mint);
+  --success-wash: color-mix(in srgb, var(--c-mint) 14%, transparent);
+  --warn: var(--c-amber);
+  --warn-wash: color-mix(in srgb, var(--c-amber) 14%, transparent);
+  --error: var(--c-coral);
+  --error-wash: color-mix(in srgb, var(--c-coral) 14%, transparent);
+  --backdrop: var(--c-backdrop);
+  --image-well: var(--c-inset);
+  --shadow-color: var(--c-shadow);
 
   --panel-bg: var(--bg-1);
   --card-bg: var(--surface);
   --input-bg: var(--surface-2);
 
-  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: var(--c-sans);
+  --font-mono: var(--c-mono);
   --fs-display: 2.25rem;
   --fs-h1: 1.5rem;
   --fs-h2: 1.125rem;
@@ -87,10 +124,10 @@
   --border-w: 1px;
   --border-w-strong: 2px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
-  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 2px var(--c-shadow);
+  --shadow-md: 0 4px 16px var(--c-shadow);
+  --shadow-lg: 0 16px 48px var(--c-shadow);
+  --shadow-pop: 0 12px 32px var(--c-shadow);
   --ring: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--accent-glow);
 
   --dur-fast: 120ms;
@@ -640,7 +677,9 @@ h3 {
 
 .btn--primary {
   min-width: calc(var(--space-8) * 2.5);
-  background: var(--accent);
+  /* Use the canonical FILL token (identical to --c-accent in dark; a lighter gold
+     in light) so the dark on-accent label keeps >=4.5:1 contrast in both modes. */
+  background: var(--c-accent-fill);
   color: var(--accent-contrast);
 }
 
@@ -1061,6 +1100,129 @@ h3 {
 .ref-card:hover .ref-card__mode,
 .ref-card.is-before .ref-card__mode {
   color: var(--accent);
+}
+
+/* Gallery of saved grades -------------------------------------------------- */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.gallery-empty {
+  grid-column: 1 / -1;
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.gallery-card:hover,
+.gallery-card:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(var(--hover-lift));
+}
+
+.gallery-card__well {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 0;
+  background: var(--image-well);
+  cursor: pointer;
+}
+
+.gallery-card__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.gallery-card__original {
+  opacity: 0;
+}
+
+.gallery-card__well:hover .gallery-card__original,
+.gallery-card.is-before .gallery-card__original {
+  opacity: 1;
+}
+
+.gallery-card__mode {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  padding: 2px var(--space-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bg-0) 66%, var(--transparent));
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+
+.gallery-card__badge {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  padding: 2px var(--space-2);
+  border: var(--border-w) solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+}
+
+.gallery-card__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: var(--border-w) solid var(--border);
+}
+
+.gallery-card__prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-label);
+  line-height: var(--lh-label);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.gallery-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+.gallery-card__actions .btn {
+  flex: 1 1 auto;
 }
 
 .feedback {
@@ -1539,9 +1701,9 @@ h3 {
 .footer {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-4);
   padding-top: var(--space-6);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -1588,7 +1750,8 @@ body.is-drawer-open {
 @media (max-width: 1023px) {
   .reference-grid,
   .skeleton-grid,
-  .idle__grid {
+  .idle__grid,
+  .gallery-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1654,7 +1817,8 @@ body.is-drawer-open {
 
   .reference-grid,
   .skeleton-grid,
-  .idle__grid {
+  .idle__grid,
+  .gallery-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1714,7 +1878,75 @@ body.is-drawer-open {
 
   .ref-card:hover,
   .ref-card:focus-visible,
+  .gallery-card:hover,
+  .gallery-card:focus-within,
   .upload.is-dragover {
     transform: none;
+  }
+}
+
+/* ============================================================================
+   Shared cross-site nav links + theme toggle (THEME_CONTRACT §4). Integrated
+   into the app's existing .header__actions rather than a foreign .xnav, so the
+   tool keeps its own header UX while sharing the same links, toggle, and tokens
+   as the other Chroma sites. All values are canonical --c-* tokens.
+   ============================================================================ */
+.xnav-links { display: flex; align-items: center; gap: 30px; }
+.xnav-links a { font: 500 13.5px/1 var(--c-sans); color: var(--c-text-2); text-decoration: none; transition: color .18s; }
+.xnav-links a:hover { color: var(--c-text); }
+.xnav-links a[aria-current="page"] { color: var(--c-accent); }
+
+.xtheme {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--c-line-strong);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: color .18s, border-color .18s;
+}
+.xtheme:hover { color: var(--c-accent); border-color: var(--c-accent); }
+.xtheme-sun { display: none; }
+:root[data-theme="light"] .xtheme-moon { display: none; }
+:root[data-theme="light"] .xtheme-sun { display: block; }
+
+/* Footer cross-links (keeps the app's mono fact row, adds token-based links). */
+.footer__facts,
+.footer__links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-4);
+}
+.footer__links {
+  font-family: var(--font-sans);
+}
+.footer__links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+.footer__links a:hover {
+  color: var(--accent);
+}
+
+/* App-specific light-mode refinement: deepen the pressed accent (THEME_CONTRACT
+   §3a "--accent-press [light: deepen]") using tokens only. */
+:root[data-theme="light"] {
+  --accent-press: color-mix(in srgb, var(--c-accent) 84%, var(--c-on-accent));
+}
+
+@media (max-width: 720px) {
+  .xnav-links { gap: 18px; }
+  .xnav-links a { font-size: 12.5px; }
+}
+
+@media (max-width: 639px) {
+  .footer {
+    justify-content: center;
   }
 }

@@ -1,0 +1,121 @@
+<!-- ===== NEXT STEPS: GRPO (insert after #baselines dashboard) ===== -->
+<style>
+  .grpo-status{display:inline-flex;align-items:center;gap:10px;margin:6px 0 26px;padding:8px 14px;border-radius:999px;
+    border:1px solid color-mix(in srgb,var(--c-amber) 45%,transparent);background:color-mix(in srgb,var(--c-amber) 12%,transparent);
+    font:500 .74rem/1 var(--c-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--c-amber);}
+  .grpo-status .gdot{width:8px;height:8px;border-radius:50%;background:var(--c-amber);box-shadow:0 0 10px color-mix(in srgb,var(--c-amber) 70%,transparent);}
+  .grpo-lead{max-width:760px;color:var(--c-text-2);font-size:clamp(1rem,1.5vw,1.16rem);line-height:1.6;margin:0 0 30px;}
+  .grpo-lead b{color:var(--c-text);font-weight:600;}
+
+  .grpo-cols{display:grid;grid-template-columns:1fr 1fr;gap:clamp(16px,2vw,24px);}
+  @media(max-width:900px){.grpo-cols{grid-template-columns:1fr;}}
+  .grpo-panel{border:1px solid var(--c-line);border-radius:var(--radius-md);background:var(--c-surface-1);padding:24px;}
+  .grpo-panel.evidence{border-color:color-mix(in srgb,var(--c-mint) 30%,var(--c-line));}
+  .grpo-panel.counter{border-color:color-mix(in srgb,var(--c-steel) 32%,var(--c-line));}
+  .grpo-panel .gp-head{display:flex;align-items:center;gap:10px;margin:0 0 4px;font:500 .72rem/1 var(--c-mono);text-transform:uppercase;letter-spacing:.11em;}
+  .grpo-panel.evidence .gp-head{color:var(--c-mint);}
+  .grpo-panel.counter .gp-head{color:var(--c-steel);}
+  .grpo-panel h3{margin:0 0 18px;font:500 1.15rem/1.25 var(--c-sans);letter-spacing:-.01em;color:var(--c-text);}
+
+  .grpo-item{padding:14px 0;border-top:1px solid var(--c-line);}
+  .grpo-item:first-of-type{border-top:0;padding-top:4px;}
+  .grpo-item .gi-t{display:block;font:600 .92rem/1.4 var(--c-sans);color:var(--c-text);margin-bottom:4px;}
+  .grpo-item .gi-b{font-size:.86rem;line-height:1.55;color:var(--c-text-2);}
+  .grpo-item .gi-b code, .grpo-item .gi-t code{font-family:var(--c-mono);font-size:.86em;color:var(--c-accent);background:var(--c-accent-soft);padding:1px 5px;border-radius:4px;}
+  .grpo-item .gi-b strong{color:var(--c-text);font-weight:600;}
+
+  .grpo-evi-metric{display:inline-flex;align-items:baseline;gap:6px;margin:2px 8px 2px 0;font-family:var(--c-mono);}
+  .grpo-evi-metric .m-v{font-size:1.02rem;color:var(--c-mint);font-weight:500;}
+  .grpo-evi-metric .m-k{font-size:.72rem;color:var(--c-text-3);text-transform:uppercase;letter-spacing:.06em;}
+
+  .grpo-cheap{grid-column:1 / -1;border:1px solid color-mix(in srgb,var(--c-accent) 32%,var(--c-line));border-radius:var(--radius-md);
+    background:var(--c-accent-soft);padding:24px;display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;}
+  .grpo-cheap .gc-icon{flex:0 0 auto;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;
+    background:var(--c-accent-fill);color:var(--c-on-accent);font:600 1.1rem/1 var(--c-sans);}
+  .grpo-cheap .gc-body{flex:1;min-width:240px;}
+  .grpo-cheap h3{margin:0 0 6px;font:500 1.05rem/1.3 var(--c-sans);color:var(--c-text);}
+  .grpo-cheap p{margin:0;font-size:.9rem;line-height:1.6;color:var(--c-text-2);}
+  .grpo-cheap p strong{color:var(--c-text);}
+
+  .grpo-config{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;}
+  .grpo-chip{font:500 .72rem/1 var(--c-mono);padding:7px 11px;border-radius:6px;border:1px solid var(--c-line-strong);
+    background:var(--c-surface-2);color:var(--c-text-2);}
+  .grpo-chip b{color:var(--c-accent);font-weight:600;}
+</style>
+
+<section class="section section-compact" id="next-steps" aria-labelledby="grpo-title">
+  <div class="shell">
+    <p class="section-kicker reveal">Roadmap · not done yet</p>
+    <h2 class="display section-title reveal" id="grpo-title">Next step: GRPO.</h2>
+    <div class="grpo-status reveal"><span class="gdot" aria-hidden="true"></span>Planned · needs more A100 time + compute · no shipped result</div>
+    <p class="grpo-lead reveal">The dashboard above is honest about the gap: free-running greedy generation collapses to <b>≈0.16</b> behavioral fidelity (<b>~94%</b> collapse), while sample-and-rerank best-of-N already reaches <b>≈0.42</b>. The next step is <b>GRPO</b> — on-policy RL to bake that covered-but-unselected quality into a single deterministic greedy pass. It is <b>not run yet</b>; it needs GPU time and may need knob tuning. Here is why the bet is worth making — and where it could fail.</p>
+
+    <div class="grpo-cols">
+      <!-- EVIDENCE -->
+      <div class="grpo-panel evidence reveal">
+        <p class="gp-head">◆ The strongest evidence — from our own data</p>
+        <h3>Why it should work</h3>
+        <div class="grpo-item">
+          <span class="gi-t">Coverage already exists</span>
+          <span class="gi-b"><span class="grpo-evi-metric"><span class="m-v">0.42</span><span class="m-k">oracle@32</span></span><span class="grpo-evi-metric"><span class="m-v">0.42</span><span class="m-k">best-of-N</span></span><br>The good trajectories are already in the policy's sampling distribution — greedy just doesn't pick them. GRPO only has to <strong>shift mass toward behavior the model already produces</strong>, not discover new capability. That is the easy case for policy gradient.</span>
+        </div>
+        <div class="grpo-item">
+          <span class="gi-t">High within-prompt variance = strong learning signal</span>
+          <span class="gi-b">Sample-<code>t0.7</code> mean fidelity is only <strong>~0.09</strong>, but the best of 32 is <strong>~0.42</strong>. That heavy right tail gives each group of rollouts a wide reward spread — exactly what group-relative advantage exploits (it pushes toward the top of each group). <strong>Low mean + high max is the favorable signature</strong>, not a red flag.</span>
+        </div>
+        <div class="grpo-item">
+          <span class="gi-t">The capability is there</span>
+          <span class="gi-b">Teacher-forced fidelity is <strong>0.708</strong> — given a good prefix the model renders the spec fine. The failure is purely free-running collapse (the GRPO run initializes right here: greedy ≈0.16, collapse >90%). On-policy RL trains on the model's own rollouts — the textbook fix for exactly this <strong>exposure-bias</strong> mismatch.</span>
+        </div>
+        <div class="grpo-item">
+          <span class="gi-t">Our own gate points here</span>
+          <span class="gi-b">The <code>oracle_at_n</code> rule: ≥0.6 → distill · 0.3–0.6 → <strong>capped</strong> · ≤0.3 → escalate. At <strong>0.42</strong> we're in the capped band — best-of-N ships today, distillation alone is capped, so <strong>RL/GRPO is the escalation of record</strong>.</span>
+        </div>
+      </div>
+
+      <!-- COUNTER-CASE + LITERATURE -->
+      <div class="grpo-panel counter reveal">
+        <p class="gp-head">◇ The honest counter-case</p>
+        <h3>Where it could fall short</h3>
+        <div class="grpo-item">
+          <span class="gi-t">RL sharpens more than it invents</span>
+          <span class="gi-b">The realistic target is greedy climbing toward <strong>~0.42</strong> — best-of-N parity, but in one deterministic pass — <strong>not blowing past it</strong>. Reaching 0.42 is the win; 0.7 is not expected.</span>
+        </div>
+        <div class="grpo-item">
+          <span class="gi-t">Reward hacking is real</span>
+          <span class="gi-b">The reward only scores requested axes, so the policy can game them (dominant-code collapse, ΔE drift). That is why the <strong>collapse penalty + guard panel + KL-to-P6</strong> exist. If it hacks, ΔE/collapse rise — and <code>BEST</code> won't promote it.</span>
+        </div>
+        <div class="grpo-item">
+          <span class="gi-t">Movement may be weak or slow</span>
+          <span class="gi-b">3B QLoRA, <code>lr 5e-6</code>, <code>μ=1</code> — a conservative REINFORCE+KL. It might need more than 500 steps, or knob tuning.</span>
+        </div>
+        <div class="grpo-item">
+          <span class="gi-t">Literature prior</span>
+          <span class="gi-b">GRPO/RLHF in the <strong>pass@k ≫ pass@1</strong> regime (DeepSeekMath / R1 and the broader RLHF literature) reliably raises greedy/pass@1 toward pass@k by sharpening onto high-reward modes already sampled — precisely <strong>greedy 0.16 vs oracle 0.42</strong>.</span>
+        </div>
+      </div>
+
+      <!-- WHY CHEAP -->
+      <div class="grpo-cheap reveal">
+        <div class="gc-icon" aria-hidden="true">↧</div>
+        <div class="gc-body">
+          <h3>Why the bet is cheap</h3>
+          <p><code>BEST</code> only promotes a <strong>guard-clean fidelity improvement</strong>. Worst case, GRPO doesn't help and <code>BEST</code> stays at the ~0.16 init — you've spent GPU time, not shipped a regression. <strong>You cannot end up worse than P6.</strong></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grpo-config reveal" aria-label="GRPO run configuration">
+      <span class="grpo-chip">init <b>P6 two-stage</b></span>
+      <span class="grpo-chip">3B <b>QLoRA</b> (r16)</span>
+      <span class="grpo-chip">grpo_lr <b>5e-6</b></span>
+      <span class="grpo-chip">μ <b>1</b></span>
+      <span class="grpo-chip">group <b>8</b></span>
+      <span class="grpo-chip">KL β <b>0.05</b></span>
+      <span class="grpo-chip">steps <b>500</b></span>
+      <span class="grpo-chip">reward: <b>free-running behavioral</b> + collapse penalty</span>
+      <span class="grpo-chip">promote <b>BEST</b>, not latest</span>
+    </div>
+  </div>
+</section>
+<!-- ===== END NEXT STEPS: GRPO ===== -->

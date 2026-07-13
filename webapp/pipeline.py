@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -58,14 +59,35 @@ class PromptToLutPipeline:
         self.interp_model = self.interp_tok = self.interp_device = None
         self.gen_model = self.gen_processor = None
         self.load_error: str | None = None
-        if not cfg.generator.stub:
-            # A bad model path must surface via /api/health, not crash construction (which would take
-            # the whole SPA down); self_check() reports the specific failure and generate() returns 503.
+        self._load_lock = threading.Lock()
+        # NOTE: weights are NOT loaded here.  Construction stays cheap so the FastAPI lifespan
+        # yields immediately and the SPA/static assets serve without waiting on multi-GB model
+        # loads.  The server calls load_models() lazily (on image upload / first grade).
+
+    def load_models(self) -> None:
+        """Load the interpreter + generator weights once — idempotent and thread-safe.
+
+        Heavy (multi-GB, moves tensors onto the GPU); deliberately kept OUT of __init__ so that
+        serving the page never blocks on it.  The web server invokes this from a worker thread the
+        moment an image is uploaded, so the models are usually warm by the time the user submits a
+        prompt.  A bad model path surfaces via load_error (reported by /api/health) rather than
+        raising, matching the previous construction-time behaviour.
+        """
+        if self.cfg.generator.stub or self.is_ready():
+            return
+        with self._load_lock:
+            if self.is_ready():  # another thread finished the load while we waited on the lock
+                return
             try:
-                self.interp_model, self.interp_tok, self.interp_device = load_interpreter(cfg)
-                self.gen_model, self.gen_processor = load_generator(cfg)
+                interp = load_interpreter(self.cfg)
+                gen = load_generator(self.cfg)
             except Exception as exc:
                 self.load_error = f"{type(exc).__name__}: {exc}"
+                return
+            # Publish only after BOTH succeed, so a partial failure never leaves is_ready() True.
+            self.interp_model, self.interp_tok, self.interp_device = interp
+            self.gen_model, self.gen_processor = gen
+            self.load_error = None
 
     def is_ready(self) -> bool:
         """True when the pipeline can serve a grade (stub always; real needs both models loaded)."""

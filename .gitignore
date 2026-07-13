@@ -64,6 +64,8 @@ models/
 
 # Local web demo request artifacts and downloaded model snapshots.
 webapp/_runs/
+# Shared gallery of generated grades (persisted on a Modal Volume in prod; local runtime state here).
+webapp/_gallery/
 
 # slm_stage local shard staging dir (downloaded/extracted shards + resume markers).
 **/.shards/

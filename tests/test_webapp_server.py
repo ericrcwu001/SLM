@@ -52,6 +52,37 @@ def test_stub_api_contract_and_artifact_serving():
         assert refuse["lut"] is None and refuse["previews"] == []
 
 
+def test_grade_is_saved_to_gallery_and_served():
+    # Match on a unique prompt rather than exact counts/positions so the assertions hold even if the
+    # shared on-disk gallery dir has other entries (order itself is covered by the unit tests).
+    with TestClient(app) as client:
+        marker = "gallery probe: warmer with strong teal-orange contrast"
+        clarify_prompt = "make it pop"  # the stub routes this to clarify (a vague, no-direction prompt)
+
+        grade = _post(client, marker)
+        assert grade.status_code == 200 and grade.json()["route"] == "grade"
+
+        entries = client.get("/api/gallery").json()["entries"]
+        mine = next(e for e in entries if e["prompt"] == marker)
+        assert mine["spec_text"] and mine["before_url"].startswith("/gallery/")
+        for key in ("before_url", "after_url", "cube_url"):
+            assert client.get(mine[key]).status_code == 200
+        assert "LUT_3D_SIZE 17" in client.get(mine["cube_url"]).text
+
+        # A clarify (no LUT) must never produce a gallery entry.  "make it pop" always routes to
+        # clarify, so no gallery entry ever carries that prompt regardless of other writers.
+        assert _post(client, clarify_prompt).json()["route"] == "clarify"
+        after_clarify = client.get("/api/gallery").json()["entries"]
+        assert not any(e["prompt"] == clarify_prompt for e in after_clarify)
+
+        # Persisted on disk: a fresh store over the same directory sees the saved grade.
+        from webapp.gallery import GalleryStore
+        from webapp.server import GALLERY_DIR
+
+        reopened = GalleryStore(GALLERY_DIR, max_entries=1000).list()
+        assert any(entry["prompt"] == marker for entry in reopened)
+
+
 def test_bad_image_has_structured_error_and_server_recovers():
     with TestClient(app) as client:
         response = client.post(

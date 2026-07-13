@@ -1,0 +1,228 @@
+<!-- ===== RESULTS DASHBOARD (insert at #baselines) ===== -->
+<style>
+  .dash-shell{--dash-gap:clamp(16px,2vw,24px);}
+  .dash-legend{display:flex;flex-wrap:wrap;gap:10px 22px;margin:22px 0 8px;font-size:.82rem;color:var(--c-text-2);}
+  .dash-legend b{display:inline-flex;align-items:center;gap:8px;font-weight:500;}
+  .dash-dot{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .dash-tag{font:500 .64rem/1 var(--c-mono);text-transform:uppercase;letter-spacing:.1em;padding:3px 7px;border-radius:999px;border:1px solid var(--c-line-strong);color:var(--c-text-3);}
+  .dash-tag.measured{color:var(--c-mint);border-color:color-mix(in srgb,var(--c-mint) 45%,transparent);}
+  .dash-tag.pending{color:var(--c-steel);border-color:color-mix(in srgb,var(--c-steel) 45%,transparent);}
+  .dash-tag.construct{color:var(--c-accent);border-color:color-mix(in srgb,var(--c-accent) 45%,transparent);}
+
+  .dash-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--dash-gap);margin:34px 0;}
+  @media(max-width:820px){.dash-kpis{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:460px){.dash-kpis{grid-template-columns:1fr;}}
+  .dash-kpi{border:1px solid var(--c-line);border-radius:var(--radius-md);background:var(--c-surface-1);padding:22px 20px;position:relative;overflow:hidden;}
+  .dash-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kpi-tone,var(--c-accent));}
+  .dash-kpi .kpi-num{font:400 2.4rem/1 var(--c-sans);letter-spacing:-.03em;color:var(--c-text);}
+  .dash-kpi .kpi-num small{font-size:1rem;color:var(--c-text-2);letter-spacing:0;}
+  .dash-kpi .kpi-lab{margin-top:10px;font-size:.82rem;line-height:1.45;color:var(--c-text-2);}
+
+  .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--dash-gap);}
+  @media(max-width:900px){.dash-grid{grid-template-columns:1fr;}}
+  .dash-card{border:1px solid var(--c-line);border-radius:var(--radius-md);background:var(--c-surface-1);padding:24px 24px 20px;margin:0;}
+  .dash-card.wide{grid-column:1 / -1;}
+  .dash-card h3{margin:0;font:500 1.02rem/1.3 var(--c-sans);color:var(--c-text);letter-spacing:-.01em;}
+  .dash-card .dash-sub{margin:6px 0 20px;font-size:.8rem;line-height:1.5;color:var(--c-text-3);}
+  .dash-card figcaption{margin:16px 0 0;font-size:.76rem;line-height:1.5;color:var(--c-text-3);border-top:1px solid var(--c-line);padding-top:12px;}
+
+  .dash-bars{display:flex;flex-direction:column;gap:13px;}
+  .dbar{display:grid;grid-template-columns:132px 1fr auto;align-items:center;gap:14px;}
+  @media(max-width:520px){.dbar{grid-template-columns:96px 1fr auto;gap:9px;}}
+  .dbar .dbar-name{font-size:.82rem;color:var(--c-text-2);}
+  .dbar .dbar-name.ours{color:var(--c-accent);font-weight:600;}
+  .dbar .dbar-track{height:22px;border-radius:6px;background:color-mix(in srgb,var(--c-text) 8%,transparent);overflow:hidden;position:relative;}
+  .dbar .dbar-fill{height:100%;width:calc(var(--val) * 1%);border-radius:6px;background:var(--tone,var(--c-steel));transition:width 1s cubic-bezier(.2,.8,.2,1);min-width:2px;}
+  .dbar .dbar-fill.ours{background:var(--c-accent);background-image:linear-gradient(90deg,var(--c-accent),var(--c-accent-2));}
+  .dbar .dbar-val{font:500 .8rem/1 var(--c-mono);color:var(--c-text);white-space:nowrap;}
+  .dbar .dbar-val .vsub{color:var(--c-text-3);}
+
+  .dash-budget{display:flex;align-items:center;gap:26px;flex-wrap:wrap;}
+  .dash-budget .bud-col{flex:1;min-width:160px;}
+  .dash-budget .bud-num{font:400 2.6rem/1 var(--c-sans);letter-spacing:-.03em;color:var(--c-text);}
+  .dash-budget .bud-num.ours{color:var(--c-accent);}
+  .dash-budget .bud-lab{margin-top:6px;font-size:.8rem;color:var(--c-text-2);}
+  .dash-budget .bud-ratio{font:500 .8rem/1 var(--c-mono);color:var(--c-mint);border:1px solid color-mix(in srgb,var(--c-mint) 40%,transparent);border-radius:999px;padding:6px 12px;}
+
+  .dash-proxy{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--dash-gap);}
+  @media(max-width:760px){.dash-proxy{grid-template-columns:1fr;}}
+  .proxy-block{border:1px solid var(--c-line);border-radius:var(--radius-sm);padding:16px;background:color-mix(in srgb,var(--c-surface-2) 60%,transparent);}
+  .proxy-block h4{margin:0 0 4px;font:500 .82rem/1.3 var(--c-sans);color:var(--c-text);}
+  .proxy-block .pb-note{font-size:.72rem;color:var(--c-text-3);margin:0 0 12px;line-height:1.4;}
+  .proxy-stat{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-top:1px dashed var(--c-line);font-size:.78rem;color:var(--c-text-2);}
+  .proxy-stat:first-of-type{border-top:0;}
+  .proxy-stat b{font:500 .86rem/1 var(--c-mono);color:var(--c-text);}
+  .proxy-stat b.good{color:var(--c-mint);} .proxy-stat b.warn{color:var(--c-coral);}
+
+  .dash-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:.8rem;}
+  .dash-table th,.dash-table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--c-line);color:var(--c-text-2);}
+  .dash-table th{font:500 .68rem/1 var(--c-mono);text-transform:uppercase;letter-spacing:.09em;color:var(--c-text-3);}
+  .dash-table td.mono{font-family:var(--c-mono);color:var(--c-text-3);}
+  .dash-table tr.ours td{color:var(--c-text);}
+  .dash-table tr.ours td:first-child{color:var(--c-accent);font-weight:600;}
+
+  .dash-honest{grid-column:1 / -1;border:1px solid color-mix(in srgb,var(--c-accent) 32%,var(--c-line));border-radius:var(--radius-md);background:var(--c-accent-soft);padding:24px;}
+  .dash-honest h3{margin:0 0 14px;font:500 1rem/1.3 var(--c-sans);color:var(--c-text);}
+  .dash-honest .hcols{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  @media(max-width:700px){.dash-honest .hcols{grid-template-columns:1fr;}}
+  .dash-honest ul{margin:8px 0 0;padding-left:18px;}
+  .dash-honest li{font-size:.84rem;line-height:1.6;color:var(--c-text-2);margin-bottom:6px;}
+  .dash-honest .hcol-h{font:500 .7rem/1 var(--c-mono);text-transform:uppercase;letter-spacing:.1em;}
+  .dash-honest .hcol-h.yes{color:var(--c-mint);} .dash-honest .hcol-h.no{color:var(--c-steel);}
+  .dash-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+</style>
+
+<section class="section" id="baselines" aria-labelledby="dash-title">
+  <div class="shell dash-shell">
+    <p class="section-kicker reveal">Results, measured honestly</p>
+    <h2 class="display section-title reveal" id="dash-title">Better than what?</h2>
+    <p class="section-intro reveal">Fine-tuning is not the default winner. This dashboard reports only what is measured today: the prompted-frontier pilot on a 5-row single-attribute grid, and this project's own measured proxies. Where an end-to-end result does not exist yet, it is marked <span class="dash-tag pending">pending</span> — never filled with a number.</p>
+
+    <div class="dash-legend reveal">
+      <b><span class="dash-dot" style="background:var(--c-accent)"></span>Chroma (this project)</b>
+      <b><span class="dash-dot" style="background:var(--c-steel)"></span>Frontier model</b>
+      <b><span class="dash-dot" style="background:var(--c-coral)"></span>Refused / truncated</b>
+      <span class="dash-tag measured">measured</span>
+      <span class="dash-tag construct">by construction</span>
+      <span class="dash-tag pending">pending</span>
+    </div>
+
+    <!-- KPI ROW -->
+    <div class="dash-kpis reveal">
+      <div class="dash-kpi" style="--kpi-tone:var(--c-accent)">
+        <div class="kpi-num">100<small>%</small></div>
+        <div class="kpi-lab">valid 17³ .cube <span class="dash-tag construct">by construction</span> — 64 codes → frozen decoder always yields a canonical LUT</div>
+      </div>
+      <div class="dash-kpi" style="--kpi-tone:var(--c-steel)">
+        <div class="kpi-num">9<small>/9</small></div>
+        <div class="kpi-lab">completed frontier LUTs that were direction-correct <em>and</em> safe. Color intent is never the failure — completion is.</div>
+      </div>
+      <div class="dash-kpi" style="--kpi-tone:var(--c-mint)">
+        <div class="kpi-num">64<small> codes</small></div>
+        <div class="kpi-lab">to encode a full LUT, vs ~100,000 raw floats for a 4,913-row .cube</div>
+      </div>
+      <div class="dash-kpi" style="--kpi-tone:var(--c-coral)">
+        <div class="kpi-num">$1.4–2.4</div>
+        <div class="kpi-lab">frontier cost per <em>usable</em> LUT (8–17 min). Chroma target: ~$0, sub-second, local.</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <!-- CHART 1: completion reliability -->
+      <figure class="dash-card wide reveal">
+        <h3>Completion reliability — valid full 17³ .cube</h3>
+        <p class="dash-sub">Prompted-frontier pilot, 5 single-attribute rows (warmer · cooler · more magenta · more green · brighter). Frontier failures are truncation or refusal, not wrong color.</p>
+        <div class="dash-bars">
+          <div class="dbar"><span class="dbar-name ours">Chroma (ours)</span><span class="dbar-track"><span class="dbar-fill ours" style="--val:100"></span></span><span class="dbar-val">100% <span class="vsub">by construction</span></span></div>
+          <div class="dbar"><span class="dbar-name">Opus 4.8</span><span class="dbar-track"><span class="dbar-fill" style="--val:80;--tone:var(--c-steel)"></span></span><span class="dbar-val">80% <span class="vsub">4/5</span></span></div>
+          <div class="dbar"><span class="dbar-name">Sonnet 4.6</span><span class="dbar-track"><span class="dbar-fill" style="--val:60;--tone:var(--c-steel)"></span></span><span class="dbar-val">60% <span class="vsub">3/5</span></span></div>
+          <div class="dbar"><span class="dbar-name">GPT-5.5 xhigh</span><span class="dbar-track"><span class="dbar-fill" style="--val:40;--tone:var(--c-steel)"></span></span><span class="dbar-val">40% <span class="vsub">2/5</span></span></div>
+          <div class="dbar"><span class="dbar-name">GPT-5.5 medium</span><span class="dbar-track"><span class="dbar-fill" style="--val:0;--tone:var(--c-coral)"></span></span><span class="dbar-val">0% <span class="vsub">refused</span></span></div>
+          <div class="dbar"><span class="dbar-name">Gemini 3.1 Pro</span><span class="dbar-track"><span class="dbar-fill" style="--val:0;--tone:var(--c-coral)"></span></span><span class="dbar-val">0% <span class="vsub">token-capped</span></span></div>
+        </div>
+        <figcaption>Source: docs/frontier_baseline_results.md (main grid). Gemini 3.1 Pro is structurally blocked — its route hard-caps output at ~65K tokens (~2,000 rows), so a full ~100K-token LUT is impossible regardless of prompt. Ours is 100% valid by construction (grammar-constrained 64-code decode), which is a structural guarantee, not the same measurement.</figcaption>
+      </figure>
+
+      <!-- CHART 2: cost of the full grid -->
+      <figure class="dash-card reveal">
+        <h3>Cost &amp; latency — full 5-row grid</h3>
+        <p class="dash-sub">Provider list prices; wall-clock per grid. Grand total ≈ $30.22 across all frontier configs.</p>
+        <div class="dash-bars">
+          <div class="dbar"><span class="dbar-name">Opus 4.8</span><span class="dbar-track"><span class="dbar-fill" style="--val:100;--tone:var(--c-steel)"></span></span><span class="dbar-val">$9.76 <span class="vsub">51m</span></span></div>
+          <div class="dbar"><span class="dbar-name">GPT-5.5 xhigh</span><span class="dbar-track"><span class="dbar-fill" style="--val:92.7;--tone:var(--c-steel)"></span></span><span class="dbar-val">$9.05 <span class="vsub">16m</span></span></div>
+          <div class="dbar"><span class="dbar-name">Sonnet 4.6</span><span class="dbar-track"><span class="dbar-fill" style="--val:79;--tone:var(--c-steel)"></span></span><span class="dbar-val">$7.71 <span class="vsub">70m</span></span></div>
+          <div class="dbar"><span class="dbar-name">Gemini 3.1 Pro</span><span class="dbar-track"><span class="dbar-fill" style="--val:33;--tone:var(--c-coral)"></span></span><span class="dbar-val">$3.22 <span class="vsub">29m · 0 valid</span></span></div>
+          <div class="dbar"><span class="dbar-name">GPT-5.5 medium</span><span class="dbar-track"><span class="dbar-fill" style="--val:4.9;--tone:var(--c-coral)"></span></span><span class="dbar-val">$0.48 <span class="vsub">3m · 0 valid</span></span></div>
+          <div class="dbar"><span class="dbar-name ours">Chroma (ours)</span><span class="dbar-track"><span class="dbar-fill ours" style="--val:0.3"></span></span><span class="dbar-val">~$0 <span class="vsub">&lt;1s · target</span></span></div>
+        </div>
+        <figcaption>Source: docs/frontier_baseline_results.md. Bars scaled to Opus ($9.76). Chroma cost/latency is a design target (local single-T4 / deterministic), not a benchmarked figure.</figcaption>
+      </figure>
+
+      <!-- CHART 3: output budget -->
+      <figure class="dash-card reveal">
+        <h3>Output budget — the tractability story</h3>
+        <p class="dash-sub">A frontier model must emit every LUT row as text; Chroma emits 64 VQ codes a frozen decoder expands into the 4,913-row grid.</p>
+        <div class="dash-budget">
+          <div class="bud-col"><div class="bud-num ours">64</div><div class="bud-lab">VQ codes (256-entry codebook) — Chroma</div></div>
+          <div class="bud-col"><div class="bud-num">~100K</div><div class="bud-lab">raw float tokens — frontier full .cube (4,913 rows)</div></div>
+          <div class="bud-ratio">≈ 1,500× smaller</div>
+        </div>
+        <figcaption>Source: docs/model_architecture.md; docs/frontier_baseline_results.md. The compact budget is why a small local model can finish where frontier prompting truncates.</figcaption>
+      </figure>
+
+      <!-- CHART 4: our measured proxies -->
+      <figure class="dash-card wide reveal">
+        <h3>Chroma — measured proxies <span class="dash-tag measured">measured</span></h3>
+        <p class="dash-sub">These are the real numbers we have today. They are component measurements and decoder-free proxies — <strong>not</strong> an end-to-end harness pass rate, which does not exist yet.</p>
+        <div class="dash-proxy">
+          <div class="proxy-block">
+            <h4>Frozen tokenizer reconstruction</h4>
+            <p class="pb-note">382-LUT dev holdout · CIEDE2000 (lower is better)</p>
+            <div class="proxy-stat">mean ΔE00 <b class="good">1.31</b></div>
+            <div class="proxy-stat">p95 ΔE00 <b>3.34</b></div>
+            <div class="proxy-stat">PSNR <b>37.0 dB</b></div>
+            <div class="proxy-stat">gold gate <b>≤ 2.5</b></div>
+          </div>
+          <div class="proxy-block">
+            <h4>Interpreter / router</h4>
+            <p class="pb-note">Qwen2.5-0.5B · holdout n=684 · ships as router only</p>
+            <div class="proxy-stat">route accuracy <b class="good">0.884</b></div>
+            <div class="proxy-stat">refuse recall <b class="good">1.00</b></div>
+            <div class="proxy-stat">clarify recall <b class="good">1.00</b></div>
+            <div class="proxy-stat">over-refusal <b>0.132</b></div>
+          </div>
+          <div class="proxy-block">
+            <h4>Generator behavioral fidelity</h4>
+            <p class="pb-note">P6 adapter · spec-conditioned · ruler ceiling ≈ 0.89</p>
+            <div class="proxy-stat">teacher-forced <b>0.708</b></div>
+            <div class="proxy-stat">best-of-N (deployable) <b class="good">0.42</b></div>
+            <div class="proxy-stat">free-running greedy <b class="warn">0.159</b></div>
+            <div class="proxy-stat">greedy collapse <b class="warn">94%</b></div>
+          </div>
+        </div>
+        <figcaption>Sources: tokenizer/final/manifest.json · docs/interpreter_results.md · docs/collapse_fix/README.md. Free-running greedy collapses (exposure bias, not a broken seam); best-of-N sample+rerank is the deployable mitigation. GRPO is planned, not shipped.</figcaption>
+      </figure>
+
+      <!-- MODEL DIRECTORY -->
+      <figure class="dash-card wide reveal">
+        <h3>Configurations compared</h3>
+        <table class="dash-table">
+          <thead><tr><th>Model</th><th>Id</th><th>$ in / out (1M)</th><th>Effort</th><th>Completion</th></tr></thead>
+          <tbody>
+            <tr class="ours"><td>Chroma (ours)</td><td class="mono">local · Qwen2.5-VL-3B + adapter</td><td class="mono">~$0 · local</td><td class="mono">deterministic</td><td>100% valid by construction</td></tr>
+            <tr><td>Opus 4.8</td><td class="mono">claude-group/claude-opus-4-8</td><td class="mono">$5 / $25</td><td class="mono">medium</td><td>4/5</td></tr>
+            <tr><td>Sonnet 4.6</td><td class="mono">claude-group/claude-sonnet-4-6</td><td class="mono">$3 / $15</td><td class="mono">medium</td><td>3/5</td></tr>
+            <tr><td>GPT-5.5</td><td class="mono">openai-group/gpt-5.5</td><td class="mono">$5 / $30</td><td class="mono">xhigh / med</td><td>2/5 · 0/5</td></tr>
+            <tr><td>Gemini 3.1 Pro</td><td class="mono">gemini-group/gemini-3.1-pro</td><td class="mono">$2 / $12</td><td class="mono">—</td><td>0/5 (token cap)</td></tr>
+          </tbody>
+        </table>
+        <figcaption>Source: docs/frontier_baseline_results.md §Configurations. Prices are provider list prices.</figcaption>
+      </figure>
+
+      <!-- HONESTY CALLOUT -->
+      <div class="dash-honest reveal">
+        <h3>What this dashboard does and does not claim</h3>
+        <div class="hcols">
+          <div>
+            <div class="hcol-h yes">✓ True today</div>
+            <ul>
+              <li>Every output is a valid, safe-domain 17³ LUT <em>by construction</em> (grammar-constrained 64-code decode).</li>
+              <li>Deterministic, local, and cheap: fixed-seed greedy decode on a single T4, scale-to-zero.</li>
+              <li>Frozen tokenizer reconstructs held-out LUTs at mean ΔE00 1.31 / ~37 dB.</li>
+              <li>Router is production-ready: route accuracy 0.884, refuse &amp; clarify recall 1.0.</li>
+            </ul>
+          </div>
+          <div>
+            <div class="hcol-h no">◌ Not yet proven</div>
+            <ul>
+              <li>No end-to-end <code>supported_prompt_to_lut_pass_rate</code> exists — the decode-dependent layers (L2, L4–L7) are still decoder-free proxies in the v1 spine.</li>
+              <li>Free-running greedy generation collapses (behavioral fidelity 0.159); best-of-N recovers to ≈0.42 against a 0.708 teacher-forced ceiling.</li>
+              <li>No headline quality gate has been met at scale, and no GRPO result is shipped.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ===== END RESULTS DASHBOARD ===== -->
