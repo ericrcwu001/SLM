@@ -1,5 +1,7 @@
 # Prompt-to-LUT Eval Harness (Stage 1 spine)
 
+**[Try the live Chroma demo](https://eric-wu--slm-lut-demo-web.modal.run/)**
+
 This package implements the **model- and decode-independent spine** of the eval harness
 specified in `docs/eval_harness_implementation.md`, per master-plan Stage 1 ("build eval
 before training").
